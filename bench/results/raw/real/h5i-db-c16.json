@@ -1,5 +1,5 @@
 {
-  "bytes_received": 896432,
+  "bytes_received": 2387564,
   "concurrency": 16,
   "duration_s": 10.0,
   "error_samples": [],
@@ -7,52 +7,52 @@
   "errors_total": 0,
   "label": "real/h5i/db",
   "latency_ms": {
-    "max": 238.847,
-    "mean": 223.197,
-    "p50": 222.719,
-    "p90": 229.503,
-    "p99": 236.671,
-    "p999": 238.847
+    "max": 99.327,
+    "mean": 84.041,
+    "p50": 84.991,
+    "p90": 91.583,
+    "p99": 96.383,
+    "p999": 99.135
   },
   "mode": "closed",
   "processes": {
     "db": {
-      "cpu_cores": 0.47,
-      "cpu_seconds": 4.79,
-      "cpu_us_per_request": 6690.0,
-      "hwm_sum_mb": 872.0,
-      "pid": 1643091,
-      "processes": 23,
-      "pss_end_mb": 248.0,
-      "rss_peak_mb": 872.0
+      "cpu_cores": 0.33,
+      "cpu_seconds": 3.3,
+      "cpu_us_per_request": 1730.0,
+      "hwm_sum_mb": 235.0,
+      "pid": 2052972,
+      "processes": 9,
+      "pss_end_mb": 103.0,
+      "rss_peak_mb": 235.0
     },
     "gateway": {
       "cpu_cores": 0.31,
-      "cpu_seconds": 3.13,
-      "cpu_us_per_request": 4372.0,
-      "hwm_sum_mb": 29.0,
-      "pid": 1653044,
+      "cpu_seconds": 3.14,
+      "cpu_us_per_request": 1647.0,
+      "hwm_sum_mb": 34.0,
+      "pid": 2053387,
       "processes": 1,
-      "pss_end_mb": 27.0,
-      "rss_peak_mb": 29.0
+      "pss_end_mb": 32.0,
+      "rss_peak_mb": 34.0
     },
     "upstream": {
-      "cpu_cores": 0.02,
-      "cpu_seconds": 0.19,
-      "cpu_us_per_request": 265.0,
-      "hwm_sum_mb": 21.0,
-      "pid": 1645697,
+      "cpu_cores": 0.04,
+      "cpu_seconds": 0.41,
+      "cpu_us_per_request": 215.0,
+      "hwm_sum_mb": 19.0,
+      "pid": 2049327,
       "processes": 1,
-      "pss_end_mb": 16.0,
-      "rss_peak_mb": 18.0
+      "pss_end_mb": 15.0,
+      "rss_peak_mb": 17.0
     }
   },
   "rate": null,
-  "requests_ok": 716,
+  "requests_ok": 1907,
   "scenario": "chat",
   "stream": false,
-  "throughput_rps": 71.6,
-  "timestamp": 1792761489,
+  "throughput_rps": 190.7,
+  "timestamp": 1792789848,
   "ttfb_ms": null,
   "url": "http://127.0.0.1:19200/v1/chat/completions",
   "warmup_s": 5.0,
@@ -64,14 +64,14 @@
     "chunk-delay-ms": 10
   },
   "bench_scenario": "db",
-  "loadavg_before": 3.74,
-  "loadavg_after": 3.71,
+  "loadavg_before": 2.13,
+  "loadavg_after": 2.1,
   "cores": {
     "gateway": "64-71",
     "loadgen": "72-79",
     "upstream": "80-87",
     "db": "88-95"
   },
-  "machine_busy_cores": 2.65,
-  "other_cpus_busy_cores": 1.73
+  "machine_busy_cores": 1.51,
+  "other_cpus_busy_cores": 0.89
 }

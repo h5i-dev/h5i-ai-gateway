@@ -1,0 +1,77 @@
+{
+  "bytes_received": 14444324,
+  "concurrency": 256,
+  "duration_s": 10.0,
+  "error_samples": [],
+  "errors": {},
+  "errors_total": 0,
+  "label": "real/h5i/dbbig",
+  "latency_ms": {
+    "max": 276.223,
+    "mean": 223.277,
+    "p50": 223.103,
+    "p90": 234.111,
+    "p99": 270.335,
+    "p999": 275.967
+  },
+  "mode": "closed",
+  "processes": {
+    "db": {
+      "cpu_cores": 0.78,
+      "cpu_seconds": 7.88,
+      "cpu_us_per_request": 683.0,
+      "hwm_sum_mb": 2001.0,
+      "pid": 2059536,
+      "processes": 23,
+      "pss_end_mb": 1029.0,
+      "rss_peak_mb": 1961.0
+    },
+    "gateway": {
+      "cpu_cores": 0.58,
+      "cpu_seconds": 5.85,
+      "cpu_us_per_request": 507.0,
+      "hwm_sum_mb": 100.0,
+      "pid": 2059923,
+      "processes": 1,
+      "pss_end_mb": 98.0,
+      "rss_peak_mb": 100.0
+    },
+    "upstream": {
+      "cpu_cores": 0.13,
+      "cpu_seconds": 1.34,
+      "cpu_us_per_request": 116.0,
+      "hwm_sum_mb": 18.0,
+      "pid": 2059411,
+      "processes": 1,
+      "pss_end_mb": 16.0,
+      "rss_peak_mb": 18.0
+    }
+  },
+  "rate": null,
+  "requests_ok": 11537,
+  "scenario": "chat",
+  "stream": false,
+  "throughput_rps": 1153.7,
+  "timestamp": 1792790645,
+  "ttfb_ms": null,
+  "url": "http://127.0.0.1:19200/v1/chat/completions",
+  "warmup_s": 5.0,
+  "system": "h5i",
+  "profile": "real",
+  "profile_settings": {
+    "latency-ms": 50,
+    "stream-chunks": 20,
+    "chunk-delay-ms": 10
+  },
+  "bench_scenario": "dbbig",
+  "loadavg_before": 0.89,
+  "loadavg_after": 0.91,
+  "cores": {
+    "gateway": "64-71",
+    "loadgen": "72-79",
+    "upstream": "80-87",
+    "db": "88-95"
+  },
+  "machine_busy_cores": 1.75,
+  "other_cpus_busy_cores": 0.79
+}

@@ -7,11 +7,11 @@
   "python": "Python 3.12.3",
   "litellm": "1.106.2",
   "litellm_rust_commit": "f2118fc7670ba3fa736d9b8f4deef9077a45a720",
-  "h5i_gateway_commit": "ab08e49ed22967b752232709fa4651e2d8fa6303",
+  "h5i_gateway_commit": "4003a6606c72f140328c198636a6953f47113eda",
   "postgres": "postgres@sha256:d74eeac9a635390a49bc21bd49fccd973de707e2a53a76ac49b552b8712ec46f",
   "loadavg_at_start": [
-    3.4130859375,
-    2.9560546875,
-    5.91748046875
+    6.42041015625,
+    2.8623046875,
+    3.42236328125
   ]
 }

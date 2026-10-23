@@ -1,5 +1,5 @@
 {
-  "bytes_received": 2653326,
+  "bytes_received": 2670564,
   "concurrency": 16,
   "duration_s": 10.0,
   "error_samples": [],
@@ -7,31 +7,31 @@
   "errors_total": 0,
   "label": "real/litellm/db",
   "latency_ms": {
-    "max": 152.063,
-    "mean": 80.196,
-    "p50": 78.463,
-    "p90": 92.863,
-    "p99": 116.415,
-    "p999": 141.823
+    "max": 189.311,
+    "mean": 79.459,
+    "p50": 77.247,
+    "p90": 92.543,
+    "p99": 120.575,
+    "p999": 151.167
   },
   "mode": "closed",
   "processes": {
     "db": {
-      "cpu_cores": 0.15,
-      "cpu_seconds": 1.54,
-      "cpu_us_per_request": 770.0,
-      "hwm_sum_mb": 1149.0,
-      "pid": 1643091,
-      "processes": 31,
-      "pss_end_mb": 379.0,
-      "rss_peak_mb": 1149.0
+      "cpu_cores": 0.17,
+      "cpu_seconds": 1.71,
+      "cpu_us_per_request": 849.0,
+      "hwm_sum_mb": 1014.0,
+      "pid": 2052972,
+      "processes": 33,
+      "pss_end_mb": 246.0,
+      "rss_peak_mb": 1015.0
     },
     "gateway": {
-      "cpu_cores": 3.78,
-      "cpu_seconds": 38.02,
-      "cpu_us_per_request": 19000.0,
+      "cpu_cores": 3.8,
+      "cpu_seconds": 38.19,
+      "cpu_us_per_request": 18962.0,
       "hwm_sum_mb": 5922.0,
-      "pid": 1654306,
+      "pid": 2053837,
       "processes": 18,
       "pss_end_mb": 5498.0,
       "rss_peak_mb": 5922.0
@@ -39,20 +39,20 @@
     "upstream": {
       "cpu_cores": 0.05,
       "cpu_seconds": 0.52,
-      "cpu_us_per_request": 260.0,
-      "hwm_sum_mb": 21.0,
-      "pid": 1645697,
+      "cpu_us_per_request": 258.0,
+      "hwm_sum_mb": 19.0,
+      "pid": 2049327,
       "processes": 1,
-      "pss_end_mb": 16.0,
-      "rss_peak_mb": 18.0
+      "pss_end_mb": 15.0,
+      "rss_peak_mb": 17.0
     }
   },
   "rate": null,
-  "requests_ok": 2001,
+  "requests_ok": 2014,
   "scenario": "chat",
   "stream": false,
-  "throughput_rps": 200.1,
-  "timestamp": 1792761588,
+  "throughput_rps": 201.4,
+  "timestamp": 1792789943,
   "ttfb_ms": null,
   "url": "http://127.0.0.1:19200/v1/chat/completions",
   "warmup_s": 5.0,
@@ -64,14 +64,14 @@
     "chunk-delay-ms": 10
   },
   "bench_scenario": "db",
-  "loadavg_before": 3.57,
-  "loadavg_after": 4.18,
+  "loadavg_before": 2.37,
+  "loadavg_after": 3.3,
   "cores": {
     "gateway": "64-71",
     "loadgen": "72-79",
     "upstream": "80-87",
     "db": "88-95"
   },
-  "machine_busy_cores": 5.37,
-  "other_cpus_busy_cores": 1.24
+  "machine_busy_cores": 4.45,
+  "other_cpus_busy_cores": 0.27
 }

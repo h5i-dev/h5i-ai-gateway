@@ -1,5 +1,5 @@
 {
-  "bytes_received": 62557930,
+  "bytes_received": 62051010,
   "concurrency": 256,
   "duration_s": 10.0,
   "error_samples": [],
@@ -7,49 +7,49 @@
   "errors_total": 0,
   "label": "real/h5i/stream",
   "latency_ms": {
-    "max": 289.535,
-    "mean": 276.572,
+    "max": 290.559,
+    "mean": 276.634,
     "p50": 276.223,
-    "p90": 280.063,
-    "p99": 285.439,
-    "p999": 288.255
+    "p90": 280.319,
+    "p99": 285.183,
+    "p999": 287.743
   },
   "mode": "closed",
   "processes": {
     "gateway": {
-      "cpu_cores": 1.92,
-      "cpu_seconds": 19.35,
-      "cpu_us_per_request": 2063.0,
-      "hwm_sum_mb": 51.0,
-      "pid": 1646655,
+      "cpu_cores": 1.98,
+      "cpu_seconds": 19.9,
+      "cpu_us_per_request": 2139.0,
+      "hwm_sum_mb": 84.0,
+      "pid": 2050196,
       "processes": 1,
-      "pss_end_mb": 49.0,
-      "rss_peak_mb": 51.0
+      "pss_end_mb": 81.0,
+      "rss_peak_mb": 84.0
     },
     "upstream": {
       "cpu_cores": 0.83,
-      "cpu_seconds": 8.4,
-      "cpu_us_per_request": 896.0,
+      "cpu_seconds": 8.39,
+      "cpu_us_per_request": 902.0,
       "hwm_sum_mb": 19.0,
-      "pid": 1645697,
+      "pid": 2049327,
       "processes": 1,
       "pss_end_mb": 17.0,
       "rss_peak_mb": 19.0
     }
   },
   "rate": null,
-  "requests_ok": 9379,
+  "requests_ok": 9303,
   "scenario": "stream",
   "stream": true,
-  "throughput_rps": 937.9,
-  "timestamp": 1792760943,
+  "throughput_rps": 930.3,
+  "timestamp": 1792789480,
   "ttfb_ms": {
-    "max": 55.871,
-    "mean": 52.086,
-    "p50": 52.063,
-    "p90": 52.895,
-    "p99": 53.695,
-    "p999": 54.911
+    "max": 55.231,
+    "mean": 52.16,
+    "p50": 52.127,
+    "p90": 53.055,
+    "p99": 53.919,
+    "p999": 54.623
   },
   "url": "http://127.0.0.1:19200/v1/chat/completions",
   "warmup_s": 5.0,
@@ -61,14 +61,14 @@
     "chunk-delay-ms": 10
   },
   "bench_scenario": "stream",
-  "loadavg_before": 1.97,
-  "loadavg_after": 1.76,
+  "loadavg_before": 1.22,
+  "loadavg_after": 0.95,
   "cores": {
     "gateway": "64-71",
     "loadgen": "72-79",
     "upstream": "80-87",
     "db": "88-95"
   },
-  "machine_busy_cores": 3.66,
-  "other_cpus_busy_cores": 0.38
+  "machine_busy_cores": 3.32,
+  "other_cpus_busy_cores": 0.05
 }

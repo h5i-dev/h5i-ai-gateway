@@ -7,23 +7,23 @@
   "errors_total": 0,
   "label": "real/direct/stream",
   "latency_ms": {
-    "max": 283.135,
-    "mean": 276.497,
-    "p50": 276.479,
-    "p90": 279.295,
+    "max": 284.159,
+    "mean": 276.791,
+    "p50": 276.991,
+    "p90": 279.551,
     "p99": 281.855,
-    "p999": 283.135
+    "p999": 283.903
   },
   "mode": "closed",
   "processes": {
     "upstream": {
       "cpu_cores": 0.31,
-      "cpu_seconds": 3.15,
-      "cpu_us_per_request": 1367.0,
+      "cpu_seconds": 3.13,
+      "cpu_us_per_request": 1359.0,
       "hwm_sum_mb": 16.0,
-      "pid": 1645697,
+      "pid": 2049327,
       "processes": 1,
-      "pss_end_mb": 14.0,
+      "pss_end_mb": 13.0,
       "rss_peak_mb": 16.0
     }
   },
@@ -32,11 +32,11 @@
   "scenario": "stream",
   "stream": true,
   "throughput_rps": 230.4,
-  "timestamp": 1792760744,
+  "timestamp": 1792789282,
   "ttfb_ms": {
-    "max": 52.543,
-    "mean": 51.481,
-    "p50": 51.487,
+    "max": 52.607,
+    "mean": 51.463,
+    "p50": 51.455,
     "p90": 52.063,
     "p99": 52.383,
     "p999": 52.511
@@ -51,14 +51,14 @@
     "chunk-delay-ms": 10
   },
   "bench_scenario": "stream",
-  "loadavg_before": 2.63,
-  "loadavg_after": 2.4,
+  "loadavg_before": 2.57,
+  "loadavg_after": 2.0,
   "cores": {
     "gateway": "64-71",
     "loadgen": "72-79",
     "upstream": "80-87",
     "db": "88-95"
   },
-  "machine_busy_cores": 0.87,
-  "other_cpus_busy_cores": 0.38
+  "machine_busy_cores": 0.55,
+  "other_cpus_busy_cores": 0.09
 }

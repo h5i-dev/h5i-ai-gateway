@@ -1,0 +1,142 @@
+{
+  "bytes_received": 7456912,
+  "concurrency": 64,
+  "duration_s": 10.0,
+  "error_samples": [],
+  "errors": {},
+  "errors_total": 15,
+  "label": "lat0/h5i/dbtenants/0",
+  "latency_ms": {
+    "max": 3749.887,
+    "mean": 46.114,
+    "p50": 21.135,
+    "p90": 24.799,
+    "p99": 284.159,
+    "p999": 3749.887
+  },
+  "mode": "closed",
+  "processes": {
+    "tenants": [
+      {
+        "db": {
+          "cpu_cores": 1.76,
+          "cpu_seconds": 17.72,
+          "cpu_us_per_request": 2975.0,
+          "hwm_sum_mb": 744.0,
+          "pid": 2047802,
+          "processes": 18,
+          "pss_end_mb": 149.0,
+          "rss_peak_mb": 744.0
+        },
+        "gateway": {
+          "cpu_cores": 0.54,
+          "cpu_seconds": 5.47,
+          "cpu_us_per_request": 918.0,
+          "hwm_sum_mb": 35.0,
+          "pid": 2048189,
+          "processes": 1,
+          "pss_end_mb": 24.0,
+          "rss_peak_mb": 35.0
+        }
+      },
+      {
+        "db": {
+          "cpu_cores": 1.75,
+          "cpu_seconds": 17.6,
+          "cpu_us_per_request": 4078.0,
+          "hwm_sum_mb": 744.0,
+          "pid": 2047802,
+          "processes": 18,
+          "pss_end_mb": 149.0,
+          "rss_peak_mb": 744.0
+        },
+        "gateway": {
+          "cpu_cores": 0.39,
+          "cpu_seconds": 3.88,
+          "cpu_us_per_request": 899.0,
+          "hwm_sum_mb": 35.0,
+          "pid": 2048208,
+          "processes": 1,
+          "pss_end_mb": 24.0,
+          "rss_peak_mb": 35.0
+        }
+      },
+      {
+        "db": {
+          "cpu_cores": 1.74,
+          "cpu_seconds": 17.47,
+          "cpu_us_per_request": 5037.0,
+          "hwm_sum_mb": 744.0,
+          "pid": 2047802,
+          "processes": 18,
+          "pss_end_mb": 149.0,
+          "rss_peak_mb": 744.0
+        },
+        "gateway": {
+          "cpu_cores": 0.31,
+          "cpu_seconds": 3.14,
+          "cpu_us_per_request": 905.0,
+          "hwm_sum_mb": 36.0,
+          "pid": 2048221,
+          "processes": 1,
+          "pss_end_mb": 24.0,
+          "rss_peak_mb": 36.0
+        }
+      },
+      {
+        "db": {
+          "cpu_cores": 1.73,
+          "cpu_seconds": 17.37,
+          "cpu_us_per_request": 4435.0,
+          "hwm_sum_mb": 744.0,
+          "pid": 2047802,
+          "processes": 18,
+          "pss_end_mb": 149.0,
+          "rss_peak_mb": 744.0
+        },
+        "gateway": {
+          "cpu_cores": 0.36,
+          "cpu_seconds": 3.58,
+          "cpu_us_per_request": 914.0,
+          "hwm_sum_mb": 35.0,
+          "pid": 2048239,
+          "processes": 1,
+          "pss_end_mb": 24.0,
+          "rss_peak_mb": 35.0
+        }
+      }
+    ]
+  },
+  "rate": null,
+  "requests_ok": 17657,
+  "scenario": "chat",
+  "stream": false,
+  "throughput_rps": 1765.7,
+  "timestamp": 1792789159,
+  "ttfb_ms": null,
+  "url": "http://127.0.0.1:19201/v1/chat/completions",
+  "warmup_s": 5.0,
+  "system": "h5i",
+  "profile": "lat0",
+  "profile_settings": {
+    "latency-ms": 0,
+    "stream-chunks": 20,
+    "chunk-delay-ms": 0
+  },
+  "bench_scenario": "dbtenants",
+  "tenants": 4,
+  "per_tenant_rps": [
+    595.6,
+    431.6,
+    346.8,
+    391.7
+  ],
+  "loadavg_before": 6.39,
+  "loadavg_after": 6.27,
+  "cores": {
+    "gateway": "64-71",
+    "loadgen": "72-79",
+    "upstream": "80-87",
+    "db": "88-95"
+  }
+}

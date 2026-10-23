@@ -1,5 +1,5 @@
 {
-  "bytes_received": 75062774,
+  "bytes_received": 65405800,
   "concurrency": 64,
   "duration_s": 10.0,
   "error_samples": [],
@@ -7,42 +7,42 @@
   "errors_total": 0,
   "label": "real/litellm/embeddings",
   "latency_ms": {
-    "max": 937.983,
-    "mean": 163.526,
-    "p50": 131.839,
-    "p90": 245.119,
-    "p99": 258.431,
-    "p999": 935.423
+    "max": 1009.151,
+    "mean": 188.332,
+    "p50": 135.679,
+    "p90": 296.959,
+    "p99": 890.367,
+    "p999": 989.183
   },
   "mode": "closed",
   "processes": {
     "gateway": {
-      "cpu_cores": 5.24,
-      "cpu_seconds": 52.58,
-      "cpu_us_per_request": 13475.0,
-      "hwm_sum_mb": 5364.0,
-      "pid": 1648799,
+      "cpu_cores": 4.96,
+      "cpu_seconds": 49.55,
+      "cpu_us_per_request": 14574.0,
+      "hwm_sum_mb": 5282.0,
+      "pid": 2051068,
       "processes": 10,
-      "pss_end_mb": 5065.0,
-      "rss_peak_mb": 5365.0
+      "pss_end_mb": 4982.0,
+      "rss_peak_mb": 5282.0
     },
     "upstream": {
-      "cpu_cores": 0.08,
-      "cpu_seconds": 0.78,
+      "cpu_cores": 0.07,
+      "cpu_seconds": 0.68,
       "cpu_us_per_request": 200.0,
-      "hwm_sum_mb": 22.0,
-      "pid": 1645697,
+      "hwm_sum_mb": 21.0,
+      "pid": 2049327,
       "processes": 1,
       "pss_end_mb": 19.0,
       "rss_peak_mb": 22.0
     }
   },
   "rate": null,
-  "requests_ok": 3902,
+  "requests_ok": 3400,
   "scenario": "embeddings",
   "stream": false,
-  "throughput_rps": 390.2,
-  "timestamp": 1792761378,
+  "throughput_rps": 340.0,
+  "timestamp": 1792789731,
   "ttfb_ms": null,
   "url": "http://127.0.0.1:19200/v1/embeddings",
   "warmup_s": 5.0,
@@ -54,14 +54,14 @@
     "chunk-delay-ms": 10
   },
   "bench_scenario": "embeddings",
-  "loadavg_before": 4.44,
-  "loadavg_after": 4.85,
+  "loadavg_before": 4.04,
+  "loadavg_after": 4.48,
   "cores": {
     "gateway": "64-71",
     "loadgen": "72-79",
     "upstream": "80-87",
     "db": "88-95"
   },
-  "machine_busy_cores": 5.55,
-  "other_cpus_busy_cores": 0.14
+  "machine_busy_cores": 5.14,
+  "other_cpus_busy_cores": 0.06
 }

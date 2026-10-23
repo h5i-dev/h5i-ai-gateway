@@ -8,20 +8,20 @@
   "label": "real/direct/chat",
   "latency_ms": {
     "max": 51.903,
-    "mean": 51.505,
-    "p50": 51.583,
-    "p90": 51.839,
-    "p99": 51.903,
+    "mean": 51.472,
+    "p50": 51.551,
+    "p90": 51.743,
+    "p99": 51.871,
     "p999": 51.903
   },
   "mode": "closed",
   "processes": {
     "upstream": {
-      "cpu_cores": 0.0,
-      "cpu_seconds": 0.05,
-      "cpu_us_per_request": 258.0,
+      "cpu_cores": 0.01,
+      "cpu_seconds": 0.06,
+      "cpu_us_per_request": 309.0,
       "hwm_sum_mb": 5.0,
-      "pid": 1645697,
+      "pid": 2049327,
       "processes": 1,
       "pss_end_mb": 3.0,
       "rss_peak_mb": 5.0
@@ -32,7 +32,7 @@
   "scenario": "chat",
   "stream": false,
   "throughput_rps": 19.4,
-  "timestamp": 1792760653,
+  "timestamp": 1792789191,
   "ttfb_ms": null,
   "url": "http://127.0.0.1:19100/v1/chat/completions",
   "warmup_s": 5.0,
@@ -44,14 +44,14 @@
     "chunk-delay-ms": 10
   },
   "bench_scenario": "chat",
-  "loadavg_before": 8.18,
-  "loadavg_after": 6.44,
+  "loadavg_before": 5.32,
+  "loadavg_after": 4.21,
   "cores": {
     "gateway": "64-71",
     "loadgen": "72-79",
     "upstream": "80-87",
     "db": "88-95"
   },
-  "machine_busy_cores": 0.2,
-  "other_cpus_busy_cores": 0.14
+  "machine_busy_cores": 0.21,
+  "other_cpus_busy_cores": 0.16
 }

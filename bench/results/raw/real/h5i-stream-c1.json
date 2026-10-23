@@ -7,34 +7,34 @@
   "errors_total": 0,
   "label": "real/h5i/stream",
   "latency_ms": {
-    "max": 277.503,
-    "mean": 274.716,
-    "p50": 275.199,
+    "max": 278.015,
+    "mean": 275.328,
+    "p50": 275.455,
     "p90": 276.735,
-    "p99": 277.503,
-    "p999": 277.503
+    "p99": 278.015,
+    "p999": 278.015
   },
   "mode": "closed",
   "processes": {
     "gateway": {
-      "cpu_cores": 0.02,
-      "cpu_seconds": 0.16,
-      "cpu_us_per_request": 4444.0,
-      "hwm_sum_mb": 49.0,
-      "pid": 1646655,
+      "cpu_cores": 0.01,
+      "cpu_seconds": 0.15,
+      "cpu_us_per_request": 4167.0,
+      "hwm_sum_mb": 80.0,
+      "pid": 2050196,
       "processes": 1,
-      "pss_end_mb": 47.0,
-      "rss_peak_mb": 49.0
+      "pss_end_mb": 78.0,
+      "rss_peak_mb": 80.0
     },
     "upstream": {
       "cpu_cores": 0.01,
       "cpu_seconds": 0.1,
       "cpu_us_per_request": 2778.0,
-      "hwm_sum_mb": 20.0,
-      "pid": 1645697,
+      "hwm_sum_mb": 19.0,
+      "pid": 2049327,
       "processes": 1,
       "pss_end_mb": 17.0,
-      "rss_peak_mb": 20.0
+      "rss_peak_mb": 19.0
     }
   },
   "rate": null,
@@ -42,14 +42,14 @@
   "scenario": "stream",
   "stream": true,
   "throughput_rps": 3.6,
-  "timestamp": 1792760897,
+  "timestamp": 1792789434,
   "ttfb_ms": {
-    "max": 52.255,
-    "mean": 51.759,
-    "p50": 51.967,
-    "p90": 52.127,
-    "p99": 52.255,
-    "p999": 52.255
+    "max": 52.287,
+    "mean": 51.84,
+    "p50": 51.935,
+    "p90": 52.191,
+    "p99": 52.287,
+    "p999": 52.287
   },
   "url": "http://127.0.0.1:19200/v1/chat/completions",
   "warmup_s": 5.0,
@@ -61,14 +61,14 @@
     "chunk-delay-ms": 10
   },
   "bench_scenario": "stream",
-  "loadavg_before": 1.57,
-  "loadavg_after": 1.44,
+  "loadavg_before": 1.97,
+  "loadavg_after": 1.53,
   "cores": {
     "gateway": "64-71",
     "loadgen": "72-79",
     "upstream": "80-87",
     "db": "88-95"
   },
-  "machine_busy_cores": 0.63,
-  "other_cpus_busy_cores": 0.49
+  "machine_busy_cores": 0.26,
+  "other_cpus_busy_cores": 0.14
 }

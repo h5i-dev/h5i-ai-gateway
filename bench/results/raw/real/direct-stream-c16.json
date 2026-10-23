@@ -7,24 +7,24 @@
   "errors_total": 0,
   "label": "real/direct/stream",
   "latency_ms": {
-    "max": 285.439,
-    "mean": 275.561,
-    "p50": 275.455,
-    "p90": 278.527,
-    "p99": 282.367,
-    "p999": 285.439
+    "max": 284.927,
+    "mean": 275.396,
+    "p50": 274.943,
+    "p90": 279.295,
+    "p99": 282.111,
+    "p999": 284.927
   },
   "mode": "closed",
   "processes": {
     "upstream": {
-      "cpu_cores": 0.1,
-      "cpu_seconds": 1.05,
-      "cpu_us_per_request": 1823.0,
-      "hwm_sum_mb": 16.0,
-      "pid": 1645697,
+      "cpu_cores": 0.11,
+      "cpu_seconds": 1.1,
+      "cpu_us_per_request": 1910.0,
+      "hwm_sum_mb": 15.0,
+      "pid": 2049327,
       "processes": 1,
       "pss_end_mb": 13.0,
-      "rss_peak_mb": 16.0
+      "rss_peak_mb": 15.0
     }
   },
   "rate": null,
@@ -32,14 +32,14 @@
   "scenario": "stream",
   "stream": true,
   "throughput_rps": 57.6,
-  "timestamp": 1792760729,
+  "timestamp": 1792789266,
   "ttfb_ms": {
-    "max": 52.511,
-    "mean": 51.45,
-    "p50": 51.423,
+    "max": 52.479,
+    "mean": 51.486,
+    "p50": 51.487,
     "p90": 52.063,
-    "p99": 52.319,
-    "p999": 52.511
+    "p99": 52.383,
+    "p999": 52.479
   },
   "url": "http://127.0.0.1:19100/v1/chat/completions",
   "warmup_s": 5.0,
@@ -51,14 +51,14 @@
     "chunk-delay-ms": 10
   },
   "bench_scenario": "stream",
-  "loadavg_before": 3.38,
-  "loadavg_after": 2.63,
+  "loadavg_before": 2.72,
+  "loadavg_after": 2.57,
   "cores": {
     "gateway": "64-71",
     "loadgen": "72-79",
     "upstream": "80-87",
     "db": "88-95"
   },
-  "machine_busy_cores": 0.55,
-  "other_cpus_busy_cores": 0.36
+  "machine_busy_cores": 0.28,
+  "other_cpus_busy_cores": 0.09
 }

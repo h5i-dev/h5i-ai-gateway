@@ -1,5 +1,5 @@
 {
-  "bytes_received": 381464134,
+  "bytes_received": 382795072,
   "concurrency": 64,
   "duration_s": 10.0,
   "error_samples": [],
@@ -7,42 +7,42 @@
   "errors_total": 0,
   "label": "lat0/litellm-rust/chat",
   "latency_ms": {
-    "max": 4.463,
-    "mean": 1.687,
-    "p50": 1.662,
-    "p90": 2.281,
-    "p99": 2.823,
-    "p999": 3.243
+    "max": 4.523,
+    "mean": 1.681,
+    "p50": 1.658,
+    "p90": 2.275,
+    "p99": 2.815,
+    "p999": 3.235
   },
   "mode": "closed",
   "processes": {
     "gateway": {
-      "cpu_cores": 7.3,
-      "cpu_seconds": 73.49,
-      "cpu_us_per_request": 194.0,
+      "cpu_cores": 7.32,
+      "cpu_seconds": 73.53,
+      "cpu_us_per_request": 193.0,
       "hwm_sum_mb": 25.0,
-      "pid": 1642703,
+      "pid": 2035862,
       "processes": 1,
       "pss_end_mb": 23.0,
       "rss_peak_mb": 25.0
     },
     "upstream": {
-      "cpu_cores": 3.25,
-      "cpu_seconds": 32.77,
-      "cpu_us_per_request": 86.0,
-      "hwm_sum_mb": 21.0,
-      "pid": 1636758,
+      "cpu_cores": 3.3,
+      "cpu_seconds": 33.12,
+      "cpu_us_per_request": 87.0,
+      "hwm_sum_mb": 19.0,
+      "pid": 2032937,
       "processes": 1,
-      "pss_end_mb": 14.0,
+      "pss_end_mb": 13.0,
       "rss_peak_mb": 16.0
     }
   },
   "rate": null,
-  "requests_ok": 379189,
+  "requests_ok": 380512,
   "scenario": "chat",
   "stream": false,
-  "throughput_rps": 37918.9,
-  "timestamp": 1792760451,
+  "throughput_rps": 38051.2,
+  "timestamp": 1792788234,
   "ttfb_ms": null,
   "url": "http://127.0.0.1:19200/v1/chat/completions",
   "warmup_s": 5.0,
@@ -54,14 +54,14 @@
     "chunk-delay-ms": 0
   },
   "bench_scenario": "chat",
-  "loadavg_before": 8.28,
-  "loadavg_after": 9.53,
+  "loadavg_before": 7.14,
+  "loadavg_after": 8.06,
   "cores": {
     "gateway": "64-71",
     "loadgen": "72-79",
     "upstream": "80-87",
     "db": "88-95"
   },
-  "machine_busy_cores": 12.47,
-  "other_cpus_busy_cores": 0.39
+  "machine_busy_cores": 11.99,
+  "other_cpus_busy_cores": 0.08
 }

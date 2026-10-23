@@ -1,5 +1,5 @@
 {
-  "bytes_received": 171230444,
+  "bytes_received": 172597172,
   "concurrency": 1,
   "duration_s": 10.0,
   "error_samples": [],
@@ -7,39 +7,39 @@
   "errors_total": 0,
   "label": "lat0/direct/stream",
   "latency_ms": {
-    "max": 0.713,
-    "mean": 0.428,
-    "p50": 0.427,
-    "p90": 0.476,
-    "p99": 0.519,
-    "p999": 0.565
+    "max": 0.662,
+    "mean": 0.425,
+    "p50": 0.423,
+    "p90": 0.469,
+    "p99": 0.514,
+    "p999": 0.555
   },
   "mode": "closed",
   "processes": {
     "upstream": {
-      "cpu_cores": 1.48,
-      "cpu_seconds": 14.82,
-      "cpu_us_per_request": 636.0,
-      "hwm_sum_mb": 15.0,
-      "pid": 1636758,
+      "cpu_cores": 1.49,
+      "cpu_seconds": 14.99,
+      "cpu_us_per_request": 638.0,
+      "hwm_sum_mb": 13.0,
+      "pid": 2032937,
       "processes": 1,
       "pss_end_mb": 10.0,
-      "rss_peak_mb": 14.0
+      "rss_peak_mb": 13.0
     }
   },
   "rate": null,
-  "requests_ok": 23303,
+  "requests_ok": 23489,
   "scenario": "stream",
   "stream": true,
-  "throughput_rps": 2330.3,
-  "timestamp": 1792759724,
+  "throughput_rps": 2348.9,
+  "timestamp": 1792787690,
   "ttfb_ms": {
-    "max": 0.538,
-    "mean": 0.199,
-    "p50": 0.194,
-    "p90": 0.226,
+    "max": 0.485,
+    "mean": 0.198,
+    "p50": 0.193,
+    "p90": 0.225,
     "p99": 0.246,
-    "p999": 0.31
+    "p999": 0.309
   },
   "url": "http://127.0.0.1:19100/v1/chat/completions",
   "warmup_s": 5.0,
@@ -51,14 +51,14 @@
     "chunk-delay-ms": 0
   },
   "bench_scenario": "stream",
-  "loadavg_before": 9.02,
-  "loadavg_after": 7.39,
+  "loadavg_before": 9.67,
+  "loadavg_after": 8.12,
   "cores": {
     "gateway": "64-71",
     "loadgen": "72-79",
     "upstream": "80-87",
     "db": "88-95"
   },
-  "machine_busy_cores": 2.23,
-  "other_cpus_busy_cores": 0.1
+  "machine_busy_cores": 2.27,
+  "other_cpus_busy_cores": 0.12
 }

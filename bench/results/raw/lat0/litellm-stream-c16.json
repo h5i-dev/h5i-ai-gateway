@@ -1,5 +1,5 @@
 {
-  "bytes_received": 17881864,
+  "bytes_received": 17951076,
   "concurrency": 16,
   "duration_s": 10.0,
   "error_samples": [],
@@ -7,49 +7,49 @@
   "errors_total": 0,
   "label": "lat0/litellm/stream",
   "latency_ms": {
-    "max": 129.407,
-    "mean": 56.27,
-    "p50": 55.807,
-    "p90": 84.799,
-    "p99": 104.575,
-    "p999": 116.159
+    "max": 122.367,
+    "mean": 56.099,
+    "p50": 55.583,
+    "p90": 77.759,
+    "p99": 100.991,
+    "p999": 118.207
   },
   "mode": "closed",
   "processes": {
     "gateway": {
-      "cpu_cores": 7.24,
-      "cpu_seconds": 73.06,
-      "cpu_us_per_request": 25707.0,
-      "hwm_sum_mb": 5046.0,
-      "pid": 1641217,
+      "cpu_cores": 7.27,
+      "cpu_seconds": 73.38,
+      "cpu_us_per_request": 25720.0,
+      "hwm_sum_mb": 5053.0,
+      "pid": 2034412,
       "processes": 10,
-      "pss_end_mb": 4747.0,
-      "rss_peak_mb": 5046.0
+      "pss_end_mb": 4752.0,
+      "rss_peak_mb": 5053.0
     },
     "upstream": {
-      "cpu_cores": 0.23,
-      "cpu_seconds": 2.29,
-      "cpu_us_per_request": 806.0,
-      "hwm_sum_mb": 21.0,
-      "pid": 1636758,
+      "cpu_cores": 0.21,
+      "cpu_seconds": 2.1,
+      "cpu_us_per_request": 736.0,
+      "hwm_sum_mb": 19.0,
+      "pid": 2032937,
       "processes": 1,
       "pss_end_mb": 16.0,
       "rss_peak_mb": 18.0
     }
   },
   "rate": null,
-  "requests_ok": 2842,
+  "requests_ok": 2853,
   "scenario": "stream",
   "stream": true,
-  "throughput_rps": 284.2,
-  "timestamp": 1792760308,
+  "throughput_rps": 285.3,
+  "timestamp": 1792788091,
   "ttfb_ms": {
-    "max": 75.391,
-    "mean": 27.446,
-    "p50": 26.671,
-    "p90": 44.479,
-    "p99": 56.447,
-    "p999": 65.791
+    "max": 64.351,
+    "mean": 26.984,
+    "p50": 26.431,
+    "p90": 38.815,
+    "p99": 53.823,
+    "p999": 62.879
   },
   "url": "http://127.0.0.1:19200/v1/chat/completions",
   "warmup_s": 5.0,
@@ -61,14 +61,14 @@
     "chunk-delay-ms": 0
   },
   "bench_scenario": "stream",
-  "loadavg_before": 8.4,
-  "loadavg_after": 8.91,
+  "loadavg_before": 6.62,
+  "loadavg_after": 7.68,
   "cores": {
     "gateway": "64-71",
     "loadgen": "72-79",
     "upstream": "80-87",
     "db": "88-95"
   },
-  "machine_busy_cores": 8.13,
-  "other_cpus_busy_cores": 0.43
+  "machine_busy_cores": 7.8,
+  "other_cpus_busy_cores": 0.06
 }

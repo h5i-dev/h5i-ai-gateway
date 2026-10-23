@@ -1,4 +1,4 @@
 {
   "status": 200,
-  "body": "{\"info\":{\"blocked\":false,\"budget_duration\":null,\"budget_reset_at\":null,\"expires\":1795352471,\"max_budget\":1000000.0,\"max_parallel_requests\":null,\"models\":[\"gpt-4o-mini\"],\"reserved_spend\":0.0,\"rpm_limit\":1000000000,\"spend\":0.39757515,\"team_id\":null,\"token_id\":\"4\",\"tpm_limit\":1000000000000,\"user_id\":\"0\",\"user_role\":\"internal_user\"},\"key\":\"4\"}"
+  "body": "{\"info\":{\"blocked\":false,\"budget_duration\":null,\"budget_reset_at\":null,\"expires\":1795380254,\"max_budget\":1000000.0,\"max_parallel_requests\":null,\"models\":[\"gpt-4o-mini\"],\"reserved_spend\":0.0,\"rpm_limit\":1000000000,\"spend\":3.24473715,\"team_id\":null,\"token_id\":\"4\",\"tpm_limit\":1000000000000,\"user_id\":\"0\",\"user_role\":\"internal_user\"},\"key\":\"4\"}"
 }

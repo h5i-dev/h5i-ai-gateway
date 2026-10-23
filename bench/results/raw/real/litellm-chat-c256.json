@@ -1,5 +1,5 @@
 {
-  "bytes_received": 9496812,
+  "bytes_received": 8715798,
   "concurrency": 256,
   "duration_s": 10.0,
   "error_samples": [],
@@ -7,42 +7,42 @@
   "errors_total": 0,
   "label": "real/litellm/chat",
   "latency_ms": {
-    "max": 1429.503,
-    "mean": 359.047,
-    "p50": 271.871,
-    "p90": 783.871,
-    "p99": 1370.111,
-    "p999": 1424.383
+    "max": 1524.735,
+    "mean": 384.325,
+    "p50": 184.191,
+    "p90": 830.975,
+    "p99": 1436.671,
+    "p999": 1516.543
   },
   "mode": "closed",
   "processes": {
     "gateway": {
-      "cpu_cores": 7.11,
-      "cpu_seconds": 71.75,
-      "cpu_us_per_request": 10018.0,
-      "hwm_sum_mb": 4686.0,
-      "pid": 1648799,
+      "cpu_cores": 6.45,
+      "cpu_seconds": 64.58,
+      "cpu_us_per_request": 9825.0,
+      "hwm_sum_mb": 4687.0,
+      "pid": 2051068,
       "processes": 10,
-      "pss_end_mb": 4394.0,
-      "rss_peak_mb": 4686.0
+      "pss_end_mb": 4395.0,
+      "rss_peak_mb": 4687.0
     },
     "upstream": {
-      "cpu_cores": 0.15,
-      "cpu_seconds": 1.51,
-      "cpu_us_per_request": 211.0,
-      "hwm_sum_mb": 21.0,
-      "pid": 1645697,
+      "cpu_cores": 0.13,
+      "cpu_seconds": 1.33,
+      "cpu_us_per_request": 202.0,
+      "hwm_sum_mb": 20.0,
+      "pid": 2049327,
       "processes": 1,
-      "pss_end_mb": 19.0,
-      "rss_peak_mb": 21.0
+      "pss_end_mb": 18.0,
+      "rss_peak_mb": 20.0
     }
   },
   "rate": null,
-  "requests_ok": 7162,
+  "requests_ok": 6573,
   "scenario": "chat",
   "stream": false,
-  "throughput_rps": 716.2,
-  "timestamp": 1792761269,
+  "throughput_rps": 657.3,
+  "timestamp": 1792789622,
   "ttfb_ms": null,
   "url": "http://127.0.0.1:19200/v1/chat/completions",
   "warmup_s": 5.0,
@@ -54,14 +54,14 @@
     "chunk-delay-ms": 10
   },
   "bench_scenario": "chat",
-  "loadavg_before": 3.26,
-  "loadavg_after": 4.77,
+  "loadavg_before": 2.72,
+  "loadavg_after": 4.31,
   "cores": {
     "gateway": "64-71",
     "loadgen": "72-79",
     "upstream": "80-87",
     "db": "88-95"
   },
-  "machine_busy_cores": 7.41,
-  "other_cpus_busy_cores": 0.13
+  "machine_busy_cores": 6.7,
+  "other_cpus_busy_cores": 0.12
 }

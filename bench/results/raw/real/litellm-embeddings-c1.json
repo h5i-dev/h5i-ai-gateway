@@ -7,33 +7,33 @@
   "errors_total": 0,
   "label": "real/litellm/embeddings",
   "latency_ms": {
-    "max": 80.191,
-    "mean": 78.524,
-    "p50": 78.527,
-    "p90": 78.975,
-    "p99": 79.999,
-    "p999": 80.191
+    "max": 86.399,
+    "mean": 78.482,
+    "p50": 78.463,
+    "p90": 78.911,
+    "p99": 79.871,
+    "p999": 86.399
   },
   "mode": "closed",
   "processes": {
     "gateway": {
-      "cpu_cores": 0.36,
-      "cpu_seconds": 3.65,
-      "cpu_us_per_request": 28740.0,
-      "hwm_sum_mb": 5363.0,
-      "pid": 1648799,
+      "cpu_cores": 0.37,
+      "cpu_seconds": 3.67,
+      "cpu_us_per_request": 28898.0,
+      "hwm_sum_mb": 5280.0,
+      "pid": 2051068,
       "processes": 10,
-      "pss_end_mb": 5065.0,
-      "rss_peak_mb": 5363.0
+      "pss_end_mb": 4981.0,
+      "rss_peak_mb": 5280.0
     },
     "upstream": {
       "cpu_cores": 0.0,
-      "cpu_seconds": 0.04,
-      "cpu_us_per_request": 315.0,
+      "cpu_seconds": 0.03,
+      "cpu_us_per_request": 236.0,
       "hwm_sum_mb": 21.0,
-      "pid": 1645697,
+      "pid": 2049327,
       "processes": 1,
-      "pss_end_mb": 19.0,
+      "pss_end_mb": 18.0,
       "rss_peak_mb": 21.0
     }
   },
@@ -42,7 +42,7 @@
   "scenario": "embeddings",
   "stream": false,
   "throughput_rps": 12.7,
-  "timestamp": 1792761347,
+  "timestamp": 1792789701,
   "ttfb_ms": null,
   "url": "http://127.0.0.1:19200/v1/embeddings",
   "warmup_s": 5.0,
@@ -54,14 +54,14 @@
     "chunk-delay-ms": 10
   },
   "bench_scenario": "embeddings",
-  "loadavg_before": 5.37,
-  "loadavg_after": 4.47,
+  "loadavg_before": 5.04,
+  "loadavg_after": 4.0,
   "cores": {
     "gateway": "64-71",
     "loadgen": "72-79",
     "upstream": "80-87",
     "db": "88-95"
   },
-  "machine_busy_cores": 1.03,
-  "other_cpus_busy_cores": 0.56
+  "machine_busy_cores": 0.57,
+  "other_cpus_busy_cores": 0.09
 }

@@ -1,5 +1,5 @@
 {
-  "bytes_received": 3853656,
+  "bytes_received": 3828616,
   "concurrency": 16,
   "duration_s": 10.0,
   "error_samples": [],
@@ -7,42 +7,42 @@
   "errors_total": 0,
   "label": "real/h5i/chat",
   "latency_ms": {
-    "max": 53.631,
-    "mean": 52.057,
-    "p50": 52.031,
-    "p90": 52.735,
-    "p99": 53.215,
-    "p999": 53.535
+    "max": 53.759,
+    "mean": 52.239,
+    "p50": 52.191,
+    "p90": 53.023,
+    "p99": 53.503,
+    "p999": 53.695
   },
   "mode": "closed",
   "processes": {
     "gateway": {
       "cpu_cores": 0.14,
-      "cpu_seconds": 1.39,
-      "cpu_us_per_request": 452.0,
-      "hwm_sum_mb": 29.0,
-      "pid": 1646655,
+      "cpu_seconds": 1.44,
+      "cpu_us_per_request": 471.0,
+      "hwm_sum_mb": 44.0,
+      "pid": 2050196,
       "processes": 1,
-      "pss_end_mb": 27.0,
-      "rss_peak_mb": 29.0
+      "pss_end_mb": 42.0,
+      "rss_peak_mb": 44.0
     },
     "upstream": {
       "cpu_cores": 0.06,
-      "cpu_seconds": 0.65,
-      "cpu_us_per_request": 211.0,
-      "hwm_sum_mb": 18.0,
-      "pid": 1645697,
+      "cpu_seconds": 0.58,
+      "cpu_us_per_request": 190.0,
+      "hwm_sum_mb": 19.0,
+      "pid": 2049327,
       "processes": 1,
       "pss_end_mb": 14.0,
-      "rss_peak_mb": 17.0
+      "rss_peak_mb": 16.0
     }
   },
   "rate": null,
-  "requests_ok": 3078,
+  "requests_ok": 3058,
   "scenario": "chat",
   "stream": false,
-  "throughput_rps": 307.8,
-  "timestamp": 1792760852,
+  "throughput_rps": 305.8,
+  "timestamp": 1792789389,
   "ttfb_ms": null,
   "url": "http://127.0.0.1:19200/v1/chat/completions",
   "warmup_s": 5.0,
@@ -54,14 +54,14 @@
     "chunk-delay-ms": 10
   },
   "bench_scenario": "chat",
-  "loadavg_before": 0.67,
-  "loadavg_after": 0.67,
+  "loadavg_before": 1.23,
+  "loadavg_after": 0.96,
   "cores": {
     "gateway": "64-71",
     "loadgen": "72-79",
     "upstream": "80-87",
     "db": "88-95"
   },
-  "machine_busy_cores": 0.44,
-  "other_cpus_busy_cores": 0.14
+  "machine_busy_cores": 0.42,
+  "other_cpus_busy_cores": 0.11
 }
