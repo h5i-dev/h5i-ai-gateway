@@ -142,12 +142,12 @@ engine runs each command in a SERIALIZABLE transaction, the tools (Charon,
 Aeneas, Lean, rustc) and PostgreSQL. Beyond that, the shell in
 `crates/gateway-server` and `crates/gateway-providers`:
 
-- **Authentication.** The master key comparison and the HMAC verification of
+- **Authentication:** the master key comparison and the HMAC verification of
   virtual keys (`h5i-app-token` parsing is itself verified) decide the
   `Principal`. The kernel trusts `master` and the key id it is given.
-- **The clock.** Budgets, windows, expiry and cooldowns use the engine's
+- **The clock:** budgets, windows, expiry and cooldowns use the engine's
   clock (PostgreSQL's, monotonic per tenant).
-- **Token counts.** Admission reserves an *estimate* of the prompt plus
+- **Token counts:** admission reserves an *estimate* of the prompt plus
   `max_tokens`; the gateway sets `max_tokens` when the client does not, so a
   provider that honours it stays within the reservation. Settlement charges
   what the provider reports. The budget theorem's honesty assumption is
@@ -164,13 +164,13 @@ Aeneas, Lean, rustc) and PostgreSQL. Beyond that, the shell in
   so a wrong decoding can only produce a command the caller could have sent.
 - **Spend log delivery** from the outbox is at least once; a sink must drop
   repeats by the `Idempotency-Key` header.
-- **Read plans.** PostgreSQL returns, for each read of a plan, the rows
+- **Read plans:** PostgreSQL returns, for each read of a plan, the rows
   `H5iAppLib.Query.Read.rows` says, in key order: h5i-app's
   `compile_read` is differential-tested against that definition (in both
   SQL modes; the gateway uses `ReadSqlMode::ScalarWhenUnique`), not proved.
   The frame theorem is stated on `Snapshot.load`, the snapshot those rows
   decode to.
-- **Unsettled calls.** If the database is unreachable when a call settles,
+- **Unsettled calls:** if the database is unreachable when a call settles,
   the reservation is released uncharged when it expires (logged as an error).
 - **Guardrails** (`guardrails.rs`) and **the response cache** (`cache.rs`)
   are shell code outside the proofs. They decide nothing the kernel
