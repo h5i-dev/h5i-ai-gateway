@@ -1,0 +1,225 @@
+<svg xmlns="http://www.w3.org/2000/svg" class="viz" width="1010" height="710" viewBox="0 0 1010 710" role="img" aria-label="p99 latency (ms, log scale)">
+
+<style>
+  svg { font-family: system-ui, -apple-system, "Segoe UI", sans-serif; }
+  .viz { --surface:#fcfcfb; --ink:#0b0b0b; --ink2:#52514e; --muted:#898781; --grid:#e1e0d9;
+         --axis:#c3c2b7; --baseline:#898781; --series-1:#2a78d6; --series-2:#eb6834;
+         --series-3:#1baf7a; --series-4:#eda100; }
+  @media (prefers-color-scheme: dark) {
+    .viz { --surface:#1a1a19; --ink:#f0efec; --ink2:#c3c2b7; --muted:#898781; --grid:#2c2c2a;
+           --axis:#383835; --baseline:#898781; --series-1:#3987e5; --series-2:#d95926;
+           --series-3:#199e70; --series-4:#c98500; }
+  }
+  .bg { fill: var(--surface); }
+  .title { fill: var(--ink); font-size: 15px; font-weight: 600; }
+  .subtitle { fill: var(--ink2); font-size: 12px; }
+  .panel { fill: var(--ink); font-size: 13px; font-weight: 600; }
+  .tick { fill: var(--muted); font-size: 11px; font-variant-numeric: tabular-nums; }
+  .label { fill: var(--ink2); font-size: 11px; }
+  .legend { fill: var(--ink2); font-size: 12px; }
+  .grid { stroke: var(--grid); stroke-width: 1; }
+  .axis { stroke: var(--axis); stroke-width: 1; }
+  .line { fill: none; stroke-width: 2; stroke-linejoin: round; stroke-linecap: round; }
+  .dot { stroke: var(--surface); stroke-width: 2; }
+  .hit { fill: transparent; }
+  .hit:hover + .dot, .dot:hover { stroke: var(--ink); }
+</style>
+
+<rect class="bg" width="1010" height="710" rx="8"/>
+<text class="title" x="16" y="26">p99 latency (ms, log scale)</text>
+<text class="subtitle" x="16" y="45">Profile lat0: upstream latency 0 ms (pure gateway overhead). Gateway pinned to 8 cores.</text>
+<line x1="16" y1="68" x2="34" y2="68" class="line" style="stroke:var(--baseline)"/>
+<circle cx="25" cy="68" r="4" class="dot" style="fill:var(--baseline)"/>
+<text class="legend" x="40" y="72">direct upstream (baseline)</text>
+<line x1="233" y1="68" x2="251" y2="68" class="line" style="stroke:var(--series-1)"/>
+<circle cx="242" cy="68" r="4" class="dot" style="fill:var(--series-1)"/>
+<text class="legend" x="257" y="72">h5i-gateway</text>
+<line x1="351" y1="68" x2="369" y2="68" class="line" style="stroke:var(--series-4)"/>
+<circle cx="360" cy="68" r="4" class="dot" style="fill:var(--series-4)"/>
+<text class="legend" x="375" y="72">h5i-gateway + TCP_NODELAY patch</text>
+<line x1="601" y1="68" x2="619" y2="68" class="line" style="stroke:var(--series-2)"/>
+<circle cx="610" cy="68" r="4" class="dot" style="fill:var(--series-2)"/>
+<text class="legend" x="625" y="72">LiteLLM Python proxy</text>
+<line x1="779" y1="68" x2="797" y2="68" class="line" style="stroke:var(--series-3)"/>
+<circle cx="788" cy="68" r="4" class="dot" style="fill:var(--series-3)"/>
+<text class="legend" x="803" y="72">LiteLLM Rust gateway (WIP)</text>
+<text class="panel" x="58" y="114">Chat, non-streaming (master key)</text>
+<line class="grid" x1="58" x2="388" y1="356.0" y2="356.0"/>
+<text class="tick" x="52" y="360.0" text-anchor="end">0.1</text>
+<line class="grid" x1="58" x2="388" y1="310.0" y2="310.0"/>
+<text class="tick" x="52" y="314.0" text-anchor="end">1</text>
+<line class="grid" x1="58" x2="388" y1="264.0" y2="264.0"/>
+<text class="tick" x="52" y="268.0" text-anchor="end">10</text>
+<line class="grid" x1="58" x2="388" y1="218.0" y2="218.0"/>
+<text class="tick" x="52" y="222.0" text-anchor="end">100</text>
+<line class="grid" x1="58" x2="388" y1="172.0" y2="172.0"/>
+<text class="tick" x="52" y="176.0" text-anchor="end">1 s</text>
+<line class="grid" x1="58" x2="388" y1="126.0" y2="126.0"/>
+<text class="tick" x="52" y="130.0" text-anchor="end">10 s</text>
+<line class="axis" x1="58" x2="388" y1="356" y2="356"/>
+<text class="tick" x="99.2" y="372" text-anchor="middle">1</text>
+<text class="tick" x="181.8" y="372" text-anchor="middle">16</text>
+<text class="tick" x="264.2" y="372" text-anchor="middle">64</text>
+<text class="tick" x="346.8" y="372" text-anchor="middle">256</text>
+<text class="label" x="223.0" y="388" text-anchor="middle">concurrent connections</text>
+<path class="line" d="M99.2,350.6 L181.8,347.2 L264.2,319.3 L346.8,289.5" style="stroke:var(--baseline)"/>
+<g><title>direct upstream (baseline), 1 connections: 11.1K req/s, p50 0.08 ms, p99 0.13 ms</title><circle class="hit" cx="99.2" cy="350.6" r="10"/><circle class="dot" cx="99.2" cy="350.6" r="4" style="fill:var(--baseline)"/></g>
+<g><title>direct upstream (baseline), 16 connections: 195K req/s, p50 0.08 ms, p99 0.15 ms</title><circle class="hit" cx="181.8" cy="347.2" r="10"/><circle class="dot" cx="181.8" cy="347.2" r="4" style="fill:var(--baseline)"/></g>
+<g><title>direct upstream (baseline), 64 connections: 212K req/s, p50 0.30 ms, p99 0.63 ms</title><circle class="hit" cx="264.2" cy="319.3" r="10"/><circle class="dot" cx="264.2" cy="319.3" r="4" style="fill:var(--baseline)"/></g>
+<g><title>direct upstream (baseline), 256 connections: 253K req/s, p50 0.88 ms, p99 2.79 ms</title><circle class="hit" cx="346.8" cy="289.5" r="10"/><circle class="dot" cx="346.8" cy="289.5" r="4" style="fill:var(--baseline)"/></g>
+<path class="line" d="M99.2,324.7 L181.8,321.3 L264.2,291.4 L346.8,256.6" style="stroke:var(--series-1)"/>
+<g><title>h5i-gateway, 1 connections: 2454 req/s, p50 0.40 ms, p99 0.48 ms</title><circle class="hit" cx="99.2" cy="324.7" r="10"/><circle class="dot" cx="99.2" cy="324.7" r="4" style="fill:var(--series-1)"/></g>
+<g><title>h5i-gateway, 16 connections: 39.6K req/s, p50 0.40 ms, p99 0.57 ms</title><circle class="hit" cx="181.8" cy="321.3" r="10"/><circle class="dot" cx="181.8" cy="321.3" r="4" style="fill:var(--series-1)"/></g>
+<g><title>h5i-gateway, 64 connections: 40.1K req/s, p50 1.59 ms, p99 2.53 ms</title><circle class="hit" cx="264.2" cy="291.4" r="10"/><circle class="dot" cx="264.2" cy="291.4" r="4" style="fill:var(--series-1)"/></g>
+<g><title>h5i-gateway, 256 connections: 35.9K req/s, p50 6.93 ms, p99 14.5 ms</title><circle class="hit" cx="346.8" cy="256.6" r="10"/><circle class="dot" cx="346.8" cy="256.6" r="4" style="fill:var(--series-1)"/></g>
+<path class="line" d="M99.2,325.0 L181.8,321.1 L264.2,291.3 L346.8,256.6" style="stroke:var(--series-4)"/>
+<g><title>h5i-gateway + TCP_NODELAY patch, 1 connections: 2400 req/s, p50 0.41 ms, p99 0.47 ms</title><circle class="hit" cx="99.2" cy="325.0" r="10"/><circle class="dot" cx="99.2" cy="325.0" r="4" style="fill:var(--series-4)"/></g>
+<g><title>h5i-gateway + TCP_NODELAY patch, 16 connections: 39.4K req/s, p50 0.40 ms, p99 0.57 ms</title><circle class="hit" cx="181.8" cy="321.1" r="10"/><circle class="dot" cx="181.8" cy="321.1" r="4" style="fill:var(--series-4)"/></g>
+<g><title>h5i-gateway + TCP_NODELAY patch, 64 connections: 39.8K req/s, p50 1.60 ms, p99 2.54 ms</title><circle class="hit" cx="264.2" cy="291.3" r="10"/><circle class="dot" cx="264.2" cy="291.3" r="4" style="fill:var(--series-4)"/></g>
+<g><title>h5i-gateway + TCP_NODELAY patch, 256 connections: 35.7K req/s, p50 6.98 ms, p99 14.5 ms</title><circle class="hit" cx="346.8" cy="256.6" r="10"/><circle class="dot" cx="346.8" cy="256.6" r="4" style="fill:var(--series-4)"/></g>
+<path class="line" d="M99.2,266.5 L181.8,233.9 L264.2,207.2 L346.8,165.4" style="stroke:var(--series-2)"/>
+<g><title>LiteLLM Python proxy, 1 connections: 119 req/s, p50 8.37 ms, p99 8.81 ms</title><circle class="hit" cx="99.2" cy="266.5" r="10"/><circle class="dot" cx="99.2" cy="266.5" r="4" style="fill:var(--series-2)"/></g>
+<g><title>LiteLLM Python proxy, 16 connections: 739 req/s, p50 20.4 ms, p99 45.0 ms</title><circle class="hit" cx="181.8" cy="233.9" r="10"/><circle class="dot" cx="181.8" cy="233.9" r="4" style="fill:var(--series-2)"/></g>
+<g><title>LiteLLM Python proxy, 64 connections: 805 req/s, p50 45.3 ms, p99 172 ms</title><circle class="hit" cx="264.2" cy="207.2" r="10"/><circle class="dot" cx="264.2" cy="207.2" r="4" style="fill:var(--series-2)"/></g>
+<g><title>LiteLLM Python proxy, 256 connections: 814 req/s, p50 250 ms, p99 1.39 s ms</title><circle class="hit" cx="346.8" cy="165.4" r="10"/><circle class="dot" cx="346.8" cy="165.4" r="4" style="fill:var(--series-2)"/></g>
+<path class="line" d="M99.2,323.8 L181.8,319.4 L264.2,289.3 L346.8,257.8" style="stroke:var(--series-3)"/>
+<g><title>LiteLLM Rust gateway (WIP), 1 connections: 2352 req/s, p50 0.42 ms, p99 0.50 ms</title><circle class="hit" cx="99.2" cy="323.8" r="10"/><circle class="dot" cx="99.2" cy="323.8" r="4" style="fill:var(--series-3)"/></g>
+<g><title>LiteLLM Rust gateway (WIP), 16 connections: 35.7K req/s, p50 0.44 ms, p99 0.62 ms</title><circle class="hit" cx="181.8" cy="319.4" r="10"/><circle class="dot" cx="181.8" cy="319.4" r="4" style="fill:var(--series-3)"/></g>
+<g><title>LiteLLM Rust gateway (WIP), 64 connections: 37.9K req/s, p50 1.66 ms, p99 2.82 ms</title><circle class="hit" cx="264.2" cy="289.3" r="10"/><circle class="dot" cx="264.2" cy="289.3" r="4" style="fill:var(--series-3)"/></g>
+<g><title>LiteLLM Rust gateway (WIP), 256 connections: 43.0K req/s, p50 5.59 ms, p99 13.7 ms</title><circle class="hit" cx="346.8" cy="257.8" r="10"/><circle class="dot" cx="346.8" cy="257.8" r="4" style="fill:var(--series-3)"/></g>
+<text class="label" x="396" y="165.4">LiteLLM 1.39 s</text>
+<text class="label" x="396" y="256.6">h5i 14.5</text>
+<line class="axis" x1="384" y1="256.6" x2="394" y2="265.6"/>
+<text class="label" x="396" y="269.6">h5i+nodelay 14.5</text>
+<line class="axis" x1="384" y1="257.8" x2="394" y2="278.6"/>
+<text class="label" x="396" y="282.6">LiteLLM Rust 13.7</text>
+<line class="axis" x1="384" y1="289.5" x2="394" y2="291.6"/>
+<text class="label" x="396" y="295.6">direct 2.79</text>
+<text class="panel" x="558" y="114">Chat, streaming (master key)</text>
+<line class="grid" x1="558" x2="888" y1="356.0" y2="356.0"/>
+<text class="tick" x="552" y="360.0" text-anchor="end">0.1</text>
+<line class="grid" x1="558" x2="888" y1="310.0" y2="310.0"/>
+<text class="tick" x="552" y="314.0" text-anchor="end">1</text>
+<line class="grid" x1="558" x2="888" y1="264.0" y2="264.0"/>
+<text class="tick" x="552" y="268.0" text-anchor="end">10</text>
+<line class="grid" x1="558" x2="888" y1="218.0" y2="218.0"/>
+<text class="tick" x="552" y="222.0" text-anchor="end">100</text>
+<line class="grid" x1="558" x2="888" y1="172.0" y2="172.0"/>
+<text class="tick" x="552" y="176.0" text-anchor="end">1 s</text>
+<line class="grid" x1="558" x2="888" y1="126.0" y2="126.0"/>
+<text class="tick" x="552" y="130.0" text-anchor="end">10 s</text>
+<line class="axis" x1="558" x2="888" y1="356" y2="356"/>
+<text class="tick" x="599.2" y="372" text-anchor="middle">1</text>
+<text class="tick" x="681.8" y="372" text-anchor="middle">16</text>
+<text class="tick" x="764.2" y="372" text-anchor="middle">64</text>
+<text class="tick" x="846.8" y="372" text-anchor="middle">256</text>
+<text class="label" x="723.0" y="388" text-anchor="middle">concurrent connections</text>
+<path class="line" d="M599.2,323.1 L681.8,307.3 L764.2,281.2 L846.8,258.1" style="stroke:var(--baseline)"/>
+<g><title>direct upstream (baseline), 1 connections: 2330 req/s, p50 0.43 ms, p99 0.52 ms</title><circle class="hit" cx="599.2" cy="323.1" r="10"/><circle class="dot" cx="599.2" cy="323.1" r="4" style="fill:var(--baseline)"/></g>
+<g><title>direct upstream (baseline), 16 connections: 30.8K req/s, p50 0.47 ms, p99 1.15 ms</title><circle class="hit" cx="681.8" cy="307.3" r="10"/><circle class="dot" cx="681.8" cy="307.3" r="4" style="fill:var(--baseline)"/></g>
+<g><title>direct upstream (baseline), 64 connections: 35.3K req/s, p50 1.65 ms, p99 4.23 ms</title><circle class="hit" cx="764.2" cy="281.2" r="10"/><circle class="dot" cx="764.2" cy="281.2" r="4" style="fill:var(--baseline)"/></g>
+<g><title>direct upstream (baseline), 256 connections: 39.9K req/s, p50 6.40 ms, p99 13.4 ms</title><circle class="hit" cx="846.8" cy="258.1" r="10"/><circle class="dot" cx="846.8" cy="258.1" r="4" style="fill:var(--baseline)"/></g>
+<path class="line" d="M599.2,235.7 L681.8,235.3 L764.2,234.9 L846.8,234.8" style="stroke:var(--series-1)"/>
+<g><title>h5i-gateway, 1 connections: 24.3 req/s, p50 41.0 ms, p99 41.2 ms</title><circle class="hit" cx="599.2" cy="235.7" r="10"/><circle class="dot" cx="599.2" cy="235.7" r="4" style="fill:var(--series-1)"/></g>
+<g><title>h5i-gateway, 16 connections: 389 req/s, p50 41.0 ms, p99 42.1 ms</title><circle class="hit" cx="681.8" cy="235.3" r="10"/><circle class="dot" cx="681.8" cy="235.3" r="4" style="fill:var(--series-1)"/></g>
+<g><title>h5i-gateway, 64 connections: 1551 req/s, p50 41.0 ms, p99 42.8 ms</title><circle class="hit" cx="764.2" cy="234.9" r="10"/><circle class="dot" cx="764.2" cy="234.9" r="4" style="fill:var(--series-1)"/></g>
+<g><title>h5i-gateway, 256 connections: 6184 req/s, p50 41.1 ms, p99 43.1 ms</title><circle class="hit" cx="846.8" cy="234.8" r="10"/><circle class="dot" cx="846.8" cy="234.8" r="4" style="fill:var(--series-1)"/></g>
+<path class="line" d="M599.2,303.1 L681.8,291.5 L764.2,262.0 L846.8,230.7" style="stroke:var(--series-4)"/>
+<g><title>h5i-gateway + TCP_NODELAY patch, 1 connections: 853 req/s, p50 1.24 ms, p99 1.42 ms</title><circle class="hit" cx="599.2" cy="303.1" r="10"/><circle class="dot" cx="599.2" cy="303.1" r="4" style="fill:var(--series-4)"/></g>
+<g><title>h5i-gateway + TCP_NODELAY patch, 16 connections: 11.0K req/s, p50 1.41 ms, p99 2.52 ms</title><circle class="hit" cx="681.8" cy="291.5" r="10"/><circle class="dot" cx="681.8" cy="291.5" r="4" style="fill:var(--series-4)"/></g>
+<g><title>h5i-gateway + TCP_NODELAY patch, 64 connections: 11.6K req/s, p50 5.35 ms, p99 11.0 ms</title><circle class="hit" cx="764.2" cy="262.0" r="10"/><circle class="dot" cx="764.2" cy="262.0" r="4" style="fill:var(--series-4)"/></g>
+<g><title>h5i-gateway + TCP_NODELAY patch, 256 connections: 11.5K req/s, p50 20.5 ms, p99 52.9 ms</title><circle class="hit" cx="846.8" cy="230.7" r="10"/><circle class="dot" cx="846.8" cy="230.7" r="4" style="fill:var(--series-4)"/></g>
+<path class="line" d="M599.2,242.6 L681.8,217.1 L764.2,168.9 L846.8,148.8" style="stroke:var(--series-2)"/>
+<g><title>LiteLLM Python proxy, 1 connections: 36.3 req/s, p50 25.7 ms, p99 29.2 ms</title><circle class="hit" cx="599.2" cy="242.6" r="10"/><circle class="dot" cx="599.2" cy="242.6" r="4" style="fill:var(--series-2)"/></g>
+<g><title>LiteLLM Python proxy, 16 connections: 284 req/s, p50 55.8 ms, p99 105 ms</title><circle class="hit" cx="681.8" cy="217.1" r="10"/><circle class="dot" cx="681.8" cy="217.1" r="4" style="fill:var(--series-2)"/></g>
+<g><title>LiteLLM Python proxy, 64 connections: 278 req/s, p50 128 ms, p99 1.17 s ms</title><circle class="hit" cx="764.2" cy="168.9" r="10"/><circle class="dot" cx="764.2" cy="168.9" r="4" style="fill:var(--series-2)"/></g>
+<g><title>LiteLLM Python proxy, 256 connections: 278 req/s, p50 459 ms, p99 3.19 s ms</title><circle class="hit" cx="846.8" cy="148.8" r="10"/><circle class="dot" cx="846.8" cy="148.8" r="4" style="fill:var(--series-2)"/></g>
+<text class="label" x="896" y="148.8">LiteLLM 3.19 s</text>
+<text class="label" x="896" y="230.7">h5i+nodelay 52.9</text>
+<line class="axis" x1="884" y1="234.8" x2="894" y2="239.7"/>
+<text class="label" x="896" y="243.7">h5i 43.1</text>
+<text class="label" x="896" y="258.1">direct 13.4</text>
+<text class="panel" x="58" y="418">Embeddings (master key)</text>
+<line class="grid" x1="58" x2="388" y1="660.0" y2="660.0"/>
+<text class="tick" x="52" y="664.0" text-anchor="end">0.1</text>
+<line class="grid" x1="58" x2="388" y1="614.0" y2="614.0"/>
+<text class="tick" x="52" y="618.0" text-anchor="end">1</text>
+<line class="grid" x1="58" x2="388" y1="568.0" y2="568.0"/>
+<text class="tick" x="52" y="572.0" text-anchor="end">10</text>
+<line class="grid" x1="58" x2="388" y1="522.0" y2="522.0"/>
+<text class="tick" x="52" y="526.0" text-anchor="end">100</text>
+<line class="grid" x1="58" x2="388" y1="476.0" y2="476.0"/>
+<text class="tick" x="52" y="480.0" text-anchor="end">1 s</text>
+<line class="grid" x1="58" x2="388" y1="430.0" y2="430.0"/>
+<text class="tick" x="52" y="434.0" text-anchor="end">10 s</text>
+<line class="axis" x1="58" x2="388" y1="660" y2="660"/>
+<text class="tick" x="99.2" y="676" text-anchor="middle">1</text>
+<text class="tick" x="181.8" y="676" text-anchor="middle">16</text>
+<text class="tick" x="264.2" y="676" text-anchor="middle">64</text>
+<text class="tick" x="346.8" y="676" text-anchor="middle">256</text>
+<text class="label" x="223.0" y="692" text-anchor="middle">concurrent connections</text>
+<path class="line" d="M99.2,655.4 L181.8,654.8 L264.2,629.6 L346.8,603.6" style="stroke:var(--baseline)"/>
+<g><title>direct upstream (baseline), 1 connections: 9208 req/s, p50 0.11 ms, p99 0.13 ms</title><circle class="hit" cx="99.2" cy="655.4" r="10"/><circle class="dot" cx="99.2" cy="655.4" r="4" style="fill:var(--baseline)"/></g>
+<g><title>direct upstream (baseline), 16 connections: 219K req/s, p50 0.07 ms, p99 0.13 ms</title><circle class="hit" cx="181.8" cy="654.8" r="10"/><circle class="dot" cx="181.8" cy="654.8" r="4" style="fill:var(--baseline)"/></g>
+<g><title>direct upstream (baseline), 64 connections: 264K req/s, p50 0.24 ms, p99 0.46 ms</title><circle class="hit" cx="264.2" cy="629.6" r="10"/><circle class="dot" cx="264.2" cy="629.6" r="4" style="fill:var(--baseline)"/></g>
+<g><title>direct upstream (baseline), 256 connections: 278K req/s, p50 0.91 ms, p99 1.68 ms</title><circle class="hit" cx="346.8" cy="603.6" r="10"/><circle class="dot" cx="346.8" cy="603.6" r="4" style="fill:var(--baseline)"/></g>
+<path class="line" d="M99.2,614.8 L181.8,608.8 L264.2,580.1 L346.8,547.2" style="stroke:var(--series-1)"/>
+<g><title>h5i-gateway, 1 connections: 1133 req/s, p50 0.88 ms, p99 0.96 ms</title><circle class="hit" cx="99.2" cy="614.8" r="10"/><circle class="dot" cx="99.2" cy="614.8" r="4" style="fill:var(--series-1)"/></g>
+<g><title>h5i-gateway, 16 connections: 18.6K req/s, p50 0.86 ms, p99 1.30 ms</title><circle class="hit" cx="181.8" cy="608.8" r="10"/><circle class="dot" cx="181.8" cy="608.8" r="4" style="fill:var(--series-1)"/></g>
+<g><title>h5i-gateway, 64 connections: 18.9K req/s, p50 3.35 ms, p99 5.46 ms</title><circle class="hit" cx="264.2" cy="580.1" r="10"/><circle class="dot" cx="264.2" cy="580.1" r="4" style="fill:var(--series-1)"/></g>
+<g><title>h5i-gateway, 256 connections: 18.6K req/s, p50 13.3 ms, p99 28.3 ms</title><circle class="hit" cx="346.8" cy="547.2" r="10"/><circle class="dot" cx="346.8" cy="547.2" r="4" style="fill:var(--series-1)"/></g>
+<path class="line" d="M99.2,614.6 L181.8,608.9 L264.2,580.2 L346.8,547.1" style="stroke:var(--series-4)"/>
+<g><title>h5i-gateway + TCP_NODELAY patch, 1 connections: 1144 req/s, p50 0.87 ms, p99 0.97 ms</title><circle class="hit" cx="99.2" cy="614.6" r="10"/><circle class="dot" cx="99.2" cy="614.6" r="4" style="fill:var(--series-4)"/></g>
+<g><title>h5i-gateway + TCP_NODELAY patch, 16 connections: 18.7K req/s, p50 0.86 ms, p99 1.29 ms</title><circle class="hit" cx="181.8" cy="608.9" r="10"/><circle class="dot" cx="181.8" cy="608.9" r="4" style="fill:var(--series-4)"/></g>
+<g><title>h5i-gateway + TCP_NODELAY patch, 64 connections: 18.9K req/s, p50 3.35 ms, p99 5.42 ms</title><circle class="hit" cx="264.2" cy="580.2" r="10"/><circle class="dot" cx="264.2" cy="580.2" r="4" style="fill:var(--series-4)"/></g>
+<g><title>h5i-gateway + TCP_NODELAY patch, 256 connections: 18.6K req/s, p50 13.3 ms, p99 28.4 ms</title><circle class="hit" cx="346.8" cy="547.1" r="10"/><circle class="dot" cx="346.8" cy="547.1" r="4" style="fill:var(--series-4)"/></g>
+<path class="line" d="M99.2,561.6 L181.8,526.6 L264.2,496.9 L346.8,458.6" style="stroke:var(--series-2)"/>
+<g><title>LiteLLM Python proxy, 1 connections: 78.2 req/s, p50 12.8 ms, p99 13.7 ms</title><circle class="hit" cx="99.2" cy="561.6" r="10"/><circle class="dot" cx="99.2" cy="561.6" r="4" style="fill:var(--series-2)"/></g>
+<g><title>LiteLLM Python proxy, 16 connections: 539 req/s, p50 28.6 ms, p99 79.4 ms</title><circle class="hit" cx="181.8" cy="526.6" r="10"/><circle class="dot" cx="181.8" cy="526.6" r="4" style="fill:var(--series-2)"/></g>
+<g><title>LiteLLM Python proxy, 64 connections: 562 req/s, p50 65.1 ms, p99 352 ms</title><circle class="hit" cx="264.2" cy="496.9" r="10"/><circle class="dot" cx="264.2" cy="496.9" r="4" style="fill:var(--series-2)"/></g>
+<g><title>LiteLLM Python proxy, 256 connections: 584 req/s, p50 141 ms, p99 2.39 s ms</title><circle class="hit" cx="346.8" cy="458.6" r="10"/><circle class="dot" cx="346.8" cy="458.6" r="4" style="fill:var(--series-2)"/></g>
+<text class="label" x="396" y="458.6">LiteLLM 2.39 s</text>
+<text class="label" x="396" y="547.1">h5i+nodelay 28.4</text>
+<line class="axis" x1="384" y1="547.2" x2="394" y2="556.1"/>
+<text class="label" x="396" y="560.1">h5i 28.3</text>
+<text class="label" x="396" y="603.6">direct 1.68</text>
+<text class="panel" x="558" y="418">Chat with PostgreSQL + virtual key</text>
+<line class="grid" x1="558" x2="888" y1="660.0" y2="660.0"/>
+<text class="tick" x="552" y="664.0" text-anchor="end">10</text>
+<line class="grid" x1="558" x2="888" y1="636.9" y2="636.9"/>
+<text class="tick" x="552" y="640.9" text-anchor="end">20</text>
+<line class="grid" x1="558" x2="888" y1="606.4" y2="606.4"/>
+<text class="tick" x="552" y="610.4" text-anchor="end">50</text>
+<line class="grid" x1="558" x2="888" y1="583.3" y2="583.3"/>
+<text class="tick" x="552" y="587.3" text-anchor="end">100</text>
+<line class="grid" x1="558" x2="888" y1="560.3" y2="560.3"/>
+<text class="tick" x="552" y="564.3" text-anchor="end">200</text>
+<line class="grid" x1="558" x2="888" y1="529.7" y2="529.7"/>
+<text class="tick" x="552" y="533.7" text-anchor="end">500</text>
+<line class="grid" x1="558" x2="888" y1="506.7" y2="506.7"/>
+<text class="tick" x="552" y="510.7" text-anchor="end">1 s</text>
+<line class="grid" x1="558" x2="888" y1="483.6" y2="483.6"/>
+<text class="tick" x="552" y="487.6" text-anchor="end">2 s</text>
+<line class="grid" x1="558" x2="888" y1="453.1" y2="453.1"/>
+<text class="tick" x="552" y="457.1" text-anchor="end">5 s</text>
+<line class="grid" x1="558" x2="888" y1="430.0" y2="430.0"/>
+<text class="tick" x="552" y="434.0" text-anchor="end">10 s</text>
+<line class="axis" x1="558" x2="888" y1="660" y2="660"/>
+<text class="tick" x="599.2" y="676" text-anchor="middle">1</text>
+<text class="tick" x="681.8" y="676" text-anchor="middle">16</text>
+<text class="tick" x="764.2" y="676" text-anchor="middle">64</text>
+<text class="tick" x="846.8" y="676" text-anchor="middle">256</text>
+<text class="label" x="723.0" y="692" text-anchor="middle">concurrent connections</text>
+<path class="line" d="M599.2,645.1 L681.8,555.2 L764.2,508.0 L846.8,463.0" style="stroke:var(--series-1)"/>
+<g><title>h5i-gateway, 1 connections: 74.5 req/s, p50 13.4 ms, p99 15.6 ms</title><circle class="hit" cx="599.2" cy="645.1" r="10"/><circle class="dot" cx="599.2" cy="645.1" r="4" style="fill:var(--series-1)"/></g>
+<g><title>h5i-gateway, 16 connections: 71.3 req/s, p50 225 ms, p99 233 ms</title><circle class="hit" cx="681.8" cy="555.2" r="10"/><circle class="dot" cx="681.8" cy="555.2" r="4" style="fill:var(--series-1)"/></g>
+<g><title>h5i-gateway, 64 connections: 70.4 req/s, p50 913 ms, p99 959 ms</title><circle class="hit" cx="764.2" cy="508.0" r="10"/><circle class="dot" cx="764.2" cy="508.0" r="4" style="fill:var(--series-1)"/></g>
+<g><title>h5i-gateway, 256 connections: 76.8 req/s, p50 3.68 s ms, p99 3.71 s ms</title><circle class="hit" cx="846.8" cy="463.0" r="10"/><circle class="dot" cx="846.8" cy="463.0" r="4" style="fill:var(--series-1)"/></g>
+<path class="line" d="M599.2,614.8 L681.8,584.7 L764.2,509.4 L846.8,486.0" style="stroke:var(--series-2)"/>
+<g><title>LiteLLM Python proxy, 1 connections: 80.6 req/s, p50 11.7 ms, p99 38.8 ms</title><circle class="hit" cx="599.2" cy="614.8" r="10"/><circle class="dot" cx="599.2" cy="614.8" r="4" style="fill:var(--series-2)"/></g>
+<g><title>LiteLLM Python proxy, 16 connections: 426 req/s, p50 35.7 ms, p99 96.0 ms</title><circle class="hit" cx="681.8" cy="584.7" r="10"/><circle class="dot" cx="681.8" cy="584.7" r="4" style="fill:var(--series-2)"/></g>
+<g><title>LiteLLM Python proxy, 64 connections: 402 req/s, p50 151 ms, p99 921 ms</title><circle class="hit" cx="764.2" cy="509.4" r="10"/><circle class="dot" cx="764.2" cy="509.4" r="4" style="fill:var(--series-2)"/></g>
+<g><title>LiteLLM Python proxy, 256 connections: 526 req/s, p50 477 ms, p99 1.86 s ms</title><circle class="hit" cx="846.8" cy="486.0" r="10"/><circle class="dot" cx="846.8" cy="486.0" r="4" style="fill:var(--series-2)"/></g>
+<text class="label" x="896" y="463.0">h5i 3.71 s</text>
+<text class="label" x="896" y="486.0">LiteLLM 1.86 s</text>
+</svg>

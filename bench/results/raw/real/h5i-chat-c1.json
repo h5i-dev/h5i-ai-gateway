@@ -1,0 +1,67 @@
+{
+  "bytes_received": 240384,
+  "concurrency": 1,
+  "duration_s": 10.0,
+  "error_samples": [],
+  "errors": {},
+  "errors_total": 0,
+  "label": "real/h5i/chat",
+  "latency_ms": {
+    "max": 52.543,
+    "mean": 51.94,
+    "p50": 52.063,
+    "p90": 52.319,
+    "p99": 52.383,
+    "p999": 52.543
+  },
+  "mode": "closed",
+  "processes": {
+    "gateway": {
+      "cpu_cores": 0.01,
+      "cpu_seconds": 0.1,
+      "cpu_us_per_request": 521.0,
+      "hwm_sum_mb": 25.0,
+      "pid": 1646655,
+      "processes": 1,
+      "pss_end_mb": 23.0,
+      "rss_peak_mb": 25.0
+    },
+    "upstream": {
+      "cpu_cores": 0.01,
+      "cpu_seconds": 0.06,
+      "cpu_us_per_request": 313.0,
+      "hwm_sum_mb": 18.0,
+      "pid": 1645697,
+      "processes": 1,
+      "pss_end_mb": 14.0,
+      "rss_peak_mb": 17.0
+    }
+  },
+  "rate": null,
+  "requests_ok": 192,
+  "scenario": "chat",
+  "stream": false,
+  "throughput_rps": 19.2,
+  "timestamp": 1792760836,
+  "ttfb_ms": null,
+  "url": "http://127.0.0.1:19200/v1/chat/completions",
+  "warmup_s": 5.0,
+  "system": "h5i",
+  "profile": "real",
+  "profile_settings": {
+    "latency-ms": 50,
+    "stream-chunks": 20,
+    "chunk-delay-ms": 10
+  },
+  "bench_scenario": "chat",
+  "loadavg_before": 0.86,
+  "loadavg_after": 0.67,
+  "cores": {
+    "gateway": "64-71",
+    "loadgen": "72-79",
+    "upstream": "80-87",
+    "db": "88-95"
+  },
+  "machine_busy_cores": 0.24,
+  "other_cpus_busy_cores": 0.14
+}

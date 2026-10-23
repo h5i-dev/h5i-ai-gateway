@@ -1,0 +1,47 @@
+<svg xmlns="http://www.w3.org/2000/svg" class="viz" width="760" height="178" viewBox="0 0 760 178" role="img" aria-label="Gateway CPU per request: chat with postgresql + virtual key">
+
+<style>
+  svg { font-family: system-ui, -apple-system, "Segoe UI", sans-serif; }
+  .viz { --surface:#fcfcfb; --ink:#0b0b0b; --ink2:#52514e; --muted:#898781; --grid:#e1e0d9;
+         --axis:#c3c2b7; --baseline:#898781; --series-1:#2a78d6; --series-2:#eb6834;
+         --series-3:#1baf7a; --series-4:#eda100; }
+  @media (prefers-color-scheme: dark) {
+    .viz { --surface:#1a1a19; --ink:#f0efec; --ink2:#c3c2b7; --muted:#898781; --grid:#2c2c2a;
+           --axis:#383835; --baseline:#898781; --series-1:#3987e5; --series-2:#d95926;
+           --series-3:#199e70; --series-4:#c98500; }
+  }
+  .bg { fill: var(--surface); }
+  .title { fill: var(--ink); font-size: 15px; font-weight: 600; }
+  .subtitle { fill: var(--ink2); font-size: 12px; }
+  .panel { fill: var(--ink); font-size: 13px; font-weight: 600; }
+  .tick { fill: var(--muted); font-size: 11px; font-variant-numeric: tabular-nums; }
+  .label { fill: var(--ink2); font-size: 11px; }
+  .legend { fill: var(--ink2); font-size: 12px; }
+  .grid { stroke: var(--grid); stroke-width: 1; }
+  .axis { stroke: var(--axis); stroke-width: 1; }
+  .line { fill: none; stroke-width: 2; stroke-linejoin: round; stroke-linecap: round; }
+  .dot { stroke: var(--surface); stroke-width: 2; }
+  .hit { fill: transparent; }
+  .hit:hover + .dot, .dot:hover { stroke: var(--ink); }
+</style>
+
+<rect class="bg" width="760" height="178" rx="8"/>
+<text class="title" x="16" y="26">Gateway CPU per request: chat with postgresql + virtual key</text>
+<text class="subtitle" x="16" y="45">Profile lat0, 64 connections; all gateway processes, user + system time.</text>
+<line class="grid" x1="250.0" x2="250.0" y1="62" y2="144"/>
+<text class="tick" x="250.0" y="158" text-anchor="middle">0</text>
+<line class="grid" x1="384.9" x2="384.9" y1="62" y2="144"/>
+<text class="tick" x="384.9" y="158" text-anchor="middle">5000</text>
+<line class="grid" x1="519.9" x2="519.9" y1="62" y2="144"/>
+<text class="tick" x="519.9" y="158" text-anchor="middle">10000</text>
+<line class="grid" x1="654.8" x2="654.8" y1="62" y2="144"/>
+<text class="tick" x="654.8" y="158" text-anchor="middle">15000</text>
+<text class="label" x="460.0" y="172" text-anchor="middle">CPU microseconds per request</text>
+<g><title>h5i-gateway: 4432 CPU microseconds per request</title><path d="M250,70 H365.6067596221808 Q369.6067596221808,70 369.6067596221808,74 V86 Q369.6067596221808,90 365.6067596221808,90 H250 Z" style="fill:var(--series-1)"/></g>
+<text class="legend" x="240" y="84.0" text-anchor="end">h5i-gateway</text>
+<text class="label" x="375.6067596221808" y="84.0">4432</text>
+<g><title>LiteLLM Python proxy: 15563 CPU microseconds per request</title><path d="M250,104 H666.0 Q670.0,104 670.0,108 V120 Q670.0,124 666.0,124 H250 Z" style="fill:var(--series-2)"/></g>
+<text class="legend" x="240" y="118.0" text-anchor="end">LiteLLM Python proxy</text>
+<text class="label" x="676.0" y="118.0">15563</text>
+<line class="axis" x1="250" x2="250" y1="62" y2="144"/>
+</svg>

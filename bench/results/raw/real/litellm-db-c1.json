@@ -1,0 +1,77 @@
+{
+  "bytes_received": 175032,
+  "concurrency": 1,
+  "duration_s": 10.0,
+  "error_samples": [],
+  "errors": {},
+  "errors_total": 0,
+  "label": "real/litellm/db",
+  "latency_ms": {
+    "max": 103.935,
+    "mean": 76.013,
+    "p50": 75.775,
+    "p90": 76.607,
+    "p99": 97.215,
+    "p999": 103.935
+  },
+  "mode": "closed",
+  "processes": {
+    "db": {
+      "cpu_cores": 0.01,
+      "cpu_seconds": 0.14,
+      "cpu_us_per_request": 1061.0,
+      "hwm_sum_mb": 946.0,
+      "pid": 1643091,
+      "processes": 31,
+      "pss_end_mb": 272.0,
+      "rss_peak_mb": 946.0
+    },
+    "gateway": {
+      "cpu_cores": 0.38,
+      "cpu_seconds": 3.87,
+      "cpu_us_per_request": 29318.0,
+      "hwm_sum_mb": 4990.0,
+      "pid": 1654306,
+      "processes": 18,
+      "pss_end_mb": 4576.0,
+      "rss_peak_mb": 4990.0
+    },
+    "upstream": {
+      "cpu_cores": 0.0,
+      "cpu_seconds": 0.04,
+      "cpu_us_per_request": 303.0,
+      "hwm_sum_mb": 21.0,
+      "pid": 1645697,
+      "processes": 1,
+      "pss_end_mb": 16.0,
+      "rss_peak_mb": 18.0
+    }
+  },
+  "rate": null,
+  "requests_ok": 132,
+  "scenario": "chat",
+  "stream": false,
+  "throughput_rps": 13.2,
+  "timestamp": 1792761572,
+  "ttfb_ms": null,
+  "url": "http://127.0.0.1:19200/v1/chat/completions",
+  "warmup_s": 5.0,
+  "system": "litellm",
+  "profile": "real",
+  "profile_settings": {
+    "latency-ms": 50,
+    "stream-chunks": 20,
+    "chunk-delay-ms": 10
+  },
+  "bench_scenario": "db",
+  "loadavg_before": 4.13,
+  "loadavg_after": 3.57,
+  "cores": {
+    "gateway": "64-71",
+    "loadgen": "72-79",
+    "upstream": "80-87",
+    "db": "88-95"
+  },
+  "machine_busy_cores": 1.73,
+  "other_cpus_busy_cores": 1.15
+}

@@ -1,0 +1,67 @@
+{
+  "bytes_received": 432203756,
+  "concurrency": 256,
+  "duration_s": 10.0,
+  "error_samples": [],
+  "errors": {},
+  "errors_total": 0,
+  "label": "lat0/litellm-rust/chat",
+  "latency_ms": {
+    "max": 20.927,
+    "mean": 5.958,
+    "p50": 5.591,
+    "p90": 9.639,
+    "p99": 13.663,
+    "p999": 16.751
+  },
+  "mode": "closed",
+  "processes": {
+    "gateway": {
+      "cpu_cores": 7.36,
+      "cpu_seconds": 74.14,
+      "cpu_us_per_request": 173.0,
+      "hwm_sum_mb": 52.0,
+      "pid": 1642703,
+      "processes": 1,
+      "pss_end_mb": 50.0,
+      "rss_peak_mb": 53.0
+    },
+    "upstream": {
+      "cpu_cores": 3.65,
+      "cpu_seconds": 36.67,
+      "cpu_us_per_request": 85.0,
+      "hwm_sum_mb": 21.0,
+      "pid": 1636758,
+      "processes": 1,
+      "pss_end_mb": 14.0,
+      "rss_peak_mb": 17.0
+    }
+  },
+  "rate": null,
+  "requests_ok": 429626,
+  "scenario": "chat",
+  "stream": false,
+  "throughput_rps": 42962.6,
+  "timestamp": 1792760467,
+  "ttfb_ms": null,
+  "url": "http://127.0.0.1:19200/v1/chat/completions",
+  "warmup_s": 5.0,
+  "system": "litellm-rust",
+  "profile": "lat0",
+  "profile_settings": {
+    "latency-ms": 0,
+    "stream-chunks": 20,
+    "chunk-delay-ms": 0
+  },
+  "bench_scenario": "chat",
+  "loadavg_before": 9.53,
+  "loadavg_after": 10.55,
+  "cores": {
+    "gateway": "64-71",
+    "loadgen": "72-79",
+    "upstream": "80-87",
+    "db": "88-95"
+  },
+  "machine_busy_cores": 13.21,
+  "other_cpus_busy_cores": 0.45
+}
