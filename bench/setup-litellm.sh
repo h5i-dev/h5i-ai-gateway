@@ -3,7 +3,7 @@
 # venv under $BENCH_SCRATCH and generates its Prisma client (needed with
 # DATABASE_URL; the first run downloads Node and the Prisma engines).
 set -euo pipefail
-SCRATCH=${BENCH_SCRATCH:-/dev/shm/h5i-bench}
+SCRATCH=${BENCH_SCRATCH:-$(cd "$(dirname "$0")/.." && pwd)/target/bench}
 VENV=$SCRATCH/venv
 SPEC="litellm[proxy]${LITELLM_VERSION:+==$LITELLM_VERSION}"
 mkdir -p "$SCRATCH/home"

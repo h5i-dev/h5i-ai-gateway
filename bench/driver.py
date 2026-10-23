@@ -487,6 +487,14 @@ def run_tenants(args, profile, system, url, concs, mock_pid, procs):
             procs.remove(gw)
 
 
+def cargo_target_dir():
+    """Cargo's target directory for this workspace, as the user's Cargo configuration sets it."""
+    out = subprocess.run(
+        ["cargo", "metadata", "--format-version", "1", "--no-deps", "--manifest-path", os.path.join(ROOT, "Cargo.toml")],
+        capture_output=True, text=True, check=True).stdout
+    return json.loads(out)["target_directory"]
+
+
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--systems", default="direct,h5i,litellm,litellm-rust")
@@ -500,12 +508,14 @@ def main():
                     help="wait before a point while the 1-min load average exceeds this")
     ap.add_argument("--resume", action="store_true", help="skip points whose JSON exists")
     ap.add_argument("--out", default=os.path.join(HERE, "results"))
-    ap.add_argument("--scratch", default=os.environ.get("BENCH_SCRATCH", "/dev/shm/h5i-bench"))
-    ap.add_argument("--target", default=os.environ.get("CARGO_TARGET_DIR", "/dev/shm/h5i-gw-target-bench"))
+    ap.add_argument("--target", default=os.environ.get("CARGO_TARGET_DIR") or cargo_target_dir(),
+                    help="Cargo's target directory with the release binaries")
+    ap.add_argument("--scratch", default=os.environ.get("BENCH_SCRATCH"), help="default: <target>/bench")
     ap.add_argument("--litellm-rust-bin",
                     help="default: <scratch>/litellm-rust-target/release/litellm-gateway")
     ap.add_argument("--h5i-bin", help="h5i-gateway binary (default: <target>/release/h5i-gateway)")
     args = ap.parse_args()
+    args.scratch = args.scratch or os.path.join(args.target, "bench")
     args.litellm_rust_bin = args.litellm_rust_bin or os.path.join(
         args.scratch, "litellm-rust-target", "release", "litellm-gateway")
     args.h5i_bin = args.h5i_bin or os.path.join(args.target, "release", "h5i-gateway")

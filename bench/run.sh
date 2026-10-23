@@ -4,16 +4,18 @@
 # (bench/report.py). Idempotent: rerunning rebuilds what changed and
 # overwrites the results. Arguments are passed to driver.py, e.g.
 #   bench/run.sh --profiles lat0 --systems direct,h5i --duration 5
-# Environment: BENCH_SCRATCH (default /dev/shm/h5i-bench), CARGO_TARGET_DIR
-# (default /dev/shm/h5i-gw-target-bench), LITELLM_RUST_DIR, LITELLM_VERSION,
+# Environment: BENCH_SCRATCH (default <target>/bench), CARGO_TARGET_DIR
+# (default: Cargo's target directory), LITELLM_RUST_DIR, LITELLM_VERSION,
 # BENCH_CPUS_{GATEWAY,LOADGEN,UPSTREAM,DB}.
 set -euo pipefail
 ROOT=$(cd "$(dirname "$0")/.." && pwd)
-SCRATCH=${BENCH_SCRATCH:-/dev/shm/h5i-bench}
+# Cargo's target directory, wherever the user's Cargo configuration puts it.
+export CARGO_TARGET_DIR=${CARGO_TARGET_DIR:-$(cargo metadata --format-version 1 --no-deps --manifest-path "$ROOT/Cargo.toml" \
+  | python3 -c 'import json,sys; print(json.load(sys.stdin)["target_directory"])')}
+SCRATCH=${BENCH_SCRATCH:-$CARGO_TARGET_DIR/bench}
 export BENCH_SCRATCH=$SCRATCH
-export CARGO_TARGET_DIR=${CARGO_TARGET_DIR:-/dev/shm/h5i-gw-target-bench}
 LITELLM_COMMIT=f2118fc7670ba3fa736d9b8f4deef9077a45a720
-LITELLM_RUST_DIR=${LITELLM_RUST_DIR:-/dev/shm/h5i-gw/litellm/litellm-rust}
+LITELLM_RUST_DIR=${LITELLM_RUST_DIR:-$SCRATCH/litellm-src/litellm-rust}
 RESULTS=$ROOT/bench/results
 mkdir -p "$SCRATCH/logs" "$RESULTS"
 for tool in cargo docker taskset python3 git; do

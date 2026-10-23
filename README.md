@@ -23,9 +23,6 @@ docker run -d -p 127.0.0.1:55432:5432 -e POSTGRES_USER=h5i -e POSTGRES_PASSWORD=
 export DATABASE_URL=postgres://h5i:h5i@127.0.0.1:55432/h5i
 ```
 
-The binary is `h5i-gateway`, built in the target directory set in
-`.cargo/config.toml` (`/dev/shm/h5i-ai-gateway/target`).
-
 ## Use
 
 Create a virtual key, then call any model it may use with an OpenAI SDK or

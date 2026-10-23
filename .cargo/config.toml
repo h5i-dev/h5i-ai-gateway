@@ -1,3 +1,0 @@
-# Builds produce many files; keep them in memory, out of the repository.
-[build]
-target-dir = "/dev/shm/h5i-ai-gateway/target"

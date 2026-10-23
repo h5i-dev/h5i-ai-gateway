@@ -28,3 +28,9 @@ proofs/.lake/
 
 # Editor settings stay local.
 .vscode/
+
+# Local Cargo settings (e.g. a target directory on this machine).
+.cargo/
+
+# Python caches.
+__pycache__/

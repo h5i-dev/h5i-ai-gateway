@@ -435,19 +435,20 @@ python3 bench/report.py bench/results   # re-render tables and charts from raw J
 `run.sh` is idempotent: rerunning rebuilds what changed and overwrites the
 results. It does the following:
 1. builds `h5i-gateway`, `mock-upstream` and `loadgen` in release mode
-   (`CARGO_TARGET_DIR=/dev/shm/h5i-gw-target-bench`);
+   in Cargo's target directory (`$CARGO_TARGET_DIR`, by default `target/`);
 2. builds LiteLLM's Rust gateway. It uses `$LITELLM_RUST_DIR`, or otherwise
    sparse-clones BerriAI/litellm at `f2118fc7`, into
-   `/dev/shm/h5i-bench/litellm-rust-target`;
+   `<target>/bench/litellm-rust-target`;
 3. installs `litellm[proxy]` (or `$LITELLM_VERSION`), `prisma` and `uvloop`
-   into `/dev/shm/h5i-bench/venv`, and runs `prisma generate` for LiteLLM's
+   into `<target>/bench/venv`, and runs `prisma generate` for LiteLLM's
    schema. The first run downloads Node and the Prisma engines;
 4. records `results/environment.json`;
 5. runs `driver.py`, which starts and stops every process and the
    PostgreSQL container itself;
 6. runs `report.py`.
 
-Logs go to `/dev/shm/h5i-bench/logs`. `driver.py --resume` skips points whose
+Logs go to `<target>/bench/logs` (set `BENCH_SCRATCH` to move the scratch
+directory). `driver.py --resume` skips points whose
 JSON already exists. Delete a noisy point's file and rerun with `--resume` to
 redo just that point. `driver.py` waits before a point while the 1-minute
 load average is above `--max-load` (default 64). `BENCH_BIG_KEYS` (default
