@@ -24,3 +24,4 @@ rustc-ice-*.txt
 #.idea/
 proofs/.lake/
 .h5i/app/runs/
+.claude/worktrees/
