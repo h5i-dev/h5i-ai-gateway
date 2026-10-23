@@ -2,7 +2,7 @@
 
 An OpenAI-compatible LLM gateway: a Rust port of the
 [LiteLLM proxy](https://github.com/BerriAI/litellm) on
-[h5i-app](https://crates.io/crates/h5i-app) 0.1.3. Virtual keys, teams,
+[h5i-app](https://crates.io/crates/h5i-app-core) 0.1.3. Virtual keys, teams,
 budgets, rate limits, routing and spend are decided by a pure Rust kernel
 that is extracted to Lean 4 and proven. HTTP, provider calls and the
 configuration file are ordinary Rust around it.
