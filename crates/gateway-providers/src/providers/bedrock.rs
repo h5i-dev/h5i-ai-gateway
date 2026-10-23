@@ -35,10 +35,7 @@ use std::time::SystemTime;
 
 use serde_json::{Map, Value, json};
 
-use super::{
-    HttpRequest, StreamTranslator, gen_id, map_finish_reason, now_unix, parse_arguments,
-    parse_data_url, parse_json,
-};
+use super::{HttpRequest, StreamTranslator, gen_id, map_finish_reason, now_unix, parse_arguments, parse_data_url, parse_json};
 use crate::auth::sigv4::{self, SignableRequest, SigningParams};
 use crate::deployment::{Deployment, Secret, take_string};
 use crate::error::ProviderError;
@@ -46,10 +43,9 @@ use crate::pricing::{self, Pricing};
 use crate::sse::SseEvent;
 use crate::tokens::text_tokens;
 use crate::types::{
-    ChatChunk, ChatMessage, ChatRequest, ChatResponse, Choice, ContentPart, Delta, Embedding,
-    EmbeddingRequest, EmbeddingResponse, EmbeddingVector, FunctionCallDelta, JsonObject,
-    MessageContent, PromptTokensDetails, ResponseFormat, Role, Tool, ToolCall, ToolCallDelta,
-    ToolChoice, Usage, finish_reason, part_type,
+    ChatChunk, ChatMessage, ChatRequest, ChatResponse, Choice, ContentPart, Delta, Embedding, EmbeddingRequest, EmbeddingResponse, EmbeddingVector,
+    FunctionCallDelta, JsonObject, MessageContent, PromptTokensDetails, ResponseFormat, Role, Tool, ToolCall, ToolCallDelta, ToolChoice, Usage,
+    finish_reason, part_type,
 };
 
 const PROVIDER: &str = "bedrock";
@@ -69,13 +65,8 @@ const THINKING_BUDGETS: &[(&str, u64)] = &[("low", 1024), ("medium", 2048), ("hi
 /// Bedrock `toolUseId` limit.
 const TOOL_USE_ID_MAX: usize = 64;
 /// Native Converse request fields forwarded from the request's extra fields.
-const PASSTHROUGH_FIELDS: &[&str] = &[
-    "guardrailConfig",
-    "performanceConfig",
-    "requestMetadata",
-    "promptVariables",
-    "additionalModelResponseFieldPaths",
-];
+const PASSTHROUGH_FIELDS: &[&str] =
+    &["guardrailConfig", "performanceConfig", "requestMetadata", "promptVariables", "additionalModelResponseFieldPaths"];
 
 /// Static AWS credentials for SigV4.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -111,15 +102,11 @@ fn is_region(s: &str) -> bool {
         && parts.iter().all(|p| !p.is_empty())
         && parts[0].len() == 2
         && parts[0].bytes().all(|b| b.is_ascii_lowercase())
-        && parts
-            .last()
-            .is_some_and(|p| p.bytes().all(|b| b.is_ascii_digit()))
+        && parts.last().is_some_and(|p| p.bytes().all(|b| b.is_ascii_digit()))
 }
 
 fn valid_region_name(s: &str) -> bool {
-    !s.is_empty()
-        && s.bytes()
-            .all(|b| b.is_ascii_lowercase() || b.is_ascii_digit() || b == b'-')
+    !s.is_empty() && s.bytes().all(|b| b.is_ascii_lowercase() || b.is_ascii_digit() || b == b'-')
 }
 
 /// Strip routing prefixes and a region path: `(region from path, model id)`.
@@ -150,11 +137,7 @@ fn arn_region(model: &str) -> Option<String> {
 /// `us.anthropic.claude-3-5-sonnet-20241022-v2:0` ->
 /// `anthropic.claude-3-5-sonnet-20241022-v2:0`.
 pub(crate) fn base_model(model: &str) -> String {
-    let m = if model.starts_with("arn:") {
-        model.rsplit('/').next().unwrap_or(model)
-    } else {
-        model
-    };
+    let m = if model.starts_with("arn:") { model.rsplit('/').next().unwrap_or(model) } else { model };
     // `anthropic.claude-...-v2:0:51k` (provisioned throughput) -> `...:0`.
     let m = match m.rsplit_once(':') {
         Some((head, tail)) if head.contains(':') && tail.ends_with('k') => head,
@@ -167,11 +150,7 @@ pub(crate) fn base_model(model: &str) -> String {
 }
 
 fn dns_suffix(region: &str) -> &'static str {
-    if region.starts_with("cn-") {
-        "amazonaws.com.cn"
-    } else {
-        "amazonaws.com"
-    }
+    if region.starts_with("cn-") { "amazonaws.com.cn" } else { "amazonaws.com" }
 }
 
 /// Parse the Bedrock-specific `litellm_params`. Returns `(model, api_base,
@@ -190,13 +169,7 @@ pub(crate) fn parse_config(
         return Err(cfg_err("model name missing".into()));
     }
 
-    for unsupported in [
-        "aws_role_name",
-        "aws_profile_name",
-        "aws_web_identity_token",
-        "aws_session_name",
-        "aws_external_id",
-    ] {
+    for unsupported in ["aws_role_name", "aws_profile_name", "aws_web_identity_token", "aws_session_name", "aws_external_id"] {
         if obj.get(unsupported).is_some_and(|v| !v.is_null()) {
             return Err(cfg_err(format!(
                 "{unsupported} is not supported; configure aws_access_key_id/aws_secret_access_key \
@@ -236,20 +209,11 @@ pub(crate) fn parse_config(
     } else if let (Some(id), Some(secret)) = (access_key.clone(), secret_key.clone()) {
         keys(id, secret, session_token)
     } else if access_key.is_some() || secret_key.is_some() {
-        return Err(cfg_err(
-            "aws_access_key_id and aws_secret_access_key must be set together".into(),
-        ));
+        return Err(cfg_err("aws_access_key_id and aws_secret_access_key must be set together".into()));
     } else if let Some(token) = from_env(&["AWS_BEARER_TOKEN_BEDROCK"]) {
         AwsAuth::Bearer(Secret::new(token))
-    } else if let (Some(id), Some(secret)) = (
-        from_env(&["AWS_ACCESS_KEY_ID"]),
-        from_env(&["AWS_SECRET_ACCESS_KEY"]),
-    ) {
-        keys(
-            id,
-            secret,
-            session_token.or_else(|| from_env(&["AWS_SESSION_TOKEN"])),
-        )
+    } else if let (Some(id), Some(secret)) = (from_env(&["AWS_ACCESS_KEY_ID"]), from_env(&["AWS_SECRET_ACCESS_KEY"])) {
+        keys(id, secret, session_token.or_else(|| from_env(&["AWS_SESSION_TOKEN"])))
     } else {
         return Err(cfg_err(
             "no AWS credentials: set api_key / AWS_BEARER_TOKEN_BEDROCK, or \
@@ -257,15 +221,7 @@ pub(crate) fn parse_config(
                 .into(),
         ));
     };
-    Ok((
-        model,
-        endpoint,
-        BedrockConfig {
-            region,
-            auth,
-            model_id,
-        },
-    ))
+    Ok((model, endpoint, BedrockConfig { region, auth, model_id }))
 }
 
 /// Pricing: `bedrock/<region>/<id>`, the id, then the base model.
@@ -294,11 +250,7 @@ fn encode_model_id(id: &str) -> String {
 }
 
 fn model_url(dep: &Deployment, cfg: &BedrockConfig, action: &str) -> String {
-    format!(
-        "{}/model/{}/{action}",
-        dep.api_base().trim_end_matches('/'),
-        encode_model_id(&cfg.model_id)
-    )
+    format!("{}/model/{}/{action}", dep.api_base().trim_end_matches('/'), encode_model_id(&cfg.model_id))
 }
 
 fn with_auth(mut http: HttpRequest, cfg: &BedrockConfig) -> HttpRequest {
@@ -324,8 +276,7 @@ pub(crate) fn sign_headers(
     let AwsAuth::SigV4(creds) = &cfg.auth else {
         return Ok(Vec::new());
     };
-    let mut signed: Vec<(String, String)> =
-        vec![("content-type".into(), "application/json".into())];
+    let mut signed: Vec<(String, String)> = vec![("content-type".into(), "application/json".into())];
     signed.extend(
         headers
             .iter()
@@ -336,12 +287,7 @@ pub(crate) fn sign_headers(
             .cloned(),
     );
     let sig = sigv4::sign(
-        SignableRequest {
-            method: "POST",
-            url,
-            headers: &signed,
-            body,
-        },
+        SignableRequest { method: "POST", url, headers: &signed, body },
         SigningParams {
             access_key_id: &creds.access_key_id,
             secret_access_key: creds.secret_access_key.expose(),
@@ -378,13 +324,7 @@ pub(crate) fn valid_tool_name(name: &str) -> String {
     if !name.chars().next().is_some_and(|c| c.is_ascii_alphabetic()) {
         s.push('a');
     }
-    s.extend(name.chars().map(|c| {
-        if c.is_ascii_alphanumeric() || c == '_' || c == '-' {
-            c
-        } else {
-            '_'
-        }
-    }));
+    s.extend(name.chars().map(|c| if c.is_ascii_alphanumeric() || c == '_' || c == '-' { c } else { '_' }));
     s
 }
 
@@ -405,16 +345,7 @@ fn tool_name_map(req: &ChatRequest) -> HashMap<String, String> {
 /// `toolUseId` must match `[a-zA-Z0-9_.:-]+` and be at most 64 characters;
 /// rewritten ids get a hash suffix so distinct ids stay distinct.
 pub(crate) fn sanitize_tool_use_id(id: &str) -> String {
-    let s: String = id
-        .chars()
-        .map(|c| {
-            if c.is_ascii_alphanumeric() || matches!(c, '_' | '.' | ':' | '-') {
-                c
-            } else {
-                '_'
-            }
-        })
-        .collect();
+    let s: String = id.chars().map(|c| if c.is_ascii_alphanumeric() || matches!(c, '_' | '.' | ':' | '-') { c } else { '_' }).collect();
     if s == id && !s.is_empty() && s.len() <= TOOL_USE_ID_MAX {
         return s;
     }
@@ -477,13 +408,9 @@ fn media_error(msg: impl Into<String>) -> ProviderError {
 /// An image / document / video block from a base64 source or an S3 URI.
 fn media_block(url: &str, mime_override: Option<&str>) -> Result<Value, ProviderError> {
     let (mime, source) = if let Some((mime, data)) = parse_data_url(url) {
-        (
-            mime_override.unwrap_or(mime).to_owned(),
-            json!({"bytes": data}),
-        )
+        (mime_override.unwrap_or(mime).to_owned(), json!({"bytes": data}))
     } else if url.starts_with("s3://") {
-        let mime =
-            mime_override.map_or_else(|| super::mime_from_url(url).to_owned(), str::to_owned);
+        let mime = mime_override.map_or_else(|| super::mime_from_url(url).to_owned(), str::to_owned);
         (mime, json!({"s3Location": {"uri": url}}))
     } else if url.starts_with("http://") || url.starts_with("https://") {
         return Err(media_error(
@@ -491,9 +418,7 @@ fn media_block(url: &str, mime_override: Option<&str>) -> Result<Value, Provider
              (the gateway does not download http(s) URLs)",
         ));
     } else {
-        return Err(media_error(
-            "media must be a base64 data URL or an s3:// URI",
-        ));
+        return Err(media_error("media must be a base64 data URL or an s3:// URI"));
     };
     if let Some(f) = image_format(&mime) {
         return Ok(json!({"image": {"format": f, "source": source}}));
@@ -510,42 +435,20 @@ fn media_block(url: &str, mime_override: Option<&str>) -> Result<Value, Provider
             "format": f, "name": format!("DocumentPDFmessages_{hash}_{f}"), "source": source
         }}));
     }
-    Err(media_error(format!(
-        "unsupported media type '{mime}' for Bedrock"
-    )))
+    Err(media_error(format!("unsupported media type '{mime}' for Bedrock")))
 }
 
 /// Translate one user/assistant content part; `None` for empty text.
 fn content_block(p: &ContentPart, assistant: bool) -> Result<Option<Value>, ProviderError> {
     Ok(match p.kind.as_str() {
-        part_type::TEXT => p
-            .text
-            .as_deref()
-            .filter(|t| {
-                if assistant {
-                    !t.trim().is_empty()
-                } else {
-                    !t.is_empty()
-                }
-            })
-            .map(|t| json!({"text": t})),
+        part_type::TEXT => p.text.as_deref().filter(|t| if assistant { !t.trim().is_empty() } else { !t.is_empty() }).map(|t| json!({"text": t})),
         part_type::IMAGE_URL => {
-            let img = p
-                .image_url
-                .as_ref()
-                .ok_or_else(|| media_error("image_url part without image_url"))?;
+            let img = p.image_url.as_ref().ok_or_else(|| media_error("image_url part without image_url"))?;
             Some(media_block(&img.url, img.format.as_deref())?)
         }
         part_type::FILE => {
-            let f = p
-                .file
-                .as_ref()
-                .ok_or_else(|| media_error("file part without file"))?;
-            let src = f
-                .file_data
-                .as_deref()
-                .or(f.file_id.as_deref())
-                .ok_or_else(|| media_error("file part needs file_data or file_id"))?;
+            let f = p.file.as_ref().ok_or_else(|| media_error("file part without file"))?;
+            let src = f.file_data.as_deref().or(f.file_id.as_deref()).ok_or_else(|| media_error("file part needs file_data or file_id"))?;
             let fmt = f.extra.get("format").and_then(Value::as_str);
             Some(media_block(src, fmt)?)
         }
@@ -558,20 +461,14 @@ fn content_block(p: &ContentPart, assistant: bool) -> Result<Option<Value>, Prov
             let mut raw = p.extra.clone();
             raw.remove("cache_control");
             if raw.is_empty() {
-                return Err(media_error(format!(
-                    "content part type '{other}' is not supported by Bedrock"
-                )));
+                return Err(media_error(format!("content part type '{other}' is not supported by Bedrock")));
             }
             Some(Value::Object(raw))
         }
     })
 }
 
-fn parts_to_blocks(
-    content: &MessageContent,
-    message_cache: Option<&Value>,
-    assistant: bool,
-) -> Result<Vec<Value>, ProviderError> {
+fn parts_to_blocks(content: &MessageContent, message_cache: Option<&Value>, assistant: bool) -> Result<Vec<Value>, ProviderError> {
     let mut out = Vec::new();
     match content {
         MessageContent::Text(s) => {
@@ -605,10 +502,7 @@ fn tool_result(m: &ChatMessage) -> Result<Vec<Value>, ProviderError> {
         (Some(id), _) => sanitize_tool_use_id(id),
         (None, Some(name)) if m.role == Role::Function => legacy_function_id(name),
         _ => {
-            return Err(ProviderError::bad_request(
-                PROVIDER,
-                "tool message without tool_call_id",
-            ));
+            return Err(ProviderError::bad_request(PROVIDER, "tool message without tool_call_id"));
         }
     };
     let content: Vec<Value> = match &m.content {
@@ -634,9 +528,7 @@ fn tool_result(m: &ChatMessage) -> Result<Vec<Value>, ProviderError> {
     };
     let mut out = vec![json!({"toolResult": {"toolUseId": id, "content": content}})];
     let part_cache = match &m.content {
-        Some(MessageContent::Parts(parts)) => parts
-            .iter()
-            .any(|p| has_cache_control(p.extra.get("cache_control"))),
+        Some(MessageContent::Parts(parts)) => parts.iter().any(|p| has_cache_control(p.extra.get("cache_control"))),
         _ => false,
     };
     if has_cache_control(m.extra.get("cache_control")) || part_cache {
@@ -660,9 +552,7 @@ fn reasoning_blocks(m: &ChatMessage) -> Vec<Value> {
                 }
                 Some(json!({"reasoningContent": {"reasoningText": text}}))
             }
-            Some("redacted_thinking") => b["data"]
-                .as_str()
-                .map(|d| json!({"reasoningContent": {"redactedContent": d}})),
+            Some("redacted_thinking") => b["data"].as_str().map(|d| json!({"reasoningContent": {"redactedContent": d}})),
             _ => None,
         })
         .collect()
@@ -682,21 +572,13 @@ fn assistant_blocks(m: &ChatMessage) -> Result<Vec<Value>, ProviderError> {
         Ok(json!({"toolUse": {"toolUseId": id, "name": valid_tool_name(name), "input": input}}))
     };
     for call in m.tool_calls.iter().flatten() {
-        out.push(tool_use(
-            sanitize_tool_use_id(&call.id),
-            &call.function.name,
-            &call.function.arguments,
-        )?);
+        out.push(tool_use(sanitize_tool_use_id(&call.id), &call.function.name, &call.function.arguments)?);
         if has_cache_control(call.extra.get("cache_control")) {
             out.push(cache_point());
         }
     }
     if let Some(call) = &m.function_call {
-        out.push(tool_use(
-            legacy_function_id(&call.name),
-            &call.name,
-            &call.arguments,
-        )?);
+        out.push(tool_use(legacy_function_id(&call.name), &call.name, &call.arguments)?);
     }
     Ok(out)
 }
@@ -732,10 +614,7 @@ fn translate_messages(msgs: &[ChatMessage]) -> Result<(Vec<Value>, Vec<Value>), 
             // Later system messages become user text (LiteLLM).
             Role::System | Role::Developer | Role::User => {
                 if let Some(c) = &m.content {
-                    push(
-                        "user",
-                        parts_to_blocks(c, m.extra.get("cache_control"), false)?,
-                    );
+                    push("user", parts_to_blocks(c, m.extra.get("cache_control"), false)?);
                 }
             }
             Role::Tool | Role::Function => push("user", tool_result(m)?),
@@ -799,28 +678,16 @@ fn translate_tool(tool: &Tool) -> Vec<Value> {
             .map(|_| vec![Value::Object(tool.extra.clone())])
             .unwrap_or_default();
     };
-    let mut schema = f
-        .parameters
-        .clone()
-        .unwrap_or_else(|| json!({"type": "object", "properties": {}}));
+    let mut schema = f.parameters.clone().unwrap_or_else(|| json!({"type": "object", "properties": {}}));
     if let Value::Object(s) = &mut schema {
-        const ROOT_TYPES: &[&str] = &[
-            "array", "boolean", "integer", "null", "number", "object", "string",
-        ];
-        let ok = s
-            .get("type")
-            .and_then(Value::as_str)
-            .is_some_and(|t| ROOT_TYPES.contains(&t));
+        const ROOT_TYPES: &[&str] = &["array", "boolean", "integer", "null", "number", "object", "string"];
+        let ok = s.get("type").and_then(Value::as_str).is_some_and(|t| ROOT_TYPES.contains(&t));
         if !ok {
             s.insert("type".into(), json!("object"));
         }
     }
     let name = valid_tool_name(&f.name);
-    let description = f
-        .description
-        .clone()
-        .filter(|d| !d.is_empty())
-        .unwrap_or_else(|| name.clone());
+    let description = f.description.clone().filter(|d| !d.is_empty()).unwrap_or_else(|| name.clone());
     let mut out = vec![json!({"toolSpec": {
         "name": name, "description": description, "inputSchema": {"json": schema}
     }})];
@@ -835,14 +702,8 @@ fn translate_tool_choice(choice: &ToolChoice) -> Result<Option<Value>, ProviderE
         match m {
             "auto" => Ok(Some(json!({"auto": {}}))),
             "required" | "any" => Ok(Some(json!({"any": {}}))),
-            "none" => Err(ProviderError::bad_request(
-                PROVIDER,
-                "Bedrock doesn't support tool_choice=none; omit the tools instead",
-            )),
-            other => Err(ProviderError::bad_request(
-                PROVIDER,
-                format!("unsupported tool_choice '{other}'"),
-            )),
+            "none" => Err(ProviderError::bad_request(PROVIDER, "Bedrock doesn't support tool_choice=none; omit the tools instead")),
+            other => Err(ProviderError::bad_request(PROVIDER, format!("unsupported tool_choice '{other}'"))),
         }
     };
     match choice {
@@ -883,11 +744,7 @@ pub(crate) fn converse_body(dep: &Deployment, req: &ChatRequest) -> Result<Value
         inference.insert("topP".into(), json!(p));
     }
     if let Some(stop) = &req.stop {
-        let stops: Vec<String> = stop
-            .to_vec()
-            .into_iter()
-            .filter(|s| !s.is_empty())
-            .collect();
+        let stops: Vec<String> = stop.to_vec().into_iter().filter(|s| !s.is_empty()).collect();
         if !stops.is_empty() {
             inference.insert("stopSequences".into(), json!(stops));
         }
@@ -906,35 +763,22 @@ pub(crate) fn converse_body(dep: &Deployment, req: &ChatRequest) -> Result<Value
     } else if let Some(effort) = req.reasoning_effort.as_deref() {
         if is_anthropic {
             if let Some(&(_, budget)) = THINKING_BUDGETS.iter().find(|(e, _)| *e == effort) {
-                additional.insert(
-                    "thinking".into(),
-                    json!({"type": "enabled", "budget_tokens": budget}),
-                );
+                additional.insert("thinking".into(), json!({"type": "enabled", "budget_tokens": budget}));
             }
         } else {
             additional.insert("reasoning_effort".into(), json!(effort));
         }
     }
-    let thinking = additional
-        .get("thinking")
-        .and_then(|t| t.get("type"))
-        .is_some_and(|t| t != "disabled");
+    let thinking = additional.get("thinking").and_then(|t| t.get("type")).is_some_and(|t| t != "disabled");
     if thinking && explicit_max.is_none() {
-        let budget = additional["thinking"]["budget_tokens"]
-            .as_u64()
-            .unwrap_or(0);
+        let budget = additional["thinking"]["budget_tokens"].as_u64().unwrap_or(0);
         inference.insert("maxTokens".into(), json!(budget + DEFAULT_MAX_TOKENS));
     }
     if !inference.is_empty() {
         body.insert("inferenceConfig".into(), Value::Object(inference));
     }
 
-    let mut tools: Vec<Value> = req
-        .tools
-        .iter()
-        .flatten()
-        .flat_map(translate_tool)
-        .collect();
+    let mut tools: Vec<Value> = req.tools.iter().flatten().flat_map(translate_tool).collect();
     let mut tool_choice = match (&req.tool_choice, tools.is_empty()) {
         (Some(c), false) => translate_tool_choice(c)?,
         _ => None,
@@ -952,11 +796,7 @@ pub(crate) fn converse_body(dep: &Deployment, req: &ChatRequest) -> Result<Value
         tool_choice = Some(json!({"tool": {"name": JSON_TOOL_NAME}}));
     }
     // Forced tool use is incompatible with extended thinking.
-    if thinking
-        && tool_choice
-            .as_ref()
-            .is_some_and(|c| c.get("any").is_some() || c.get("tool").is_some())
-    {
+    if thinking && tool_choice.as_ref().is_some_and(|c| c.get("any").is_some() || c.get("tool").is_some()) {
         tool_choice = Some(json!({"auto": {}}));
     }
     if !tools.is_empty() {
@@ -974,10 +814,7 @@ pub(crate) fn converse_body(dep: &Deployment, req: &ChatRequest) -> Result<Value
         }
     }
     if !additional.is_empty() {
-        body.insert(
-            "additionalModelRequestFields".into(),
-            Value::Object(additional),
-        );
+        body.insert("additionalModelRequestFields".into(), Value::Object(additional));
     }
     for key in PASSTHROUGH_FIELDS {
         if let Some(v) = req.extra.get(*key) {
@@ -993,17 +830,9 @@ pub(crate) fn converse_body(dep: &Deployment, req: &ChatRequest) -> Result<Value
     Ok(Value::Object(body))
 }
 
-pub(crate) fn chat_request(
-    dep: &Deployment,
-    req: &ChatRequest,
-    stream: bool,
-) -> Result<HttpRequest, ProviderError> {
+pub(crate) fn chat_request(dep: &Deployment, req: &ChatRequest, stream: bool) -> Result<HttpRequest, ProviderError> {
     let cfg = require_config(dep)?;
-    let action = if stream {
-        "converse-stream"
-    } else {
-        "converse"
-    };
+    let action = if stream { "converse-stream" } else { "converse" };
     let http = HttpRequest::new(model_url(dep, cfg, action), converse_body(dep, req)?);
     Ok(with_auth(http, cfg))
 }
@@ -1015,11 +844,7 @@ pub(crate) fn chat_request(
 /// Converse usage (`inputTokens` excludes cache reads/writes; prompt tokens
 /// include them, like LiteLLM).
 pub(crate) fn usage_from(u: &Value) -> Usage {
-    let get = |keys: &[&str]| {
-        keys.iter()
-            .find_map(|k| u.get(*k).and_then(Value::as_u64))
-            .unwrap_or(0)
-    };
+    let get = |keys: &[&str]| keys.iter().find_map(|k| u.get(*k).and_then(Value::as_u64)).unwrap_or(0);
     let input = get(&["inputTokens"]);
     let output = get(&["outputTokens"]);
     let cache_read = get(&["cacheReadInputTokens", "cacheReadInputTokenCount"]);
@@ -1043,32 +868,16 @@ fn finish_reason_for(stop_reason: Option<&str>, json_mode: bool) -> Option<Strin
         "guardrail_intervened" | "content_filtered" => finish_reason::CONTENT_FILTER,
         other => map_finish_reason(other),
     };
-    Some(
-        if json_mode && reason == finish_reason::TOOL_CALLS {
-            finish_reason::STOP
-        } else {
-            reason
-        }
-        .to_owned(),
-    )
+    Some(if json_mode && reason == finish_reason::TOOL_CALLS { finish_reason::STOP } else { reason }.to_owned())
 }
 
-pub(crate) fn parse_chat(
-    dep: &Deployment,
-    req: &ChatRequest,
-    body: &str,
-) -> Result<ChatResponse, ProviderError> {
+pub(crate) fn parse_chat(dep: &Deployment, req: &ChatRequest, body: &str) -> Result<ChatResponse, ProviderError> {
     let json_mode = json_schema_of(req.response_format.as_ref()).is_some();
     let names = tool_name_map(req);
     let v: Value = parse_json(PROVIDER, body)?;
     let blocks = v["output"]["message"]["content"]
         .as_array()
-        .ok_or_else(|| {
-            ProviderError::invalid_response(
-                PROVIDER,
-                "Converse response without output.message.content",
-            )
-        })?;
+        .ok_or_else(|| ProviderError::invalid_response(PROVIDER, "Converse response without output.message.content"))?;
 
     let mut text = String::new();
     let mut reasoning = String::new();
@@ -1087,11 +896,7 @@ pub(crate) fn parse_chat(
                 continue;
             }
             let name = names.get(raw_name).map_or(raw_name, String::as_str);
-            tool_calls.push(ToolCall::function(
-                tu["toolUseId"].as_str().unwrap_or_default(),
-                name,
-                input,
-            ));
+            tool_calls.push(ToolCall::function(tu["toolUseId"].as_str().unwrap_or_default(), name, input));
         } else if let Some(rc) = b.get("reasoningContent") {
             if let Some(rt) = rc.get("reasoningText") {
                 let t = rt["text"].as_str().unwrap_or_default();
@@ -1118,9 +923,7 @@ pub(crate) fn parse_chat(
         message.reasoning_content = Some(reasoning);
     }
     if !thinking_blocks.is_empty() {
-        message
-            .extra
-            .insert("thinking_blocks".into(), Value::Array(thinking_blocks));
+        message.extra.insert("thinking_blocks".into(), Value::Array(thinking_blocks));
     }
     let mut finish = finish_reason_for(v["stopReason"].as_str(), json_mode);
     if json_tool_used && message.tool_calls.is_none() {
@@ -1138,13 +941,7 @@ pub(crate) fn parse_chat(
         object: "chat.completion".into(),
         created: now_unix(),
         model: dep.model.clone(),
-        choices: vec![Choice {
-            index: 0,
-            message,
-            finish_reason: finish,
-            logprobs: None,
-            extra: JsonObject::new(),
-        }],
+        choices: vec![Choice { index: 0, message, finish_reason: finish, logprobs: None, extra: JsonObject::new() }],
         usage: v.get("usage").map(usage_from),
         system_fingerprint: None,
         extra,
@@ -1192,32 +989,17 @@ impl BedrockStream {
         if text.is_empty() {
             return Vec::new();
         }
-        vec![self.chunk(
-            Delta {
-                content: Some(text.to_owned()),
-                ..Delta::default()
-            },
-            None,
-        )]
+        vec![self.chunk(Delta { content: Some(text.to_owned()), ..Delta::default() }, None)]
     }
 
     fn tool_delta(&self, delta: ToolCallDelta) -> ChatChunk {
-        self.chunk(
-            Delta {
-                tool_calls: Some(vec![delta]),
-                ..Delta::default()
-            },
-            None,
-        )
+        self.chunk(Delta { tool_calls: Some(vec![delta]), ..Delta::default() }, None)
     }
 
     fn args_delta(&self, index: u32, args: &str) -> ChatChunk {
         self.tool_delta(ToolCallDelta {
             index,
-            function: Some(FunctionCallDelta {
-                name: None,
-                arguments: Some(args.to_owned()),
-            }),
+            function: Some(FunctionCallDelta { name: None, arguments: Some(args.to_owned()) }),
             ..ToolCallDelta::default()
         })
     }
@@ -1225,21 +1007,10 @@ impl BedrockStream {
 
 impl StreamTranslator for BedrockStream {
     fn on_event(&mut self, event: SseEvent) -> Result<Vec<ChatChunk>, ProviderError> {
-        let v: Value = if event.data.trim().is_empty() {
-            Value::Null
-        } else {
-            parse_json(PROVIDER, &event.data)?
-        };
+        let v: Value = if event.data.trim().is_empty() { Value::Null } else { parse_json(PROVIDER, &event.data)? };
         let index = v["contentBlockIndex"].as_u64().unwrap_or(0);
         Ok(match event.event.as_deref().unwrap_or_default() {
-            "messageStart" => vec![self.chunk(
-                Delta {
-                    role: Some(Role::Assistant),
-                    content: Some(String::new()),
-                    ..Delta::default()
-                },
-                None,
-            )],
+            "messageStart" => vec![self.chunk(Delta { role: Some(Role::Assistant), content: Some(String::new()), ..Delta::default() }, None)],
             "contentBlockStart" => {
                 let Some(tu) = v["start"].get("toolUse") else {
                     return Ok(Vec::new());
@@ -1249,28 +1020,15 @@ impl StreamTranslator for BedrockStream {
                     self.blocks.insert(index, Block::JsonTool);
                     return Ok(Vec::new());
                 }
-                let name = self
-                    .names
-                    .get(raw_name)
-                    .map_or(raw_name, String::as_str)
-                    .to_owned();
+                let name = self.names.get(raw_name).map_or(raw_name, String::as_str).to_owned();
                 let tool_index = self.next_tool;
                 self.next_tool += 1;
-                self.blocks.insert(
-                    index,
-                    Block::Tool {
-                        index: tool_index,
-                        has_args: false,
-                    },
-                );
+                self.blocks.insert(index, Block::Tool { index: tool_index, has_args: false });
                 vec![self.tool_delta(ToolCallDelta {
                     index: tool_index,
                     id: tu["toolUseId"].as_str().map(str::to_owned),
                     kind: Some("function".into()),
-                    function: Some(FunctionCallDelta {
-                        name: Some(name),
-                        arguments: Some(String::new()),
-                    }),
+                    function: Some(FunctionCallDelta { name: Some(name), arguments: Some(String::new()) }),
                 })]
             }
             "contentBlockDelta" => {
@@ -1295,22 +1053,13 @@ impl StreamTranslator for BedrockStream {
                 if let Some(t) = delta["reasoningContent"]["text"].as_str()
                     && !t.is_empty()
                 {
-                    return Ok(vec![self.chunk(
-                        Delta {
-                            reasoning_content: Some(t.to_owned()),
-                            ..Delta::default()
-                        },
-                        None,
-                    )]);
+                    return Ok(vec![self.chunk(Delta { reasoning_content: Some(t.to_owned()), ..Delta::default() }, None)]);
                 }
                 // signatures, redacted reasoning, citations
                 Vec::new()
             }
             "contentBlockStop" => match self.blocks.remove(&index) {
-                Some(Block::Tool {
-                    index,
-                    has_args: false,
-                }) => vec![self.args_delta(index, "{}")],
+                Some(Block::Tool { index, has_args: false }) => vec![self.args_delta(index, "{}")],
                 _ => Vec::new(),
             },
             "messageStop" => {
@@ -1323,10 +1072,7 @@ impl StreamTranslator for BedrockStream {
             "metadata" => {
                 self.done = true;
                 match v.get("usage") {
-                    Some(u) => vec![
-                        ChatChunk::new(self.id.clone(), self.model.clone(), self.created)
-                            .with_usage(usage_from(u)),
-                    ],
+                    Some(u) => vec![ChatChunk::new(self.id.clone(), self.model.clone(), self.created).with_usage(usage_from(u))],
                     None => Vec::new(),
                 }
             }
@@ -1339,15 +1085,7 @@ impl StreamTranslator for BedrockStream {
     }
 
     fn finish(&mut self) -> Result<Vec<ChatChunk>, ProviderError> {
-        if self.stopped {
-            Ok(Vec::new())
-        } else {
-            Err(ProviderError::new(
-                crate::ErrorKind::Connection,
-                PROVIDER,
-                "stream ended before messageStop",
-            ))
-        }
+        if self.stopped { Ok(Vec::new()) } else { Err(ProviderError::new(crate::ErrorKind::Connection, PROVIDER, "stream ended before messageStop")) }
     }
 }
 
@@ -1366,9 +1104,7 @@ enum EmbeddingFamily {
 fn embedding_family(model: &str) -> Option<EmbeddingFamily> {
     let base = base_model(model);
     if base.starts_with("amazon.titan-embed") {
-        Some(EmbeddingFamily::Titan {
-            v2: base.contains("-v2"),
-        })
+        Some(EmbeddingFamily::Titan { v2: base.contains("-v2") })
     } else if base.starts_with("cohere.embed") {
         Some(EmbeddingFamily::Cohere)
     } else {
@@ -1377,14 +1113,9 @@ fn embedding_family(model: &str) -> Option<EmbeddingFamily> {
 }
 
 /// One InvokeModel request per Titan input, one for a Cohere batch.
-pub(crate) fn embeddings_requests(
-    dep: &Deployment,
-    req: &EmbeddingRequest,
-) -> Result<Vec<HttpRequest>, ProviderError> {
+pub(crate) fn embeddings_requests(dep: &Deployment, req: &EmbeddingRequest) -> Result<Vec<HttpRequest>, ProviderError> {
     let cfg = require_config(dep)?;
-    let texts = req.input.texts().ok_or_else(|| {
-        ProviderError::bad_request(PROVIDER, "Bedrock embeddings require text input")
-    })?;
+    let texts = req.input.texts().ok_or_else(|| ProviderError::bad_request(PROVIDER, "Bedrock embeddings require text input"))?;
     let family = embedding_family(&dep.model).ok_or_else(|| {
         ProviderError::bad_request(
             PROVIDER,
@@ -1447,11 +1178,7 @@ pub(crate) fn parse_embeddings(
     responses: &[(String, Option<u64>)],
 ) -> Result<EmbeddingResponse, ProviderError> {
     let family = embedding_family(&dep.model);
-    let floats = |v: &Value| -> Vec<f64> {
-        v.as_array()
-            .map(|a| a.iter().filter_map(Value::as_f64).collect())
-            .unwrap_or_default()
-    };
+    let floats = |v: &Value| -> Vec<f64> { v.as_array().map(|a| a.iter().filter_map(Value::as_f64).collect()).unwrap_or_default() };
     let mut data = Vec::new();
     let mut prompt_tokens = 0u64;
     let mut counted = true;
@@ -1462,12 +1189,7 @@ pub(crate) fn parse_embeddings(
                 let values = v["embeddingsByType"]
                     .get("float")
                     .or_else(|| v.get("embedding"))
-                    .ok_or_else(|| {
-                        ProviderError::invalid_response(
-                            PROVIDER,
-                            "Titan response without embedding",
-                        )
-                    })?;
+                    .ok_or_else(|| ProviderError::invalid_response(PROVIDER, "Titan response without embedding"))?;
                 data.push(floats(values));
                 match v["inputTextTokenCount"].as_u64().or(*header_tokens) {
                     Some(n) => prompt_tokens += n,
@@ -1479,9 +1201,7 @@ pub(crate) fn parse_embeddings(
                     Value::Object(by_type) => by_type.get("float").cloned().unwrap_or(Value::Null),
                     other => other.clone(),
                 };
-                let list = list.as_array().ok_or_else(|| {
-                    ProviderError::invalid_response(PROVIDER, "Cohere response without embeddings")
-                })?;
+                let list = list.as_array().ok_or_else(|| ProviderError::invalid_response(PROVIDER, "Cohere response without embeddings"))?;
                 data.extend(list.iter().map(floats));
                 match header_tokens {
                     Some(n) => prompt_tokens += n,
@@ -1491,24 +1211,14 @@ pub(crate) fn parse_embeddings(
         }
     }
     if !counted {
-        prompt_tokens = req
-            .input
-            .texts()
-            .unwrap_or_default()
-            .iter()
-            .map(|t| text_tokens(t))
-            .sum();
+        prompt_tokens = req.input.texts().unwrap_or_default().iter().map(|t| text_tokens(t)).sum();
     }
     Ok(EmbeddingResponse {
         object: "list".into(),
         data: data
             .into_iter()
             .enumerate()
-            .map(|(i, values)| Embedding {
-                object: "embedding".into(),
-                index: i as u32,
-                embedding: EmbeddingVector::Float(values),
-            })
+            .map(|(i, values)| Embedding { object: "embedding".into(), index: i as u32, embedding: EmbeddingVector::Float(values) })
             .collect(),
         model: dep.model.clone(),
         usage: Usage::new(prompt_tokens, 0),
@@ -1557,22 +1267,10 @@ mod tests {
     fn model_strings() {
         for (raw, region, model) in [
             ("anthropic.claude-v2", None, "anthropic.claude-v2"),
-            (
-                "converse/us.anthropic.claude-3-haiku-20240307-v1:0",
-                None,
-                "us.anthropic.claude-3-haiku-20240307-v1:0",
-            ),
+            ("converse/us.anthropic.claude-3-haiku-20240307-v1:0", None, "us.anthropic.claude-3-haiku-20240307-v1:0"),
             ("invoke/anthropic.claude-v2", None, "anthropic.claude-v2"),
-            (
-                "us-west-2/meta.llama3-70b-instruct-v1:0",
-                Some("us-west-2"),
-                "meta.llama3-70b-instruct-v1:0",
-            ),
-            (
-                "us-gov-west-1/anthropic.claude-v2",
-                Some("us-gov-west-1"),
-                "anthropic.claude-v2",
-            ),
+            ("us-west-2/meta.llama3-70b-instruct-v1:0", Some("us-west-2"), "meta.llama3-70b-instruct-v1:0"),
+            ("us-gov-west-1/anthropic.claude-v2", Some("us-gov-west-1"), "anthropic.claude-v2"),
             (
                 "arn:aws:bedrock:eu-west-1:123456789012:inference-profile/eu.anthropic.claude-3-haiku",
                 None,
@@ -1582,26 +1280,11 @@ mod tests {
             let (r, m) = normalize_model(raw);
             assert_eq!((r.as_deref(), m.as_str()), (region, model), "{raw}");
         }
-        assert_eq!(
-            base_model("us.anthropic.claude-3-5-sonnet-20241022-v2:0"),
-            "anthropic.claude-3-5-sonnet-20241022-v2:0"
-        );
-        assert_eq!(
-            base_model("global.anthropic.claude-sonnet-4-5-20250929-v1:0"),
-            "anthropic.claude-sonnet-4-5-20250929-v1:0"
-        );
-        assert_eq!(
-            base_model("anthropic.claude-3-5-sonnet-20241022-v2:0:51k"),
-            "anthropic.claude-3-5-sonnet-20241022-v2:0"
-        );
-        assert_eq!(
-            base_model("arn:aws:bedrock:us-east-1:1:inference-profile/us.amazon.nova-pro-v1:0"),
-            "amazon.nova-pro-v1:0"
-        );
-        assert_eq!(
-            arn_region("arn:aws:bedrock:eu-west-1:1:x/y").as_deref(),
-            Some("eu-west-1")
-        );
+        assert_eq!(base_model("us.anthropic.claude-3-5-sonnet-20241022-v2:0"), "anthropic.claude-3-5-sonnet-20241022-v2:0");
+        assert_eq!(base_model("global.anthropic.claude-sonnet-4-5-20250929-v1:0"), "anthropic.claude-sonnet-4-5-20250929-v1:0");
+        assert_eq!(base_model("anthropic.claude-3-5-sonnet-20241022-v2:0:51k"), "anthropic.claude-3-5-sonnet-20241022-v2:0");
+        assert_eq!(base_model("arn:aws:bedrock:us-east-1:1:inference-profile/us.amazon.nova-pro-v1:0"), "amazon.nova-pro-v1:0");
+        assert_eq!(arn_region("arn:aws:bedrock:eu-west-1:1:x/y").as_deref(), Some("eu-west-1"));
         assert_eq!(arn_region("anthropic.claude"), None);
     }
 
@@ -1610,19 +1293,11 @@ mod tests {
         let d = dep();
         assert_eq!(d.provider, crate::Provider::Bedrock);
         assert_eq!(d.model, "anthropic.claude-3-5-sonnet-20241022-v2:0");
-        assert_eq!(
-            d.api_base.as_deref(),
-            Some("https://bedrock-runtime.us-east-1.amazonaws.com")
-        );
+        assert_eq!(d.api_base.as_deref(), Some("https://bedrock-runtime.us-east-1.amazonaws.com"));
         let cfg = config(&d).unwrap();
         assert_eq!(cfg.region, "us-east-1");
-        assert!(
-            matches!(&cfg.auth, AwsAuth::SigV4(c) if c.access_key_id == "AKID" && c.session_token.is_none())
-        );
-        assert!(
-            !format!("{d:?}").contains("\"secret\""),
-            "secret must be redacted"
-        );
+        assert!(matches!(&cfg.auth, AwsAuth::SigV4(c) if c.access_key_id == "AKID" && c.session_token.is_none()));
+        assert!(!format!("{d:?}").contains("\"secret\""), "secret must be redacted");
         assert!(d.extra.is_empty(), "aws_* keys are consumed: {:?}", d.extra);
 
         // Env credentials, ARN region, os.environ/ session token.
@@ -1648,58 +1323,28 @@ mod tests {
         assert_eq!(cfg.auth, AwsAuth::Bearer(Secret::new("bedrock-key")));
         assert_eq!(d.api_base.as_deref(), Some("https://vpce.example.com"));
         assert_eq!(cfg.region, "us-east-1", "region of the model_id ARN");
-        assert_eq!(
-            d.model, "us.amazon.nova-pro-v1:0",
-            "pricing still uses the model"
-        );
-        let r = chat_request(
-            &d,
-            &req(json!({"model": "m", "messages": [{"role": "user", "content": "hi"}]})),
-            true,
-        )
-        .unwrap();
-        assert_eq!(
-            r.url,
-            "https://vpce.example.com/model/arn%3Aaws%3Abedrock%3Aus-east-1%3A1%3Aprovisioned-model%2Fabc/converse-stream"
-        );
-        assert!(
-            r.headers
-                .contains(&("authorization".into(), "Bearer bedrock-key".into()))
-        );
+        assert_eq!(d.model, "us.amazon.nova-pro-v1:0", "pricing still uses the model");
+        let r = chat_request(&d, &req(json!({"model": "m", "messages": [{"role": "user", "content": "hi"}]})), true).unwrap();
+        assert_eq!(r.url, "https://vpce.example.com/model/arn%3Aaws%3Abedrock%3Aus-east-1%3A1%3Aprovisioned-model%2Fabc/converse-stream");
+        assert!(r.headers.contains(&("authorization".into(), "Bearer bedrock-key".into())));
 
         // Env bearer token and region from the region path / env.
-        let d = Deployment::from_litellm_params_with_env(
-            &json!({"model": "bedrock/ap-northeast-1/anthropic.claude-v2"}),
-            |n| match n {
-                "AWS_BEARER_TOKEN_BEDROCK" => Some("env-bearer".into()),
-                "AWS_REGION" => Some("us-east-2".into()),
-                _ => None,
-            },
-        )
+        let d = Deployment::from_litellm_params_with_env(&json!({"model": "bedrock/ap-northeast-1/anthropic.claude-v2"}), |n| match n {
+            "AWS_BEARER_TOKEN_BEDROCK" => Some("env-bearer".into()),
+            "AWS_REGION" => Some("us-east-2".into()),
+            _ => None,
+        })
         .unwrap();
         let cfg = config(&d).unwrap();
-        assert_eq!(
-            (cfg.region.as_str(), d.model.as_str()),
-            ("ap-northeast-1", "anthropic.claude-v2")
-        );
+        assert_eq!((cfg.region.as_str(), d.model.as_str()), ("ap-northeast-1", "anthropic.claude-v2"));
         assert_eq!(cfg.auth, AwsAuth::Bearer(Secret::new("env-bearer")));
 
         // Errors.
         let no_env = |p: Value| Deployment::from_litellm_params_with_env(&p, |_| None);
-        assert!(
-            no_env(json!({"model": "bedrock/anthropic.claude-v2"}))
-                .unwrap_err()
-                .message()
-                .contains("no AWS credentials")
-        );
+        assert!(no_env(json!({"model": "bedrock/anthropic.claude-v2"})).unwrap_err().message().contains("no AWS credentials"));
         assert!(no_env(json!({"model": "bedrock/x", "aws_access_key_id": "a"})).is_err());
-        assert!(
-            no_env(json!({"model": "bedrock/x", "api_key": "k", "aws_role_name": "r"})).is_err()
-        );
-        assert!(
-            no_env(json!({"model": "bedrock/x", "api_key": "k", "aws_region_name": "US_EAST"}))
-                .is_err()
-        );
+        assert!(no_env(json!({"model": "bedrock/x", "api_key": "k", "aws_role_name": "r"})).is_err());
+        assert!(no_env(json!({"model": "bedrock/x", "api_key": "k", "aws_region_name": "US_EAST"})).is_err());
         assert!(matches!(d.cloud, Some(CloudConfig::Bedrock(_))));
     }
 
@@ -1722,16 +1367,11 @@ mod tests {
         )
         .unwrap();
         // Same inputs as botocore's golden vector.
-        assert!(h.iter().any(|(n, v)| n == "authorization"
-            && v.ends_with(
-                "Signature=55c027ef47527d3ad63f1735f9d099efdbc99f296ff914bd94e727e24ec0e464"
-            )));
-        let bearer = parse(json!({"model": "bedrock/x", "api_key": "k"})).unwrap();
         assert!(
-            sign_headers(&bearer, "https://h/", &[], b"", SystemTime::now())
-                .unwrap()
-                .is_empty()
+            h.iter().any(|(n, v)| n == "authorization" && v.ends_with("Signature=55c027ef47527d3ad63f1735f9d099efdbc99f296ff914bd94e727e24ec0e464"))
         );
+        let bearer = parse(json!({"model": "bedrock/x", "api_key": "k"})).unwrap();
+        assert!(sign_headers(&bearer, "https://h/", &[], b"", SystemTime::now()).unwrap().is_empty());
     }
 
     #[test]
@@ -1746,10 +1386,7 @@ mod tests {
             ],
             "max_tokens": 100, "temperature": 0.2, "top_p": 0.9, "stop": ["END", ""], "top_k": 5
         }));
-        assert_eq!(
-            b["system"],
-            json!([{"text": "be brief"}, {"cachePoint": {"type": "default"}}, {"text": "and kind"}])
-        );
+        assert_eq!(b["system"], json!([{"text": "be brief"}, {"cachePoint": {"type": "default"}}, {"text": "and kind"}]));
         assert_eq!(
             b["messages"],
             json!([
@@ -1757,96 +1394,59 @@ mod tests {
                 {"role": "assistant", "content": [{"text": "hello"}]}
             ])
         );
-        assert_eq!(
-            b["inferenceConfig"],
-            json!({"maxTokens": 100, "temperature": 0.2, "topP": 0.9, "stopSequences": ["END"]})
-        );
+        assert_eq!(b["inferenceConfig"], json!({"maxTokens": 100, "temperature": 0.2, "topP": 0.9, "stopSequences": ["END"]}));
         assert_eq!(b["additionalModelRequestFields"], json!({"top_k": 5}));
         assert!(b.get("toolConfig").is_none());
 
         // Conversation starting with an assistant turn gets a user turn.
-        let b = body(
-            json!({"model": "x", "messages": [{"role": "assistant", "content": "hi"}, {"role": "user", "content": "yo"}]}),
-        );
-        assert_eq!(
-            b["messages"][0],
-            json!({"role": "user", "content": [{"text": "."}]})
-        );
+        let b = body(json!({"model": "x", "messages": [{"role": "assistant", "content": "hi"}, {"role": "user", "content": "yo"}]}));
+        assert_eq!(b["messages"][0], json!({"role": "user", "content": [{"text": "."}]}));
         // Nova top_k shape.
-        let nova =
-            parse(json!({"model": "bedrock/us.amazon.nova-pro-v1:0", "api_key": "k"})).unwrap();
-        let b = converse_body(
-            &nova,
-            &req(
-                json!({"model": "x", "messages": [{"role": "user", "content": "hi"}], "top_k": 3}),
-            ),
-        )
-        .unwrap();
-        assert_eq!(
-            b["additionalModelRequestFields"],
-            json!({"inferenceConfig": {"topK": 3}})
-        );
+        let nova = parse(json!({"model": "bedrock/us.amazon.nova-pro-v1:0", "api_key": "k"})).unwrap();
+        let b = converse_body(&nova, &req(json!({"model": "x", "messages": [{"role": "user", "content": "hi"}], "top_k": 3}))).unwrap();
+        assert_eq!(b["additionalModelRequestFields"], json!({"inferenceConfig": {"topK": 3}}));
     }
 
     #[test]
     fn images_documents_and_media_errors() {
-        let b = body(
-            json!({"model": "x", "messages": [{"role": "user", "content": [
-                {"type": "text", "text": "look"},
-                {"type": "image_url", "image_url": {"url": "data:image/png;base64,iVBORw0KGgo="}},
-                {"type": "image_url", "image_url": "s3://bucket/cat.jpg", "cache_control": {"type": "ephemeral"}},
-                {"type": "file", "file": {"file_data": "data:application/pdf;base64,JVBERi0x"}}
-            ]}]}),
-        );
+        let b = body(json!({"model": "x", "messages": [{"role": "user", "content": [
+            {"type": "text", "text": "look"},
+            {"type": "image_url", "image_url": {"url": "data:image/png;base64,iVBORw0KGgo="}},
+            {"type": "image_url", "image_url": "s3://bucket/cat.jpg", "cache_control": {"type": "ephemeral"}},
+            {"type": "file", "file": {"file_data": "data:application/pdf;base64,JVBERi0x"}}
+        ]}]}));
         let content = b["messages"][0]["content"].as_array().unwrap();
-        assert_eq!(
-            content[1],
-            json!({"image": {"format": "png", "source": {"bytes": "iVBORw0KGgo="}}})
-        );
-        assert_eq!(
-            content[2],
-            json!({"image": {"format": "jpeg", "source": {"s3Location": {"uri": "s3://bucket/cat.jpg"}}}})
-        );
+        assert_eq!(content[1], json!({"image": {"format": "png", "source": {"bytes": "iVBORw0KGgo="}}}));
+        assert_eq!(content[2], json!({"image": {"format": "jpeg", "source": {"s3Location": {"uri": "s3://bucket/cat.jpg"}}}}));
         assert_eq!(content[3], json!({"cachePoint": {"type": "default"}}));
         let doc = &content[4]["document"];
         assert_eq!(doc["format"], "pdf");
         assert_eq!(doc["source"], json!({"bytes": "JVBERi0x"}));
-        assert!(
-            doc["name"]
-                .as_str()
-                .unwrap()
-                .starts_with("DocumentPDFmessages_")
-        );
+        assert!(doc["name"].as_str().unwrap().starts_with("DocumentPDFmessages_"));
 
         let err = converse_body(
             &dep(),
-            &req(
-                json!({"model": "x", "messages": [{"role": "user", "content": [
-                    {"type": "image_url", "image_url": {"url": "https://example.com/cat.png"}}
-                ]}]}),
-            ),
+            &req(json!({"model": "x", "messages": [{"role": "user", "content": [
+                {"type": "image_url", "image_url": {"url": "https://example.com/cat.png"}}
+            ]}]})),
         )
         .unwrap_err();
         assert_eq!(err.kind(), crate::ErrorKind::BadRequest);
         assert!(
             converse_body(
                 &dep(),
-                &req(
-                    json!({"model": "x", "messages": [{"role": "user", "content": [
-                        {"type": "input_audio", "input_audio": {"data": "AAAA", "format": "wav"}}
-                    ]}]})
-                )
+                &req(json!({"model": "x", "messages": [{"role": "user", "content": [
+                    {"type": "input_audio", "input_audio": {"data": "AAAA", "format": "wav"}}
+                ]}]}))
             )
             .is_err()
         );
         assert!(
             converse_body(
                 &dep(),
-                &req(
-                    json!({"model": "x", "messages": [{"role": "user", "content": [
-                        {"type": "image_url", "image_url": {"url": "data:image/tiff;base64,AAAA"}}
-                    ]}]})
-                )
+                &req(json!({"model": "x", "messages": [{"role": "user", "content": [
+                    {"type": "image_url", "image_url": {"url": "data:image/tiff;base64,AAAA"}}
+                ]}]}))
             )
             .is_err()
         );
@@ -1884,10 +1484,7 @@ mod tests {
                 "toolChoice": {"tool": {"name": "get_weather"}}
             })
         );
-        assert_eq!(
-            b["additionalModelRequestFields"],
-            json!({"tool_choice": {"disable_parallel_tool_use": true}})
-        );
+        assert_eq!(b["additionalModelRequestFields"], json!({"tool_choice": {"disable_parallel_tool_use": true}}));
         let id2 = sanitize_tool_use_id("call 2!");
         assert!(id2.starts_with("call_2__") && id2.len() <= 64);
         assert_eq!(
@@ -1907,49 +1504,30 @@ mod tests {
             ]})
         );
 
-        for (choice, expected) in [
-            (json!("auto"), json!({"auto": {}})),
-            (json!("required"), json!({"any": {}})),
-        ] {
-            let b = body(
-                json!({"model": "x", "messages": [{"role": "user", "content": "hi"}],
-                "tools": [{"type": "function", "function": {"name": "f"}}], "tool_choice": choice}),
-            );
+        for (choice, expected) in [(json!("auto"), json!({"auto": {}})), (json!("required"), json!({"any": {}}))] {
+            let b = body(json!({"model": "x", "messages": [{"role": "user", "content": "hi"}],
+                "tools": [{"type": "function", "function": {"name": "f"}}], "tool_choice": choice}));
             assert_eq!(b["toolConfig"]["toolChoice"], expected);
         }
         let err = converse_body(
             &dep(),
-            &req(
-                json!({"model": "x", "messages": [{"role": "user", "content": "hi"}],
-            "tools": [{"type": "function", "function": {"name": "f"}}], "tool_choice": "none"}),
-            ),
+            &req(json!({"model": "x", "messages": [{"role": "user", "content": "hi"}],
+            "tools": [{"type": "function", "function": {"name": "f"}}], "tool_choice": "none"})),
         )
         .unwrap_err();
         assert_eq!(err.kind(), crate::ErrorKind::BadRequest);
         assert_eq!(valid_tool_name("1st tool"), "a1st_tool");
         assert_eq!(sanitize_tool_use_id(&"x".repeat(80)).len(), 64);
-        assert_eq!(
-            sanitize_tool_use_id("tooluse_abc-1.2:3"),
-            "tooluse_abc-1.2:3"
-        );
+        assert_eq!(sanitize_tool_use_id("tooluse_abc-1.2:3"), "tooluse_abc-1.2:3");
     }
 
     #[test]
     fn thinking_reasoning_and_json_mode() {
-        let b = body(
-            json!({"model": "x", "messages": [{"role": "user", "content": "hi"}],
-            "reasoning_effort": "low", "tools": [{"type": "function", "function": {"name": "f"}}], "tool_choice": "required"}),
-        );
-        assert_eq!(
-            b["additionalModelRequestFields"]["thinking"],
-            json!({"type": "enabled", "budget_tokens": 1024})
-        );
+        let b = body(json!({"model": "x", "messages": [{"role": "user", "content": "hi"}],
+            "reasoning_effort": "low", "tools": [{"type": "function", "function": {"name": "f"}}], "tool_choice": "required"}));
+        assert_eq!(b["additionalModelRequestFields"]["thinking"], json!({"type": "enabled", "budget_tokens": 1024}));
         assert_eq!(b["inferenceConfig"]["maxTokens"], 1024 + DEFAULT_MAX_TOKENS);
-        assert_eq!(
-            b["toolConfig"]["toolChoice"],
-            json!({"auto": {}}),
-            "forced tool use dropped under thinking"
-        );
+        assert_eq!(b["toolConfig"]["toolChoice"], json!({"auto": {}}), "forced tool use dropped under thinking");
 
         // Replayed thinking blocks become reasoningContent first.
         let b = body(json!({"model": "x", "messages": [
@@ -1969,34 +1547,26 @@ mod tests {
             ])
         );
 
-        let b = body(
-            json!({"model": "x", "messages": [{"role": "user", "content": "hi"}],
-            "response_format": {"type": "json_schema", "json_schema": {"name": "r", "schema": {"type": "object", "properties": {"a": {"type": "integer"}}}}}}),
-        );
-        assert_eq!(
-            b["toolConfig"]["toolChoice"],
-            json!({"tool": {"name": JSON_TOOL_NAME}})
-        );
-        assert_eq!(
-            b["toolConfig"]["tools"][0]["toolSpec"]["inputSchema"]["json"]["properties"]["a"]["type"],
-            "integer"
-        );
+        let b = body(json!({"model": "x", "messages": [{"role": "user", "content": "hi"}],
+            "response_format": {"type": "json_schema", "json_schema": {"name": "r", "schema": {"type": "object", "properties": {"a": {"type": "integer"}}}}}}));
+        assert_eq!(b["toolConfig"]["toolChoice"], json!({"tool": {"name": JSON_TOOL_NAME}}));
+        assert_eq!(b["toolConfig"]["tools"][0]["toolSpec"]["inputSchema"]["json"]["properties"]["a"]["type"], "integer");
 
         // Non-Anthropic models get reasoning_effort passed through.
-        let oss =
-            parse(json!({"model": "bedrock/openai.gpt-oss-120b-1:0", "api_key": "k"})).unwrap();
-        let b = converse_body(&oss, &req(json!({"model": "x", "messages": [{"role": "user", "content": "hi"}], "reasoning_effort": "high"}))).unwrap();
-        assert_eq!(
-            b["additionalModelRequestFields"],
-            json!({"reasoning_effort": "high"})
-        );
+        let oss = parse(json!({"model": "bedrock/openai.gpt-oss-120b-1:0", "api_key": "k"})).unwrap();
+        let b =
+            converse_body(&oss, &req(json!({"model": "x", "messages": [{"role": "user", "content": "hi"}], "reasoning_effort": "high"}))).unwrap();
+        assert_eq!(b["additionalModelRequestFields"], json!({"reasoning_effort": "high"}));
 
         // Passthrough fields and extra_body.
         let mut d = dep();
-        d.extra_body
-            .insert("performanceConfig".into(), json!({"latency": "optimized"}));
-        let b = converse_body(&d, &req(json!({"model": "x", "messages": [{"role": "user", "content": "hi"}],
-            "guardrailConfig": {"guardrailIdentifier": "g", "guardrailVersion": "1"}, "service_tier": "priority"}))).unwrap();
+        d.extra_body.insert("performanceConfig".into(), json!({"latency": "optimized"}));
+        let b = converse_body(
+            &d,
+            &req(json!({"model": "x", "messages": [{"role": "user", "content": "hi"}],
+            "guardrailConfig": {"guardrailIdentifier": "g", "guardrailVersion": "1"}, "service_tier": "priority"})),
+        )
+        .unwrap();
         assert_eq!(b["guardrailConfig"]["guardrailIdentifier"], "g");
         assert_eq!(b["performanceConfig"], json!({"latency": "optimized"}));
         assert_eq!(b["serviceTier"], json!({"type": "priority"}));
@@ -2004,43 +1574,34 @@ mod tests {
 
     #[test]
     fn parses_converse_responses() {
-        let r = req(
-            json!({"model": "x", "messages": [], "tools": [{"type": "function", "function": {"name": "get.weather"}}]}),
-        );
-        let resp = parse_chat(&dep(), &r, &json!({
-            "output": {"message": {"role": "assistant", "content": [
-                {"reasoningContent": {"reasoningText": {"text": "thinking...", "signature": "s1"}}},
-                {"text": "Let me check."},
-                {"toolUse": {"toolUseId": "tooluse_1", "name": "get_weather", "input": {"city": "Paris"}}}
-            ]}},
-            "stopReason": "tool_use",
-            "usage": {"inputTokens": 10, "outputTokens": 5, "totalTokens": 27, "cacheReadInputTokens": 8, "cacheWriteInputTokens": 4},
-            "metrics": {"latencyMs": 100}
-        }).to_string()).unwrap();
+        let r = req(json!({"model": "x", "messages": [], "tools": [{"type": "function", "function": {"name": "get.weather"}}]}));
+        let resp = parse_chat(
+            &dep(),
+            &r,
+            &json!({
+                "output": {"message": {"role": "assistant", "content": [
+                    {"reasoningContent": {"reasoningText": {"text": "thinking...", "signature": "s1"}}},
+                    {"text": "Let me check."},
+                    {"toolUse": {"toolUseId": "tooluse_1", "name": "get_weather", "input": {"city": "Paris"}}}
+                ]}},
+                "stopReason": "tool_use",
+                "usage": {"inputTokens": 10, "outputTokens": 5, "totalTokens": 27, "cacheReadInputTokens": 8, "cacheWriteInputTokens": 4},
+                "metrics": {"latencyMs": 100}
+            })
+            .to_string(),
+        )
+        .unwrap();
         let c = &resp.choices[0];
         assert_eq!(c.finish_reason.as_deref(), Some("tool_calls"));
         assert_eq!(c.message.text(), "Let me check.");
         assert_eq!(c.message.reasoning_content.as_deref(), Some("thinking..."));
         assert_eq!(c.message.extra["thinking_blocks"][0]["signature"], "s1");
         let call = &c.message.tool_calls.as_ref().unwrap()[0];
-        assert_eq!(
-            (call.id.as_str(), call.function.name.as_str()),
-            ("tooluse_1", "get.weather"),
-            "name mapped back"
-        );
-        assert_eq!(
-            serde_json::from_str::<Value>(&call.function.arguments).unwrap(),
-            json!({"city": "Paris"})
-        );
+        assert_eq!((call.id.as_str(), call.function.name.as_str()), ("tooluse_1", "get.weather"), "name mapped back");
+        assert_eq!(serde_json::from_str::<Value>(&call.function.arguments).unwrap(), json!({"city": "Paris"}));
         let u = resp.usage.unwrap();
-        assert_eq!(
-            (u.prompt_tokens, u.completion_tokens, u.total_tokens),
-            (22, 5, 27)
-        );
-        assert_eq!(
-            (u.cache_read_input_tokens, u.cache_creation_input_tokens),
-            (Some(8), Some(4))
-        );
+        assert_eq!((u.prompt_tokens, u.completion_tokens, u.total_tokens), (22, 5, 27));
+        assert_eq!((u.cache_read_input_tokens, u.cache_creation_input_tokens), (Some(8), Some(4)));
         assert_eq!(resp.model, "anthropic.claude-3-5-sonnet-20241022-v2:0");
 
         for (stop, finish) in [
@@ -2050,30 +1611,35 @@ mod tests {
             ("guardrail_intervened", "content_filter"),
             ("content_filtered", "content_filter"),
         ] {
-            let resp = parse_chat(&dep(), &r, &json!({"output": {"message": {"content": [{"text": "x"}]}}, "stopReason": stop, "usage": {"inputTokens": 1, "outputTokens": 1}}).to_string()).unwrap();
-            assert_eq!(
-                resp.choices[0].finish_reason.as_deref(),
-                Some(finish),
-                "{stop}"
-            );
+            let resp = parse_chat(
+                &dep(),
+                &r,
+                &json!({"output": {"message": {"content": [{"text": "x"}]}}, "stopReason": stop, "usage": {"inputTokens": 1, "outputTokens": 1}})
+                    .to_string(),
+            )
+            .unwrap();
+            assert_eq!(resp.choices[0].finish_reason.as_deref(), Some(finish), "{stop}");
         }
 
         // JSON mode: the tool input is the content.
         let jr = req(
             json!({"model": "x", "messages": [], "response_format": {"type": "json_schema", "json_schema": {"name": "r", "schema": {"type": "object"}}}}),
         );
-        let resp = parse_chat(&dep(), &jr, &json!({
-            "output": {"message": {"content": [{"toolUse": {"toolUseId": "t", "name": JSON_TOOL_NAME, "input": {"a": 1}}}]}},
-            "stopReason": "tool_use", "usage": {"inputTokens": 1, "outputTokens": 1}
-        }).to_string()).unwrap();
+        let resp = parse_chat(
+            &dep(),
+            &jr,
+            &json!({
+                "output": {"message": {"content": [{"toolUse": {"toolUseId": "t", "name": JSON_TOOL_NAME, "input": {"a": 1}}}]}},
+                "stopReason": "tool_use", "usage": {"inputTokens": 1, "outputTokens": 1}
+            })
+            .to_string(),
+        )
+        .unwrap();
         assert_eq!(resp.choices[0].message.text(), "{\"a\":1}");
         assert_eq!(resp.choices[0].finish_reason.as_deref(), Some("stop"));
         assert!(resp.choices[0].message.tool_calls.is_none());
 
-        assert_eq!(
-            parse_chat(&dep(), &r, "{}").unwrap_err().kind(),
-            crate::ErrorKind::InvalidResponse
-        );
+        assert_eq!(parse_chat(&dep(), &r, "{}").unwrap_err().kind(), crate::ErrorKind::InvalidResponse);
     }
 
     fn ev(event: &str, data: Value) -> (String, String) {
@@ -2081,71 +1647,47 @@ mod tests {
     }
 
     fn run(r: &ChatRequest, events: &[(String, String)]) -> Result<Vec<ChatChunk>, ProviderError> {
-        let evs: Vec<(&str, &str)> = events
-            .iter()
-            .map(|(a, b)| (a.as_str(), b.as_str()))
-            .collect();
+        let evs: Vec<(&str, &str)> = events.iter().map(|(a, b)| (a.as_str(), b.as_str())).collect();
         translate_all(BedrockStream::new(&dep(), r), &evs)
     }
 
     #[test]
     fn stream_translation() {
-        let r = req(
-            json!({"model": "x", "messages": [], "tools": [{"type": "function", "function": {"name": "get.weather"}}]}),
-        );
-        let chunks = run(&r, &[
-            ev("messageStart", json!({"role": "assistant"})),
-            ev("contentBlockDelta", json!({"contentBlockIndex": 0, "delta": {"reasoningContent": {"text": "hmm"}}})),
-            ev("contentBlockDelta", json!({"contentBlockIndex": 0, "delta": {"reasoningContent": {"signature": "sig"}}})),
-            ev("contentBlockStop", json!({"contentBlockIndex": 0})),
-            ev("contentBlockDelta", json!({"contentBlockIndex": 1, "delta": {"text": "Hel"}, "p": "abc"})),
-            ev("contentBlockDelta", json!({"contentBlockIndex": 1, "delta": {"text": "lo"}})),
-            ev("contentBlockStop", json!({"contentBlockIndex": 1})),
-            ev("contentBlockStart", json!({"contentBlockIndex": 2, "start": {"toolUse": {"toolUseId": "tu_1", "name": "get_weather"}}})),
-            ev("contentBlockDelta", json!({"contentBlockIndex": 2, "delta": {"toolUse": {"input": "{\"city\":"}}})),
-            ev("contentBlockDelta", json!({"contentBlockIndex": 2, "delta": {"toolUse": {"input": "\"Paris\"}"}}})),
-            ev("contentBlockStop", json!({"contentBlockIndex": 2})),
-            ev("contentBlockStart", json!({"contentBlockIndex": 3, "start": {"toolUse": {"toolUseId": "tu_2", "name": "get_weather"}}})),
-            ev("contentBlockStop", json!({"contentBlockIndex": 3})),
-            ev("messageStop", json!({"stopReason": "tool_use"})),
-            ev("metadata", json!({"usage": {"inputTokens": 7, "outputTokens": 3, "totalTokens": 10}, "metrics": {"latencyMs": 5}})),
-            ev("ignored-after-done", json!({})),
-        ]).unwrap();
+        let r = req(json!({"model": "x", "messages": [], "tools": [{"type": "function", "function": {"name": "get.weather"}}]}));
+        let chunks = run(
+            &r,
+            &[
+                ev("messageStart", json!({"role": "assistant"})),
+                ev("contentBlockDelta", json!({"contentBlockIndex": 0, "delta": {"reasoningContent": {"text": "hmm"}}})),
+                ev("contentBlockDelta", json!({"contentBlockIndex": 0, "delta": {"reasoningContent": {"signature": "sig"}}})),
+                ev("contentBlockStop", json!({"contentBlockIndex": 0})),
+                ev("contentBlockDelta", json!({"contentBlockIndex": 1, "delta": {"text": "Hel"}, "p": "abc"})),
+                ev("contentBlockDelta", json!({"contentBlockIndex": 1, "delta": {"text": "lo"}})),
+                ev("contentBlockStop", json!({"contentBlockIndex": 1})),
+                ev("contentBlockStart", json!({"contentBlockIndex": 2, "start": {"toolUse": {"toolUseId": "tu_1", "name": "get_weather"}}})),
+                ev("contentBlockDelta", json!({"contentBlockIndex": 2, "delta": {"toolUse": {"input": "{\"city\":"}}})),
+                ev("contentBlockDelta", json!({"contentBlockIndex": 2, "delta": {"toolUse": {"input": "\"Paris\"}"}}})),
+                ev("contentBlockStop", json!({"contentBlockIndex": 2})),
+                ev("contentBlockStart", json!({"contentBlockIndex": 3, "start": {"toolUse": {"toolUseId": "tu_2", "name": "get_weather"}}})),
+                ev("contentBlockStop", json!({"contentBlockIndex": 3})),
+                ev("messageStop", json!({"stopReason": "tool_use"})),
+                ev("metadata", json!({"usage": {"inputTokens": 7, "outputTokens": 3, "totalTokens": 10}, "metrics": {"latencyMs": 5}})),
+                ev("ignored-after-done", json!({})),
+            ],
+        )
+        .unwrap();
         assert_eq!(chunks[0].choices[0].delta.role, Some(Role::Assistant));
-        assert_eq!(
-            chunks[1].choices[0].delta.reasoning_content.as_deref(),
-            Some("hmm")
-        );
-        let text: String = chunks
-            .iter()
-            .filter_map(|c| c.choices.first()?.delta.content.clone())
-            .collect();
+        assert_eq!(chunks[1].choices[0].delta.reasoning_content.as_deref(), Some("hmm"));
+        let text: String = chunks.iter().filter_map(|c| c.choices.first()?.delta.content.clone()).collect();
         assert_eq!(text, "Hello");
-        let calls: Vec<&ToolCallDelta> = chunks
-            .iter()
-            .filter_map(|c| c.choices.first()?.delta.tool_calls.as_ref())
-            .flatten()
-            .collect();
+        let calls: Vec<&ToolCallDelta> = chunks.iter().filter_map(|c| c.choices.first()?.delta.tool_calls.as_ref()).flatten().collect();
         assert_eq!(calls[0].id.as_deref(), Some("tu_1"));
-        assert_eq!(
-            calls[0].function.as_ref().unwrap().name.as_deref(),
-            Some("get.weather")
-        );
-        let args0: String = calls
-            .iter()
-            .filter(|c| c.index == 0)
-            .filter_map(|c| c.function.as_ref()?.arguments.clone())
-            .collect();
+        assert_eq!(calls[0].function.as_ref().unwrap().name.as_deref(), Some("get.weather"));
+        let args0: String = calls.iter().filter(|c| c.index == 0).filter_map(|c| c.function.as_ref()?.arguments.clone()).collect();
         assert_eq!(args0, "{\"city\":\"Paris\"}");
-        let args1: String = calls
-            .iter()
-            .filter(|c| c.index == 1)
-            .filter_map(|c| c.function.as_ref()?.arguments.clone())
-            .collect();
+        let args1: String = calls.iter().filter(|c| c.index == 1).filter_map(|c| c.function.as_ref()?.arguments.clone()).collect();
         assert_eq!(args1, "{}", "argument-less call gets {{}}");
-        let finish = chunks
-            .iter()
-            .find_map(|c| c.choices.first()?.finish_reason.clone());
+        let finish = chunks.iter().find_map(|c| c.choices.first()?.finish_reason.clone());
         assert_eq!(finish.as_deref(), Some("tool_calls"));
         let last = chunks.last().unwrap();
         assert!(last.is_usage_only());
@@ -2158,27 +1700,21 @@ mod tests {
         let jr = req(
             json!({"model": "x", "messages": [], "response_format": {"type": "json_schema", "json_schema": {"name": "r", "schema": {"type": "object"}}}}),
         );
-        let chunks = run(&jr, &[
-            ev("messageStart", json!({"role": "assistant"})),
-            ev("contentBlockStart", json!({"contentBlockIndex": 0, "start": {"toolUse": {"toolUseId": "t", "name": JSON_TOOL_NAME}}})),
-            ev("contentBlockDelta", json!({"contentBlockIndex": 0, "delta": {"toolUse": {"input": "{\"a\":1}"}}})),
-            ev("contentBlockStop", json!({"contentBlockIndex": 0})),
-            ev("messageStop", json!({"stopReason": "tool_use"})),
-        ]).unwrap();
-        let text: String = chunks
-            .iter()
-            .filter_map(|c| c.choices.first()?.delta.content.clone())
-            .collect();
+        let chunks = run(
+            &jr,
+            &[
+                ev("messageStart", json!({"role": "assistant"})),
+                ev("contentBlockStart", json!({"contentBlockIndex": 0, "start": {"toolUse": {"toolUseId": "t", "name": JSON_TOOL_NAME}}})),
+                ev("contentBlockDelta", json!({"contentBlockIndex": 0, "delta": {"toolUse": {"input": "{\"a\":1}"}}})),
+                ev("contentBlockStop", json!({"contentBlockIndex": 0})),
+                ev("messageStop", json!({"stopReason": "tool_use"})),
+            ],
+        )
+        .unwrap();
+        let text: String = chunks.iter().filter_map(|c| c.choices.first()?.delta.content.clone()).collect();
         assert_eq!(text, "{\"a\":1}");
-        assert!(chunks.iter().all(|c| {
-            c.choices
-                .first()
-                .is_none_or(|ch| ch.delta.tool_calls.is_none())
-        }));
-        assert_eq!(
-            chunks.last().unwrap().choices[0].finish_reason.as_deref(),
-            Some("stop")
-        );
+        assert!(chunks.iter().all(|c| { c.choices.first().is_none_or(|ch| ch.delta.tool_calls.is_none()) }));
+        assert_eq!(chunks.last().unwrap().choices[0].finish_reason.as_deref(), Some("stop"));
 
         let err = run(&jr, &[ev("messageStart", json!({"role": "assistant"}))]).unwrap_err();
         assert_eq!(err.kind(), crate::ErrorKind::Connection);
@@ -2187,78 +1723,43 @@ mod tests {
     #[test]
     fn embeddings_titan_and_cohere() {
         let titan = parse(json!({"model": "bedrock/amazon.titan-embed-text-v2:0", "api_key": "k", "aws_region_name": "us-east-1"})).unwrap();
-        let er: EmbeddingRequest = serde_json::from_value(
-            json!({"model": "e", "input": ["a", "b"], "dimensions": 256, "normalize": true}),
-        )
-        .unwrap();
+        let er: EmbeddingRequest = serde_json::from_value(json!({"model": "e", "input": ["a", "b"], "dimensions": 256, "normalize": true})).unwrap();
         let reqs = embeddings_requests(&titan, &er).unwrap();
         assert_eq!(reqs.len(), 2);
-        assert_eq!(
-            reqs[0].url,
-            "https://bedrock-runtime.us-east-1.amazonaws.com/model/amazon.titan-embed-text-v2%3A0/invoke"
-        );
-        assert_eq!(
-            reqs[1].body,
-            json!({"inputText": "b", "dimensions": 256, "normalize": true})
-        );
-        let resp = parse_embeddings(&titan, &er, &[
-            (json!({"embedding": [0.1, 0.2], "inputTextTokenCount": 3}).to_string(), None),
-            (json!({"embeddingsByType": {"float": [0.3]}, "embedding": [9.0], "inputTextTokenCount": 2}).to_string(), None),
-        ]).unwrap();
+        assert_eq!(reqs[0].url, "https://bedrock-runtime.us-east-1.amazonaws.com/model/amazon.titan-embed-text-v2%3A0/invoke");
+        assert_eq!(reqs[1].body, json!({"inputText": "b", "dimensions": 256, "normalize": true}));
+        let resp = parse_embeddings(
+            &titan,
+            &er,
+            &[
+                (json!({"embedding": [0.1, 0.2], "inputTextTokenCount": 3}).to_string(), None),
+                (json!({"embeddingsByType": {"float": [0.3]}, "embedding": [9.0], "inputTextTokenCount": 2}).to_string(), None),
+            ],
+        )
+        .unwrap();
         assert_eq!(resp.data.len(), 2);
         assert_eq!(resp.data[1].embedding, EmbeddingVector::Float(vec![0.3]));
         assert_eq!(resp.data[1].index, 1);
         assert_eq!(resp.usage.prompt_tokens, 5);
 
-        let v1 =
-            parse(json!({"model": "bedrock/amazon.titan-embed-text-v1", "api_key": "k"})).unwrap();
-        assert_eq!(
-            embeddings_requests(&v1, &er).unwrap()[0].body,
-            json!({"inputText": "a"})
-        );
+        let v1 = parse(json!({"model": "bedrock/amazon.titan-embed-text-v1", "api_key": "k"})).unwrap();
+        assert_eq!(embeddings_requests(&v1, &er).unwrap()[0].body, json!({"inputText": "a"}));
 
-        let cohere =
-            parse(json!({"model": "bedrock/cohere.embed-english-v3", "api_key": "k"})).unwrap();
-        let er: EmbeddingRequest = serde_json::from_value(
-            json!({"model": "e", "input": ["a", "b"], "input_type": "search_query"}),
-        )
-        .unwrap();
+        let cohere = parse(json!({"model": "bedrock/cohere.embed-english-v3", "api_key": "k"})).unwrap();
+        let er: EmbeddingRequest = serde_json::from_value(json!({"model": "e", "input": ["a", "b"], "input_type": "search_query"})).unwrap();
         let reqs = embeddings_requests(&cohere, &er).unwrap();
         assert_eq!(reqs.len(), 1);
-        assert_eq!(
-            reqs[0].body,
-            json!({"texts": ["a", "b"], "input_type": "search_query"})
-        );
-        let resp = parse_embeddings(
-            &cohere,
-            &er,
-            &[(
-                json!({"embeddings": [[1.0], [2.0]], "id": "x"}).to_string(),
-                Some(4),
-            )],
-        )
-        .unwrap();
+        assert_eq!(reqs[0].body, json!({"texts": ["a", "b"], "input_type": "search_query"}));
+        let resp = parse_embeddings(&cohere, &er, &[(json!({"embeddings": [[1.0], [2.0]], "id": "x"}).to_string(), Some(4))]).unwrap();
         assert_eq!(resp.data.len(), 2);
         assert_eq!(resp.usage.prompt_tokens, 4);
-        let resp = parse_embeddings(
-            &cohere,
-            &er,
-            &[(
-                json!({"embeddings": {"float": [[1.0], [2.0]]}}).to_string(),
-                None,
-            )],
-        )
-        .unwrap();
+        let resp = parse_embeddings(&cohere, &er, &[(json!({"embeddings": {"float": [[1.0], [2.0]]}}).to_string(), None)]).unwrap();
         assert_eq!(resp.data[1].embedding, EmbeddingVector::Float(vec![2.0]));
         assert!(resp.usage.prompt_tokens > 0, "estimated");
 
         let nova = parse(json!({"model": "bedrock/amazon.nova-pro-v1:0", "api_key": "k"})).unwrap();
-        assert_eq!(
-            embeddings_requests(&nova, &er).unwrap_err().kind(),
-            crate::ErrorKind::BadRequest
-        );
-        let tokens: EmbeddingRequest =
-            serde_json::from_value(json!({"model": "e", "input": [1, 2]})).unwrap();
+        assert_eq!(embeddings_requests(&nova, &er).unwrap_err().kind(), crate::ErrorKind::BadRequest);
+        let tokens: EmbeddingRequest = serde_json::from_value(json!({"model": "e", "input": [1, 2]})).unwrap();
         assert!(embeddings_requests(&titan, &tokens).is_err());
     }
 
@@ -2275,28 +1776,16 @@ mod tests {
             "bedrock/arn:aws:bedrock:us-east-1:1:inference-profile/us.anthropic.claude-3-5-sonnet-20241022-v2:0",
         ] {
             let d = parse(json!({"model": model, "api_key": "k"})).unwrap();
-            let p = d
-                .pricing()
-                .unwrap_or_else(|| panic!("no price for {model}"));
+            let p = d.pricing().unwrap_or_else(|| panic!("no price for {model}"));
             assert!(p.input_cost_per_token > 0.0, "{model}");
         }
         // Regional price entries win.
-        let d = parse(
-            json!({"model": "bedrock/ap-northeast-1/anthropic.claude-instant-v1", "api_key": "k"}),
-        )
-        .unwrap();
+        let d = parse(json!({"model": "bedrock/ap-northeast-1/anthropic.claude-instant-v1", "api_key": "k"})).unwrap();
         let regional = d.pricing().unwrap();
-        let global = parse(json!({"model": "bedrock/anthropic.claude-instant-v1", "api_key": "k"}))
-            .unwrap()
-            .pricing()
-            .unwrap();
+        let global = parse(json!({"model": "bedrock/anthropic.claude-instant-v1", "api_key": "k"})).unwrap().pricing().unwrap();
         assert!(regional.input_cost_per_token > 0.0 && global.input_cost_per_token > 0.0);
         // Bare Bedrock ids infer the provider from the price table.
-        let d = Deployment::from_litellm_params_with_env(
-            &json!({"model": "anthropic.claude-3-5-sonnet-20241022-v2:0"}),
-            env,
-        )
-        .unwrap();
+        let d = Deployment::from_litellm_params_with_env(&json!({"model": "anthropic.claude-3-5-sonnet-20241022-v2:0"}), env).unwrap();
         assert_eq!(d.provider, crate::Provider::Bedrock);
     }
 }

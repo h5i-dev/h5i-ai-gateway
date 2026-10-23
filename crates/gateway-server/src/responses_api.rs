@@ -56,11 +56,7 @@ pub struct Owner {
 
 impl Owner {
     pub fn of(p: &Principal) -> Owner {
-        Owner {
-            org: p.org,
-            key: p.key,
-            master: p.master,
-        }
+        Owner { org: p.org, key: p.key, master: p.master }
     }
 }
 
@@ -89,10 +85,7 @@ pub struct ResponseStore {
 
 impl ResponseStore {
     pub fn new(capacity: usize) -> Self {
-        ResponseStore {
-            capacity: capacity.max(1),
-            inner: Mutex::default(),
-        }
+        ResponseStore { capacity: capacity.max(1), inner: Mutex::default() }
     }
 
     fn lock(&self) -> std::sync::MutexGuard<'_, Lru> {
@@ -153,10 +146,7 @@ impl ResponseStore {
 
 /// How many responses the store keeps: `H5I_RESPONSES_STORE_SIZE`, else 1000.
 pub fn store_capacity() -> usize {
-    std::env::var("H5I_RESPONSES_STORE_SIZE")
-        .ok()
-        .and_then(|v| v.parse().ok())
-        .unwrap_or(1000)
+    std::env::var("H5I_RESPONSES_STORE_SIZE").ok().and_then(|v| v.parse().ok()).unwrap_or(1000)
 }
 
 /// The process's response store.
@@ -169,33 +159,16 @@ pub fn store() -> &'static ResponseStore {
 // Handlers
 
 fn error(status: StatusCode, message: &str, param: Option<&str>, code: Option<&str>) -> Response {
-    let kind = if status == StatusCode::NOT_FOUND {
-        "not_found_error"
-    } else {
-        "invalid_request_error"
-    };
-    (
-        status,
-        Json(json!({"error": {"message": message, "type": kind, "param": param, "code": code}})),
-    )
-        .into_response()
+    let kind = if status == StatusCode::NOT_FOUND { "not_found_error" } else { "invalid_request_error" };
+    (status, Json(json!({"error": {"message": message, "type": kind, "param": param, "code": code}}))).into_response()
 }
 
 fn not_found(id: &str) -> Response {
-    error(
-        StatusCode::NOT_FOUND,
-        &format!("Response with id '{id}' not found."),
-        None,
-        None,
-    )
+    error(StatusCode::NOT_FOUND, &format!("Response with id '{id}' not found."), None, None)
 }
 
 /// `POST /v1/responses`.
-pub async fn create(
-    State(st): State<AppState>,
-    actor: Actor<Gateway>,
-    Json(body): Json<Value>,
-) -> Response {
+pub async fn create(State(st): State<AppState>, actor: Actor<Gateway>, Json(body): Json<Value>) -> Response {
     let req: ResponsesRequest = match parse(body) {
         Ok(r) => r,
         Err(f) => return f.into_response(),
@@ -216,44 +189,23 @@ pub async fn create(
             }
         },
     };
-    let Translated {
-        mut chat,
-        conversation,
-    } = match rs::to_chat_request(&req, &history) {
+    let Translated { mut chat, conversation } = match rs::to_chat_request(&req, &history) {
         Ok(t) => t,
         Err(e) => {
-            return error(
-                StatusCode::BAD_REQUEST,
-                &e.message,
-                e.param.as_deref(),
-                None,
-            );
+            return error(StatusCode::BAD_REQUEST, &e.message, e.param.as_deref(), None);
         }
     };
     adapt_to_target(&mut chat, crate::anthropic_api::target(&st, &req.model));
     let estimate = estimate_prompt_tokens(&chat);
-    let rid = ResponseId {
-        id: rs::new_response_id(),
-        created_at: crate::auth::unix_now(),
-    };
+    let rid = ResponseId { id: rs::new_response_id(), created_at: crate::auth::unix_now() };
     match run_chat(&st, principal, chat).await {
         Ok((ChatOutcome::Complete(resp), info)) => {
             let obj = rs::from_chat_response(&req, &rid, &resp);
             if req.stores() {
-                let thinking = resp
-                    .choices
-                    .first()
-                    .and_then(|c| c.message.extra.get("thinking_blocks"));
+                let thinking = resp.choices.first().and_then(|c| c.message.extra.get("thinking_blocks"));
                 let mut conversation = conversation;
                 conversation.extend(rs::output_messages(&obj, thinking));
-                store().put(
-                    rid.id.clone(),
-                    Stored {
-                        owner,
-                        response: obj.clone(),
-                        conversation,
-                    },
-                );
+                store().put(rid.id.clone(), Stored { owner, response: obj.clone(), conversation });
             }
             (info.headers(), Json(obj)).into_response()
         }
@@ -261,47 +213,28 @@ pub async fn create(
             let stores = req.stores();
             let encoder = rs::ResponsesStream::new(req, rid, estimate);
             let state = (s, encoder, Some(conversation), false);
-            let body = futures::stream::unfold(
-                state,
-                move |(mut s, mut enc, mut conversation, done)| async move {
-                    if done {
-                        return None;
+            let body = futures::stream::unfold(state, move |(mut s, mut enc, mut conversation, done)| async move {
+                if done {
+                    return None;
+                }
+                let (events, done) = match s.next().await {
+                    Some(Ok(chunk)) => (enc.on_chunk(&chunk), false),
+                    Some(Err(e)) => {
+                        let code = e.to_openai_body().error.kind.unwrap_or_else(|| "server_error".into());
+                        (enc.error(&code, e.message()), true)
                     }
-                    let (events, done) = match s.next().await {
-                        Some(Ok(chunk)) => (enc.on_chunk(&chunk), false),
-                        Some(Err(e)) => {
-                            let code = e
-                                .to_openai_body()
-                                .error
-                                .kind
-                                .unwrap_or_else(|| "server_error".into());
-                            (enc.error(&code, e.message()), true)
+                    None => {
+                        let events = enc.finish();
+                        if let (true, Some(r), Some(mut conv)) = (stores, enc.final_response(), conversation.take()) {
+                            conv.extend(rs::output_messages(r, None));
+                            let id = r["id"].as_str().unwrap_or_default().to_string();
+                            store().put(id, Stored { owner, response: r.clone(), conversation: conv });
                         }
-                        None => {
-                            let events = enc.finish();
-                            if let (true, Some(r), Some(mut conv)) =
-                                (stores, enc.final_response(), conversation.take())
-                            {
-                                conv.extend(rs::output_messages(r, None));
-                                let id = r["id"].as_str().unwrap_or_default().to_string();
-                                store().put(
-                                    id,
-                                    Stored {
-                                        owner,
-                                        response: r.clone(),
-                                        conversation: conv,
-                                    },
-                                );
-                            }
-                            (events, true)
-                        }
-                    };
-                    Some((
-                        Bytes::from(rs::encode_events(&events)),
-                        (s, enc, conversation, done),
-                    ))
-                },
-            )
+                        (events, true)
+                    }
+                };
+                Some((Bytes::from(rs::encode_events(&events)), (s, enc, conversation, done)))
+            })
             .filter(|b| futures::future::ready(!b.is_empty()));
             sse_response(&info, body)
         }
@@ -331,23 +264,11 @@ mod tests {
     use super::*;
 
     fn stored(owner: Owner, n: u64) -> Stored {
-        Stored {
-            owner,
-            response: json!({"n": n}),
-            conversation: Vec::new(),
-        }
+        Stored { owner, response: json!({"n": n}), conversation: Vec::new() }
     }
 
-    const A: Owner = Owner {
-        org: 1,
-        key: 1,
-        master: false,
-    };
-    const B: Owner = Owner {
-        org: 1,
-        key: 2,
-        master: false,
-    };
+    const A: Owner = Owner { org: 1, key: 1, master: false };
+    const B: Owner = Owner { org: 1, key: 2, master: false };
 
     #[test]
     fn scoped_by_owner() {

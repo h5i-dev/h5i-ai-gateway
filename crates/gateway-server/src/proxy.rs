@@ -31,18 +31,18 @@
 // Failures are finished axum `Response`s, returned as they are.
 #![allow(clippy::result_large_err)]
 
+use crate::AppState;
 use crate::cache::{Cache, Controls};
 use crate::error::ApiError;
 use crate::guardrails::{self, APPLIED_HEADER, GuardRun, GuardrailError, Mode, Segment};
 use crate::kernel::Gateway;
 use crate::registry::Deployed;
 use crate::spend::usd;
-use crate::AppState;
+use axum::Json;
 use axum::body::Body;
 use axum::extract::{Path, State};
 use axum::http::{HeaderMap, HeaderValue, StatusCode, header};
 use axum::response::{IntoResponse, Response};
-use axum::Json;
 use bytes::Bytes;
 use futures::{Stream, StreamExt};
 use gateway_kernel::{CallStatus, Command, Error as Refusal, Principal, Reply};
@@ -319,7 +319,14 @@ pub struct Units {
 /// One non-streaming provider call with the full admission, retry, fallback
 /// and settlement path. `f` performs the call on the deployment the kernel
 /// chose and reports the units used.
-pub async fn call<T, F, Fut>(st: &AppState, actor: Principal, model: &str, prompt_units: u64, max_units: u64, mut f: F) -> Result<(T, CallInfo), Failure>
+pub async fn call<T, F, Fut>(
+    st: &AppState,
+    actor: Principal,
+    model: &str,
+    prompt_units: u64,
+    max_units: u64,
+    mut f: F,
+) -> Result<(T, CallInfo), Failure>
 where
     F: FnMut(&Deployed) -> Fut,
     Fut: Future<Output = Result<(T, Units), ProviderError>>,
@@ -433,9 +440,7 @@ pub async fn run_chat(st: &AppState, actor: Principal, mut req: ChatRequest) -> 
         let (outcome, info) = call_chat(st, actor, &req, prompt_tokens, max_tokens).await?;
         Ok::<_, Failure>((outcome, info, false))
     };
-    let during = async {
-        if guard.has(Mode::DuringCall) { guard.during_call(&request_segs).await } else { Ok(()) }
-    };
+    let during = async { if guard.has(Mode::DuringCall) { guard.during_call(&request_segs).await } else { Ok(()) } };
     let (result, during) = futures::join!(main, during);
     // A blocked call's stream, if any, is dropped here and settles.
     during?;
@@ -486,7 +491,13 @@ pub async fn run_chat(st: &AppState, actor: Principal, mut req: ChatRequest) -> 
 }
 
 /// The provider call with retries and fallbacks.
-async fn call_chat(st: &AppState, actor: Principal, req: &ChatRequest, prompt_tokens: u64, max_tokens: u64) -> Result<(ChatOutcome, CallInfo), Failure> {
+async fn call_chat(
+    st: &AppState,
+    actor: Principal,
+    req: &ChatRequest,
+    prompt_tokens: u64,
+    max_tokens: u64,
+) -> Result<(ChatOutcome, CallInfo), Failure> {
     let mut attempts = Attempts::new(st, actor, &req.model, prompt_tokens, max_tokens);
     loop {
         let a = attempts.next().await?;

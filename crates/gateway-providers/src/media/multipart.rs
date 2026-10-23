@@ -27,17 +27,13 @@ impl Multipart {
     }
 
     pub fn with_boundary(boundary: impl Into<String>) -> Self {
-        Self {
-            boundary: boundary.into(),
-            body: Vec::new(),
-        }
+        Self { boundary: boundary.into(), body: Vec::new() }
     }
 
     fn head(&mut self, disposition: &str, content_type: Option<&str>) {
         self.body.extend_from_slice(b"--");
         self.body.extend_from_slice(self.boundary.as_bytes());
-        self.body
-            .extend_from_slice(b"\r\nContent-Disposition: form-data; ");
+        self.body.extend_from_slice(b"\r\nContent-Disposition: form-data; ");
         self.body.extend_from_slice(disposition.as_bytes());
         self.body.extend_from_slice(b"\r\n");
         if let Some(ct) = content_type {
@@ -57,22 +53,9 @@ impl Multipart {
     }
 
     /// Add a file.
-    pub fn file(
-        &mut self,
-        name: &str,
-        filename: &str,
-        content_type: Option<&str>,
-        data: &[u8],
-    ) -> &mut Self {
-        let disposition = format!(
-            "name=\"{}\"; filename=\"{}\"",
-            quoted(name),
-            quoted(filename)
-        );
-        self.head(
-            &disposition,
-            Some(content_type.unwrap_or("application/octet-stream")),
-        );
+    pub fn file(&mut self, name: &str, filename: &str, content_type: Option<&str>, data: &[u8]) -> &mut Self {
+        let disposition = format!("name=\"{}\"; filename=\"{}\"", quoted(name), quoted(filename));
+        self.head(&disposition, Some(content_type.unwrap_or("application/octet-stream")));
         self.body.extend_from_slice(data);
         self.body.extend_from_slice(b"\r\n");
         self
@@ -83,10 +66,7 @@ impl Multipart {
         self.body.extend_from_slice(b"--");
         self.body.extend_from_slice(self.boundary.as_bytes());
         self.body.extend_from_slice(b"--\r\n");
-        (
-            format!("multipart/form-data; boundary={}", self.boundary),
-            self.body,
-        )
+        (format!("multipart/form-data; boundary={}", self.boundary), self.body)
     }
 }
 
@@ -97,9 +77,7 @@ mod tests {
     #[test]
     fn encodes_fields_and_files() {
         let mut m = Multipart::with_boundary("XYZ");
-        m.text("model", "whisper-1")
-            .file("file", "a\"b.wav", Some("audio/wav"), b"RIFF")
-            .text("language", "en");
+        m.text("model", "whisper-1").file("file", "a\"b.wav", Some("audio/wav"), b"RIFF").text("language", "en");
         let (ct, body) = m.finish();
         assert_eq!(ct, "multipart/form-data; boundary=XYZ");
         let expected = "--XYZ\r\nContent-Disposition: form-data; name=\"model\"\r\n\r\nwhisper-1\r\n\

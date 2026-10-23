@@ -76,12 +76,7 @@ pub(crate) fn amz_date(time: SystemTime) -> (String, String) {
     let (days, rem) = (secs.div_euclid(86_400), secs.rem_euclid(86_400));
     let (y, m, d) = civil_from_days(days);
     let date = format!("{y:04}{m:02}{d:02}");
-    let stamp = format!(
-        "{date}T{:02}{:02}{:02}Z",
-        rem / 3600,
-        (rem % 3600) / 60,
-        rem % 60
-    );
+    let stamp = format!("{date}T{:02}{:02}{:02}Z", rem / 3600, (rem % 3600) / 60, rem % 60);
     (stamp, date)
 }
 
@@ -104,10 +99,7 @@ fn civil_from_days(z: i64) -> (i64, u32, u32) {
 fn uri_encode(s: &str, keep_slash: bool) -> String {
     let mut out = String::with_capacity(s.len());
     for b in s.bytes() {
-        if b.is_ascii_alphanumeric()
-            || matches!(b, b'-' | b'_' | b'.' | b'~')
-            || (keep_slash && b == b'/')
-        {
+        if b.is_ascii_alphanumeric() || matches!(b, b'-' | b'_' | b'.' | b'~') || (keep_slash && b == b'/') {
             out.push(b as char);
         } else {
             out.push_str(&format!("%{b:02X}"));
@@ -144,18 +136,11 @@ fn canonical_query(query: Option<&str>) -> String {
         .filter(|p| !p.is_empty())
         .map(|p| {
             let (k, v) = p.split_once('=').unwrap_or((p, ""));
-            (
-                uri_encode(&percent_decode(k), false),
-                uri_encode(&percent_decode(v), false),
-            )
+            (uri_encode(&percent_decode(k), false), uri_encode(&percent_decode(v), false))
         })
         .collect();
     pairs.sort();
-    pairs
-        .iter()
-        .map(|(k, v)| format!("{k}={v}"))
-        .collect::<Vec<_>>()
-        .join("&")
+    pairs.iter().map(|(k, v)| format!("{k}={v}")).collect::<Vec<_>>().join("&")
 }
 
 /// Trim and collapse runs of spaces.
@@ -164,10 +149,7 @@ fn canonical_header_value(v: &str) -> String {
 }
 
 /// Sign a request. Errors only on an unparseable URL.
-pub(crate) fn sign(
-    req: SignableRequest<'_>,
-    params: SigningParams<'_>,
-) -> Result<Signature, String> {
+pub(crate) fn sign(req: SignableRequest<'_>, params: SigningParams<'_>) -> Result<Signature, String> {
     let url = reqwest::Url::parse(req.url).map_err(|e| format!("invalid URL: {e}"))?;
     let host = match (url.host_str(), url.port()) {
         (Some(h), Some(p)) => format!("{h}:{p}"),
@@ -201,11 +183,7 @@ pub(crate) fn sign(
         }
     }
     headers.sort_by(|a, b| a.0.cmp(&b.0));
-    let signed_headers = headers
-        .iter()
-        .map(|(n, _)| n.as_str())
-        .collect::<Vec<_>>()
-        .join(";");
+    let signed_headers = headers.iter().map(|(n, _)| n.as_str()).collect::<Vec<_>>().join(";");
     let canonical_headers: String = headers.iter().map(|(n, v)| format!("{n}:{v}\n")).collect();
 
     let path = match url.path() {
@@ -220,15 +198,9 @@ pub(crate) fn sign(
     );
 
     let scope = format!("{date}/{}/{}/aws4_request", params.region, params.service);
-    let string_to_sign = format!(
-        "{ALGORITHM}\n{stamp}\n{scope}\n{}",
-        sha256_hex(canonical_request.as_bytes())
-    );
+    let string_to_sign = format!("{ALGORITHM}\n{stamp}\n{scope}\n{}", sha256_hex(canonical_request.as_bytes()));
 
-    let k_date = hmac_sha256(
-        format!("AWS4{}", params.secret_access_key).as_bytes(),
-        date.as_bytes(),
-    );
+    let k_date = hmac_sha256(format!("AWS4{}", params.secret_access_key).as_bytes(), date.as_bytes());
     let k_region = hmac_sha256(k_date.as_ref(), params.region.as_bytes());
     let k_service = hmac_sha256(k_region.as_ref(), params.service.as_bytes());
     let k_signing = hmac_sha256(k_service.as_ref(), b"aws4_request");
@@ -236,17 +208,9 @@ pub(crate) fn sign(
 
     added.push((
         "authorization".into(),
-        format!(
-            "{ALGORITHM} Credential={}/{scope}, SignedHeaders={signed_headers}, Signature={signature}",
-            params.access_key_id
-        ),
+        format!("{ALGORITHM} Credential={}/{scope}, SignedHeaders={signed_headers}, Signature={signature}", params.access_key_id),
     ));
-    Ok(Signature {
-        canonical_request,
-        string_to_sign,
-        signature,
-        headers: added,
-    })
+    Ok(Signature { canonical_request, string_to_sign, signature, headers: added })
 }
 
 #[cfg(test)]
@@ -272,28 +236,16 @@ mod tests {
     }
 
     fn h(pairs: &[(&str, &str)]) -> Vec<(String, String)> {
-        pairs
-            .iter()
-            .map(|(a, b)| ((*a).to_owned(), (*b).to_owned()))
-            .collect()
+        pairs.iter().map(|(a, b)| ((*a).to_owned(), (*b).to_owned())).collect()
     }
 
     #[test]
     fn dates() {
-        assert_eq!(
-            amz_date(suite_time()),
-            ("20150830T123600Z".into(), "20150830".into())
-        );
-        assert_eq!(
-            amz_date(UNIX_EPOCH + Duration::from_secs(1_704_164_645)).0,
-            "20240102T030405Z"
-        );
+        assert_eq!(amz_date(suite_time()), ("20150830T123600Z".into(), "20150830".into()));
+        assert_eq!(amz_date(UNIX_EPOCH + Duration::from_secs(1_704_164_645)).0, "20240102T030405Z");
         assert_eq!(amz_date(UNIX_EPOCH).0, "19700101T000000Z");
         // Leap day.
-        assert_eq!(
-            amz_date(UNIX_EPOCH + Duration::from_secs(951_782_400)).1,
-            "20000229"
-        );
+        assert_eq!(amz_date(UNIX_EPOCH + Duration::from_secs(951_782_400)).1, "20000229");
     }
 
     /// Cases from the AWS SigV4 test suite (`aws-sig-v4-test-suite`, as
@@ -417,20 +369,8 @@ mod tests {
             ),
         ];
         for (name, method, url, headers, body, token, sha, canonical, signature) in cases {
-            let sig = sign(
-                SignableRequest {
-                    method,
-                    url,
-                    headers: &h(headers),
-                    body,
-                },
-                suite_params(*token, *sha),
-            )
-            .unwrap();
-            assert_eq!(
-                &sig.canonical_request, canonical,
-                "{name}: canonical request"
-            );
+            let sig = sign(SignableRequest { method, url, headers: &h(headers), body }, suite_params(*token, *sha)).unwrap();
+            assert_eq!(&sig.canonical_request, canonical, "{name}: canonical request");
             assert_eq!(sig.signature, *signature, "{name}: signature");
             let auth = &sig.headers.last().unwrap().1;
             assert!(
@@ -443,16 +383,8 @@ mod tests {
 
     #[test]
     fn string_to_sign_matches_suite() {
-        let sig = sign(
-            SignableRequest {
-                method: "GET",
-                url: "https://example.amazonaws.com/",
-                headers: &[],
-                body: b"",
-            },
-            suite_params(None, false),
-        )
-        .unwrap();
+        let sig = sign(SignableRequest { method: "GET", url: "https://example.amazonaws.com/", headers: &[], body: b"" }, suite_params(None, false))
+            .unwrap();
         assert_eq!(
             sig.string_to_sign,
             "AWS4-HMAC-SHA256\n20150830T123600Z\n20150830/us-east-1/service/aws4_request\nbb579772317eb040ac9ed261061d46c1f17a8133879d6129b6e1c25292927e63"
@@ -508,24 +440,8 @@ mod tests {
         .unwrap();
         let mut lines = sig.canonical_request.lines();
         assert_eq!(lines.next(), Some("POST"));
-        assert_eq!(
-            lines.next(),
-            Some(
-                "/model/arn%253Aaws%253Abedrock%253Aus-east-1%253A1%253Ainference-profile%252Fx/converse"
-            )
-        );
+        assert_eq!(lines.next(), Some("/model/arn%253Aaws%253Abedrock%253Aus-east-1%253A1%253Ainference-profile%252Fx/converse"));
         assert!(sig.canonical_request.contains("host:127.0.0.1:8080\n"));
-        assert!(
-            sign(
-                SignableRequest {
-                    method: "GET",
-                    url: "not a url",
-                    headers: &[],
-                    body: b""
-                },
-                suite_params(None, false)
-            )
-            .is_err()
-        );
+        assert!(sign(SignableRequest { method: "GET", url: "not a url", headers: &[], body: b"" }, suite_params(None, false)).is_err());
     }
 }

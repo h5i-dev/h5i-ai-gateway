@@ -130,11 +130,9 @@ impl GcpCredentials {
         let text = if trimmed.starts_with('{') {
             trimmed.to_owned()
         } else {
-            std::fs::read_to_string(trimmed)
-                .map_err(|e| format!("cannot read credentials file '{trimmed}': {e}"))?
+            std::fs::read_to_string(trimmed).map_err(|e| format!("cannot read credentials file '{trimmed}': {e}"))?
         };
-        let v: Value = serde_json::from_str(&text)
-            .map_err(|e| format!("credentials are not valid JSON: {e}"))?;
+        let v: Value = serde_json::from_str(&text).map_err(|e| format!("credentials are not valid JSON: {e}"))?;
         Self::from_json(&v)
     }
 
@@ -151,19 +149,11 @@ impl GcpCredentials {
         match self {
             GcpCredentials::AccessToken(_) => String::new(),
             GcpCredentials::ServiceAccount(k) => {
-                format!(
-                    "sa\0{}\0{}\0{}",
-                    k.client_email,
-                    k.token_uri,
-                    k.private_key_id.as_deref().unwrap_or_default()
-                )
+                format!("sa\0{}\0{}\0{}", k.client_email, k.token_uri, k.private_key_id.as_deref().unwrap_or_default())
             }
-            GcpCredentials::AuthorizedUser(u) => format!(
-                "au\0{}\0{}\0{}",
-                u.client_id,
-                u.token_uri,
-                crate::auth::sigv4::sha256_hex(u.refresh_token.expose().as_bytes())
-            ),
+            GcpCredentials::AuthorizedUser(u) => {
+                format!("au\0{}\0{}\0{}", u.client_id, u.token_uri, crate::auth::sigv4::sha256_hex(u.refresh_token.expose().as_bytes()))
+            }
             GcpCredentials::MetadataServer { host } => format!("md\0{host}"),
         }
     }
@@ -172,19 +162,9 @@ impl GcpCredentials {
 /// Decode a PEM RSA private key.
 fn parse_private_key(pem: &str) -> Result<RsaKeyPair, String> {
     let pkcs1 = pem.contains("BEGIN RSA PRIVATE KEY");
-    let body: String = pem
-        .lines()
-        .map(str::trim)
-        .filter(|l| !l.is_empty() && !l.starts_with("-----"))
-        .collect();
-    let der = STANDARD
-        .decode(body.as_bytes())
-        .map_err(|e| format!("private_key is not valid PEM: {e}"))?;
-    let key = if pkcs1 {
-        RsaKeyPair::from_der(&der)
-    } else {
-        RsaKeyPair::from_pkcs8(&der)
-    };
+    let body: String = pem.lines().map(str::trim).filter(|l| !l.is_empty() && !l.starts_with("-----")).collect();
+    let der = STANDARD.decode(body.as_bytes()).map_err(|e| format!("private_key is not valid PEM: {e}"))?;
+    let key = if pkcs1 { RsaKeyPair::from_der(&der) } else { RsaKeyPair::from_pkcs8(&der) };
     key.map_err(|e| format!("private_key is not a usable RSA key: {e}"))
 }
 
@@ -202,20 +182,10 @@ pub(crate) fn service_account_jwt(key: &ServiceAccountKey, now: u64) -> Result<S
         "iat": now,
         "exp": now + JWT_LIFETIME_SECS,
     });
-    let signing_input = format!(
-        "{}.{}",
-        URL_SAFE_NO_PAD.encode(header.to_string()),
-        URL_SAFE_NO_PAD.encode(claims.to_string())
-    );
+    let signing_input = format!("{}.{}", URL_SAFE_NO_PAD.encode(header.to_string()), URL_SAFE_NO_PAD.encode(claims.to_string()));
     let pair = parse_private_key(key.private_key.expose())?;
     let mut sig = vec![0u8; pair.public_modulus_len()];
-    pair.sign(
-        &RSA_PKCS1_SHA256,
-        &SystemRandom::new(),
-        signing_input.as_bytes(),
-        &mut sig,
-    )
-    .map_err(|_| "RSA signing failed".to_owned())?;
+    pair.sign(&RSA_PKCS1_SHA256, &SystemRandom::new(), signing_input.as_bytes(), &mut sig).map_err(|_| "RSA signing failed".to_owned())?;
     Ok(format!("{signing_input}.{}", URL_SAFE_NO_PAD.encode(sig)))
 }
 
@@ -232,11 +202,7 @@ pub(crate) fn form_body(pairs: &[(&str, &str)]) -> String {
         }
         out
     };
-    pairs
-        .iter()
-        .map(|(k, v)| format!("{}={}", enc(k), enc(v)))
-        .collect::<Vec<_>>()
-        .join("&")
+    pairs.iter().map(|(k, v)| format!("{}={}", enc(k), enc(v))).collect::<Vec<_>>().join("&")
 }
 
 #[derive(Debug, Clone)]
@@ -262,11 +228,7 @@ impl TokenCache {
 
     /// A valid access token for `creds`, exchanging (once, even under
     /// concurrency) when there is none or it is about to expire.
-    pub async fn access_token(
-        &self,
-        http: &reqwest::Client,
-        creds: &GcpCredentials,
-    ) -> Result<String, ProviderError> {
+    pub async fn access_token(&self, http: &reqwest::Client, creds: &GcpCredentials) -> Result<String, ProviderError> {
         if let GcpCredentials::AccessToken(t) = creds {
             return Ok(t.expose().to_owned());
         }
@@ -279,19 +241,12 @@ impl TokenCache {
         }
         let (token, expires_in) = fetch_token(http, creds).await?;
         let lifetime = Duration::from_secs(expires_in).saturating_sub(REFRESH_MARGIN);
-        *guard = Some(Cached {
-            value: token.clone(),
-            refresh_at: Some(Instant::now() + lifetime),
-        });
+        *guard = Some(Cached { value: token.clone(), refresh_at: Some(Instant::now() + lifetime) });
         Ok(token)
     }
 
     /// The project of a metadata-server identity (fetched once).
-    pub async fn metadata_project(
-        &self,
-        http: &reqwest::Client,
-        host: &str,
-    ) -> Result<String, ProviderError> {
+    pub async fn metadata_project(&self, http: &reqwest::Client, host: &str) -> Result<String, ProviderError> {
         let slot = self.slot(format!("mdproject\0{host}"));
         let mut guard = slot.lock().await;
         if let Some(c) = guard.as_ref() {
@@ -304,24 +259,14 @@ impl TokenCache {
             .timeout(EXCHANGE_TIMEOUT)
             .send()
             .await
-            .map_err(|e| {
-                auth_error(format!(
-                    "GCE metadata server unreachable: {}",
-                    e.without_url()
-                ))
-            })?;
+            .map_err(|e| auth_error(format!("GCE metadata server unreachable: {}", e.without_url())))?;
         let status = resp.status();
         let text = resp.text().await.unwrap_or_default();
         if !status.is_success() || text.trim().is_empty() {
-            return Err(auth_error(format!(
-                "GCE metadata server returned HTTP {status} for the project id"
-            )));
+            return Err(auth_error(format!("GCE metadata server returned HTTP {status} for the project id")));
         }
         let project = text.trim().to_owned();
-        *guard = Some(Cached {
-            value: project.clone(),
-            refresh_at: None,
-        });
+        *guard = Some(Cached { value: project.clone(), refresh_at: None });
         Ok(project)
     }
 }
@@ -331,78 +276,49 @@ fn auth_error(message: String) -> ProviderError {
 }
 
 /// Perform the exchange; returns `(access_token, expires_in seconds)`.
-async fn fetch_token(
-    http: &reqwest::Client,
-    creds: &GcpCredentials,
-) -> Result<(String, u64), ProviderError> {
+async fn fetch_token(http: &reqwest::Client, creds: &GcpCredentials) -> Result<(String, u64), ProviderError> {
     let request = match creds {
         GcpCredentials::AccessToken(_) => unreachable!("handled by the caller"),
         GcpCredentials::ServiceAccount(key) => {
-            let jwt = service_account_jwt(key, crate::providers::now_unix())
-                .map_err(|e| ProviderError::config(PROVIDER, e))?;
+            let jwt = service_account_jwt(key, crate::providers::now_unix()).map_err(|e| ProviderError::config(PROVIDER, e))?;
             http.post(&key.token_uri)
                 .header("content-type", "application/x-www-form-urlencoded")
-                .body(form_body(&[
-                    ("grant_type", "urn:ietf:params:oauth:grant-type:jwt-bearer"),
-                    ("assertion", &jwt),
-                ]))
+                .body(form_body(&[("grant_type", "urn:ietf:params:oauth:grant-type:jwt-bearer"), ("assertion", &jwt)]))
         }
-        GcpCredentials::AuthorizedUser(u) => http
-            .post(&u.token_uri)
-            .header("content-type", "application/x-www-form-urlencoded")
-            .body(form_body(&[
-                ("grant_type", "refresh_token"),
-                ("client_id", &u.client_id),
-                ("client_secret", u.client_secret.expose()),
-                ("refresh_token", u.refresh_token.expose()),
-            ])),
-        GcpCredentials::MetadataServer { host } => http
-            .get(format!(
-                "http://{host}/computeMetadata/v1/instance/service-accounts/default/token"
-            ))
-            .header("Metadata-Flavor", "Google"),
+        GcpCredentials::AuthorizedUser(u) => http.post(&u.token_uri).header("content-type", "application/x-www-form-urlencoded").body(form_body(&[
+            ("grant_type", "refresh_token"),
+            ("client_id", &u.client_id),
+            ("client_secret", u.client_secret.expose()),
+            ("refresh_token", u.refresh_token.expose()),
+        ])),
+        GcpCredentials::MetadataServer { host } => {
+            http.get(format!("http://{host}/computeMetadata/v1/instance/service-accounts/default/token")).header("Metadata-Flavor", "Google")
+        }
     };
-    let resp = request
-        .timeout(EXCHANGE_TIMEOUT)
-        .send()
-        .await
-        .map_err(|e| {
-            let mut err = ProviderError::from_reqwest(PROVIDER, e);
-            if matches!(creds, GcpCredentials::MetadataServer { .. }) {
-                err = auth_error(format!(
-                    "no Vertex AI credentials configured and the GCE metadata server is unreachable ({})",
-                    err.message()
-                ));
-            }
-            err
-        })?;
+    let resp = request.timeout(EXCHANGE_TIMEOUT).send().await.map_err(|e| {
+        let mut err = ProviderError::from_reqwest(PROVIDER, e);
+        if matches!(creds, GcpCredentials::MetadataServer { .. }) {
+            err = auth_error(format!("no Vertex AI credentials configured and the GCE metadata server is unreachable ({})", err.message()));
+        }
+        err
+    })?;
     let status = resp.status();
     let body = resp.text().await.unwrap_or_default();
     if !status.is_success() {
         let v: Value = serde_json::from_str(&body).unwrap_or(Value::Null);
-        let detail = v["error_description"]
-            .as_str()
-            .or_else(|| v["error"].as_str())
-            .unwrap_or(body.trim());
+        let detail = v["error_description"].as_str().or_else(|| v["error"].as_str()).unwrap_or(body.trim());
         let message = format!("Google OAuth2 token exchange failed (HTTP {status}): {detail}");
         return Err(match status.as_u16() {
             400 | 401 | 403 => auth_error(message),
             s => ProviderError::from_upstream(PROVIDER, s, &message, None),
         });
     }
-    let v: Value = serde_json::from_str(&body).map_err(|e| {
-        ProviderError::invalid_response(PROVIDER, format!("token response is not JSON: {e}"))
-    })?;
+    let v: Value = serde_json::from_str(&body).map_err(|e| ProviderError::invalid_response(PROVIDER, format!("token response is not JSON: {e}")))?;
     let token = v["access_token"]
         .as_str()
         .filter(|t| !t.is_empty())
-        .ok_or_else(|| {
-            ProviderError::invalid_response(PROVIDER, "token response without access_token")
-        })?;
-    let expires_in = v["expires_in"]
-        .as_u64()
-        .or_else(|| v["expires_in"].as_str().and_then(|s| s.parse().ok()))
-        .unwrap_or(3600);
+        .ok_or_else(|| ProviderError::invalid_response(PROVIDER, "token response without access_token"))?;
+    let expires_in = v["expires_in"].as_u64().or_else(|| v["expires_in"].as_str().and_then(|s| s.parse().ok())).unwrap_or(3600);
     Ok((token.to_owned(), expires_in))
 }
 
@@ -447,26 +363,15 @@ pub(crate) mod tests {
     #[test]
     fn parses_service_account_and_authorized_user() {
         let creds = GcpCredentials::from_json(&service_account_json("https://t/token")).unwrap();
-        let GcpCredentials::ServiceAccount(key) = &creds else {
-            panic!("expected a service account")
-        };
-        assert_eq!(
-            key.client_email,
-            "gateway@proj-from-key.iam.gserviceaccount.com"
-        );
+        let GcpCredentials::ServiceAccount(key) = &creds else { panic!("expected a service account") };
+        assert_eq!(key.client_email, "gateway@proj-from-key.iam.gserviceaccount.com");
         assert_eq!(key.token_uri, "https://t/token");
         assert_eq!(creds.project_id(), Some("proj-from-key"));
-        assert!(
-            !format!("{creds:?}").contains("PRIVATE KEY"),
-            "key must be redacted"
-        );
+        assert!(!format!("{creds:?}").contains("PRIVATE KEY"), "key must be redacted");
 
         let mut no_uri = service_account_json("x");
         no_uri.as_object_mut().unwrap().remove("token_uri");
-        let GcpCredentials::ServiceAccount(key) = GcpCredentials::from_json(&no_uri).unwrap()
-        else {
-            panic!()
-        };
+        let GcpCredentials::ServiceAccount(key) = GcpCredentials::from_json(&no_uri).unwrap() else { panic!() };
         assert_eq!(key.token_uri, DEFAULT_TOKEN_URI);
 
         let au = GcpCredentials::from_json(&json!({
@@ -475,68 +380,39 @@ pub(crate) mod tests {
         }))
         .unwrap();
         assert_eq!(au.project_id(), Some("qp"));
-        assert!(
-            matches!(au, GcpCredentials::AuthorizedUser(ref u) if u.token_uri == DEFAULT_TOKEN_URI)
-        );
+        assert!(matches!(au, GcpCredentials::AuthorizedUser(ref u) if u.token_uri == DEFAULT_TOKEN_URI));
 
-        assert!(
-            GcpCredentials::from_json(&json!({"type": "external_account"}))
-                .unwrap_err()
-                .contains("not supported")
-        );
-        assert!(
-            GcpCredentials::from_json(&json!({"type": "service_account", "private_key": "x"}))
-                .is_err()
-        );
+        assert!(GcpCredentials::from_json(&json!({"type": "external_account"})).unwrap_err().contains("not supported"));
+        assert!(GcpCredentials::from_json(&json!({"type": "service_account", "private_key": "x"})).is_err());
         let mut bad_key = service_account_json("x");
-        bad_key["private_key"] =
-            json!("-----BEGIN PRIVATE KEY-----\nAAAA\n-----END PRIVATE KEY-----\n");
-        assert!(
-            GcpCredentials::from_json(&bad_key)
-                .unwrap_err()
-                .contains("RSA")
-        );
+        bad_key["private_key"] = json!("-----BEGIN PRIVATE KEY-----\nAAAA\n-----END PRIVATE KEY-----\n");
+        assert!(GcpCredentials::from_json(&bad_key).unwrap_err().contains("RSA"));
     }
 
     #[test]
     fn loads_from_string_or_file() {
         let json = service_account_json("https://t/token").to_string();
-        assert!(matches!(
-            GcpCredentials::load(&format!("  {json}")),
-            Ok(GcpCredentials::ServiceAccount(_))
-        ));
+        assert!(matches!(GcpCredentials::load(&format!("  {json}")), Ok(GcpCredentials::ServiceAccount(_))));
         let path = std::env::temp_dir().join(format!("h5i-gw-sa-{}.json", std::process::id()));
         std::fs::write(&path, &json).unwrap();
         let loaded = GcpCredentials::load(path.to_str().unwrap()).unwrap();
         std::fs::remove_file(&path).unwrap();
         assert_eq!(loaded.project_id(), Some("proj-from-key"));
-        assert!(
-            GcpCredentials::load("/nonexistent/creds.json")
-                .unwrap_err()
-                .contains("cannot read")
-        );
+        assert!(GcpCredentials::load("/nonexistent/creds.json").unwrap_err().contains("cannot read"));
         assert!(GcpCredentials::load("{not json").is_err());
     }
 
     #[test]
     fn jwt_is_well_formed_and_verifies() {
-        let GcpCredentials::ServiceAccount(key) =
-            GcpCredentials::from_json(&service_account_json("https://oauth2.example/token"))
-                .unwrap()
-        else {
+        let GcpCredentials::ServiceAccount(key) = GcpCredentials::from_json(&service_account_json("https://oauth2.example/token")).unwrap() else {
             panic!()
         };
         let jwt = service_account_jwt(&key, 1_700_000_000).unwrap();
         let parts: Vec<&str> = jwt.split('.').collect();
         assert_eq!(parts.len(), 3);
-        let header: Value =
-            serde_json::from_slice(&URL_SAFE_NO_PAD.decode(parts[0]).unwrap()).unwrap();
-        assert_eq!(
-            header,
-            json!({"alg": "RS256", "typ": "JWT", "kid": "kid-1"})
-        );
-        let claims: Value =
-            serde_json::from_slice(&URL_SAFE_NO_PAD.decode(parts[1]).unwrap()).unwrap();
+        let header: Value = serde_json::from_slice(&URL_SAFE_NO_PAD.decode(parts[0]).unwrap()).unwrap();
+        assert_eq!(header, json!({"alg": "RS256", "typ": "JWT", "kid": "kid-1"}));
+        let claims: Value = serde_json::from_slice(&URL_SAFE_NO_PAD.decode(parts[1]).unwrap()).unwrap();
         assert_eq!(
             claims,
             json!({
@@ -549,9 +425,7 @@ pub(crate) mod tests {
         );
         let sig = URL_SAFE_NO_PAD.decode(parts[2]).unwrap();
         let public = UnparsedPublicKey::new(&RSA_PKCS1_2048_8192_SHA256, &test_key().1);
-        public
-            .verify(format!("{}.{}", parts[0], parts[1]).as_bytes(), &sig)
-            .expect("signature verifies with the public key");
+        public.verify(format!("{}.{}", parts[0], parts[1]).as_bytes(), &sig).expect("signature verifies with the public key");
         // Tampering breaks it.
         assert!(public.verify(b"x.y", &sig).is_err());
     }
@@ -563,9 +437,7 @@ pub(crate) mod tests {
             (b[1] as usize, 2)
         } else {
             let n = (b[1] & 0x7F) as usize;
-            let len = b[2..2 + n]
-                .iter()
-                .fold(0usize, |acc, x| acc << 8 | *x as usize);
+            let len = b[2..2 + n].iter().fold(0usize, |acc, x| acc << 8 | *x as usize);
             (len, 2 + n)
         };
         (tag, &b[hdr..hdr + len], &b[hdr + len..])
@@ -575,39 +447,22 @@ pub(crate) mod tests {
     fn pkcs1_keys_are_accepted() {
         // PKCS#8 = SEQUENCE { INTEGER version, AlgorithmIdentifier,
         // OCTET STRING (PKCS#1 RSAPrivateKey) }: unwrap it.
-        let pkcs8 = STANDARD
-            .decode(
-                test_key()
-                    .0
-                    .lines()
-                    .filter(|l| !l.starts_with("-----"))
-                    .collect::<String>(),
-            )
-            .unwrap();
+        let pkcs8 = STANDARD.decode(test_key().0.lines().filter(|l| !l.starts_with("-----")).collect::<String>()).unwrap();
         let (_, seq, _) = der_tlv(&pkcs8);
         let (_, _, rest) = der_tlv(seq); // version
         let (_, _, rest) = der_tlv(rest); // algorithm
         let (tag, pkcs1, _) = der_tlv(rest);
         assert_eq!(tag, 0x04);
-        let pem = format!(
-            "-----BEGIN RSA PRIVATE KEY-----\n{}\n-----END RSA PRIVATE KEY-----\n",
-            STANDARD.encode(pkcs1)
-        );
+        let pem = format!("-----BEGIN RSA PRIVATE KEY-----\n{}\n-----END RSA PRIVATE KEY-----\n", STANDARD.encode(pkcs1));
         let pair = parse_private_key(&pem).unwrap();
         assert_eq!(pair.public_key().as_ref(), test_key().1.as_slice());
-        assert!(
-            parse_private_key(&pem.replace("RSA PRIVATE KEY", "PRIVATE KEY")).is_err(),
-            "PKCS#1 DER is not PKCS#8"
-        );
+        assert!(parse_private_key(&pem.replace("RSA PRIVATE KEY", "PRIVATE KEY")).is_err(), "PKCS#1 DER is not PKCS#8");
     }
 
     #[test]
     fn form_encoding() {
         assert_eq!(
-            form_body(&[
-                ("grant_type", "urn:ietf:params:oauth:grant-type:jwt-bearer"),
-                ("a", "b c/=")
-            ]),
+            form_body(&[("grant_type", "urn:ietf:params:oauth:grant-type:jwt-bearer"), ("a", "b c/=")]),
             "grant_type=urn%3Aietf%3Aparams%3Aoauth%3Agrant-type%3Ajwt-bearer&a=b%20c%2F%3D"
         );
     }
@@ -616,10 +471,7 @@ pub(crate) mod tests {
     async fn access_tokens_pass_through_without_network() {
         let cache = TokenCache::default();
         let http = reqwest::Client::new();
-        let t = cache
-            .access_token(&http, &GcpCredentials::AccessToken(Secret::new("ya29.x")))
-            .await
-            .unwrap();
+        let t = cache.access_token(&http, &GcpCredentials::AccessToken(Secret::new("ya29.x"))).await.unwrap();
         assert_eq!(t, "ya29.x");
     }
 }

@@ -94,16 +94,8 @@ impl Stats {
         }
     }
     fn merge(&mut self, o: Stats) {
-        self.latency
-            .as_mut()
-            .unwrap()
-            .add(o.latency.unwrap())
-            .expect("merge");
-        self.ttfb
-            .as_mut()
-            .unwrap()
-            .add(o.ttfb.unwrap())
-            .expect("merge");
+        self.latency.as_mut().unwrap().add(o.latency.unwrap()).expect("merge");
+        self.ttfb.as_mut().unwrap().add(o.ttfb.unwrap()).expect("merge");
         self.ok += o.ok;
         self.bytes += o.bytes;
         for (k, v) in o.errors {
@@ -126,9 +118,7 @@ impl Window {
 }
 
 fn parse_url(url: &str) -> Result<(String, String), String> {
-    let rest = url
-        .strip_prefix("http://")
-        .ok_or("only http:// URLs are supported")?;
+    let rest = url.strip_prefix("http://").ok_or("only http:// URLs are supported")?;
     let (authority, path) = match rest.find('/') {
         Some(i) => (&rest[..i], &rest[i..]),
         None => (rest, "/"),
@@ -137,13 +127,9 @@ fn parse_url(url: &str) -> Result<(String, String), String> {
 }
 
 async fn connect(t: &Target) -> Result<SendRequest<Full<Bytes>>, String> {
-    let tcp = tokio::net::TcpStream::connect(&t.host_port)
-        .await
-        .map_err(|e| format!("connect: {e}"))?;
+    let tcp = tokio::net::TcpStream::connect(&t.host_port).await.map_err(|e| format!("connect: {e}"))?;
     let _ = tcp.set_nodelay(true);
-    let (sender, conn) = hyper::client::conn::http1::handshake(TokioIo::new(tcp))
-        .await
-        .map_err(|e| format!("handshake: {e}"))?;
+    let (sender, conn) = hyper::client::conn::http1::handshake(TokioIo::new(tcp)).await.map_err(|e| format!("handshake: {e}"))?;
     tokio::spawn(async move {
         let _ = conn.await;
     });
@@ -152,32 +138,17 @@ async fn connect(t: &Target) -> Result<SendRequest<Full<Bytes>>, String> {
 
 /// One request on `sender`. Returns (status, first-body-byte instant, bytes,
 /// complete) or a transport error.
-async fn one(
-    t: &Target,
-    sender: &mut SendRequest<Full<Bytes>>,
-) -> Result<(u16, Option<Instant>, u64, bool), String> {
+async fn one(t: &Target, sender: &mut SendRequest<Full<Bytes>>) -> Result<(u16, Option<Instant>, u64, bool), String> {
     let mut req = Request::post(t.path.as_str())
         .header("host", t.authority.as_str())
         .header("content-type", "application/json")
-        .header(
-            "accept",
-            if t.stream {
-                "text/event-stream"
-            } else {
-                "application/json"
-            },
-        );
+        .header("accept", if t.stream { "text/event-stream" } else { "application/json" });
     for (k, v) in &t.headers {
         req = req.header(k.as_str(), v.as_str());
     }
-    let req = req
-        .body(Full::new(t.body.clone()))
-        .map_err(|e| format!("request: {e}"))?;
+    let req = req.body(Full::new(t.body.clone())).map_err(|e| format!("request: {e}"))?;
     sender.ready().await.map_err(|e| format!("ready: {e}"))?;
-    let resp = sender
-        .send_request(req)
-        .await
-        .map_err(|e| format!("send: {e}"))?;
+    let resp = sender.send_request(req).await.map_err(|e| format!("send: {e}"))?;
     let status = resp.status().as_u16();
     let mut body = resp.into_body();
     let mut first = None;
@@ -200,11 +171,7 @@ async fn one(
         }
     }
     let tail = String::from_utf8_lossy(&tail);
-    let complete = if t.stream {
-        tail.contains("[DONE]")
-    } else {
-        tail.trim_end().ends_with('}')
-    };
+    let complete = if t.stream { tail.contains("[DONE]") } else { tail.trim_end().ends_with('}') };
     Ok((status, first, n, complete))
 }
 
@@ -212,13 +179,7 @@ fn status_key(status: u16) -> String {
     format!("http_{status}")
 }
 
-async fn worker(
-    t: Arc<Target>,
-    w: Arc<Window>,
-    rate: Option<f64>,
-    next: Arc<AtomicU64>,
-    max_samples: usize,
-) -> Stats {
+async fn worker(t: Arc<Target>, w: Arc<Window>, rate: Option<f64>, next: Arc<AtomicU64>, max_samples: usize) -> Stats {
     let mut s = Stats::new();
     let mut sender: Option<SendRequest<Full<Bytes>>> = None;
     loop {
@@ -271,11 +232,7 @@ async fn worker(
             }
             Ok((status, _, _, complete)) => {
                 if recorded {
-                    let k = if status == 200 && !complete {
-                        "incomplete".into()
-                    } else {
-                        status_key(status)
-                    };
+                    let k = if status == 200 && !complete { "incomplete".into() } else { status_key(status) };
                     *s.errors.entry(k).or_default() += 1;
                 }
             }
@@ -337,20 +294,13 @@ mod procfs {
 
     /// CPU ticks per pid.
     pub fn cpu(pids: &[u32]) -> HashMap<u32, u64> {
-        pids.iter()
-            .filter_map(|&p| stat(p).map(|(_, t)| (p, t)))
-            .collect()
+        pids.iter().filter_map(|&p| stat(p).map(|(_, t)| (p, t))).collect()
     }
 
     fn status_kb(pid: u32, field: &str) -> u64 {
         std::fs::read_to_string(format!("/proc/{pid}/status"))
             .ok()
-            .and_then(|s| {
-                s.lines()
-                    .find(|l| l.starts_with(field))
-                    .and_then(|l| l.split_whitespace().nth(1))
-                    .and_then(|v| v.parse().ok())
-            })
+            .and_then(|s| s.lines().find(|l| l.starts_with(field)).and_then(|l| l.split_whitespace().nth(1)).and_then(|v| v.parse().ok()))
             .unwrap_or(0)
     }
 
@@ -368,12 +318,7 @@ mod procfs {
             .map(|&p| {
                 std::fs::read_to_string(format!("/proc/{p}/smaps_rollup"))
                     .ok()
-                    .and_then(|s| {
-                        s.lines()
-                            .find(|l| l.starts_with("Pss:"))
-                            .and_then(|l| l.split_whitespace().nth(1))
-                            .and_then(|v| v.parse().ok())
-                    })
+                    .and_then(|s| s.lines().find(|l| l.starts_with("Pss:")).and_then(|l| l.split_whitespace().nth(1)).and_then(|v| v.parse().ok()))
                     .unwrap_or(0)
             })
             .sum()
@@ -414,10 +359,7 @@ fn sample(pid: u32, w: &Window, stop: &AtomicBool) -> Usage {
     let pids = procfs::tree(pid);
     let cpu1 = procfs::cpu(&pids);
     let elapsed = t0.elapsed().as_secs_f64();
-    let ticks: u64 = cpu1
-        .iter()
-        .map(|(p, t)| t.saturating_sub(*cpu0.get(p).unwrap_or(&0)))
-        .sum();
+    let ticks: u64 = cpu1.iter().map(|(p, t)| t.saturating_sub(*cpu0.get(p).unwrap_or(&0))).sum();
     Usage {
         cpu_seconds: ticks as f64 / procfs::CLK_TCK,
         elapsed,
@@ -459,23 +401,12 @@ fn main() {
             eprintln!("{f}: {e}");
             std::process::exit(2)
         }),
-        None => default_body(&scenario, a.opt("model").as_deref())
-            .to_string()
-            .into_bytes(),
+        None => default_body(&scenario, a.opt("model").as_deref()).to_string().into_bytes(),
     };
-    let stream = a.flag("stream")
-        || serde_json::from_slice::<Value>(&body)
-            .ok()
-            .and_then(|v| v.get("stream").and_then(Value::as_bool))
-            .unwrap_or(false);
-    let mut headers: Vec<(String, String)> = a
-        .all("header")
-        .iter()
-        .filter_map(|h| {
-            h.split_once(':')
-                .map(|(k, v)| (k.trim().to_string(), v.trim().to_string()))
-        })
-        .collect();
+    let stream =
+        a.flag("stream") || serde_json::from_slice::<Value>(&body).ok().and_then(|v| v.get("stream").and_then(Value::as_bool)).unwrap_or(false);
+    let mut headers: Vec<(String, String)> =
+        a.all("header").iter().filter_map(|h| h.split_once(':').map(|(k, v)| (k.trim().to_string(), v.trim().to_string()))).collect();
     if let Some(k) = a.opt("key") {
         headers.push(("authorization".into(), format!("Bearer {k}")));
     }
@@ -492,14 +423,7 @@ fn main() {
         })
         .collect();
     let max_samples: usize = a.get("max-errors-logged", 3);
-    let target = Arc::new(Target {
-        host_port: authority.clone(),
-        authority,
-        path,
-        headers,
-        body: Bytes::from(body),
-        stream,
-    });
+    let target = Arc::new(Target { host_port: authority.clone(), authority, path, headers, body: Bytes::from(body), stream });
 
     let rt = runtime(a.get("threads", 0));
     let result = rt.block_on(async move {
@@ -510,17 +434,7 @@ fn main() {
             end: start + Duration::from_secs_f64(warmup + duration),
         });
         let next = Arc::new(AtomicU64::new(0));
-        let tasks: Vec<_> = (0..concurrency)
-            .map(|_| {
-                tokio::spawn(worker(
-                    target.clone(),
-                    w.clone(),
-                    rate,
-                    next.clone(),
-                    max_samples,
-                ))
-            })
-            .collect();
+        let tasks: Vec<_> = (0..concurrency).map(|_| tokio::spawn(worker(target.clone(), w.clone(), rate, next.clone(), max_samples))).collect();
 
         // Process sampling.
         let stop = Arc::new(AtomicBool::new(false));
@@ -571,11 +485,7 @@ fn main() {
     });
     let mut procs = serde_json::Map::new();
     for (name, pid, u) in &proc {
-        let per_req = if stats.ok > 0 {
-            u.cpu_seconds / stats.ok as f64 * 1e6
-        } else {
-            0.0
-        };
+        let per_req = if stats.ok > 0 { u.cpu_seconds / stats.ok as f64 * 1e6 } else { 0.0 };
         let mb = |kb: u64| (kb as f64 / 1024.0).round();
         procs.insert(
             name.clone(),
@@ -614,11 +524,7 @@ fn main() {
         line += &format!(" ttfb_p50={:.2}ms", p(&out["ttfb_ms"], "p50"));
     }
     for (name, pr) in out["processes"].as_object().into_iter().flatten() {
-        line += &format!(
-            " {name}:cpu={:.2}cores,rss={}MB",
-            p(pr, "cpu_cores"),
-            p(pr, "rss_peak_mb")
-        );
+        line += &format!(" {name}:cpu={:.2}cores,rss={}MB", p(pr, "cpu_cores"), p(pr, "rss_peak_mb"));
     }
     if errors > 0 {
         let counts: HashMap<_, _> = stats.errors.iter().collect();

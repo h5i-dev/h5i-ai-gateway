@@ -541,11 +541,7 @@ impl TranscriptionPricing {
             let audio = self.audio_nano.or(self.text_nano).unwrap_or(0);
             let input_nano = (u128::from(t.audio_tokens) * u128::from(audio))
                 .saturating_add(u128::from(t.text_tokens) * u128::from(self.text_nano.unwrap_or(audio)));
-            let prompt = if self.second_nano == 0 {
-                0
-            } else {
-                u64::try_from(input_nano.div_ceil(u128::from(self.second_nano))).unwrap_or(u64::MAX)
-            };
+            let prompt = if self.second_nano == 0 { 0 } else { u64::try_from(input_nano.div_ceil(u128::from(self.second_nano))).unwrap_or(u64::MAX) };
             return Units { prompt, completion: t.output_tokens };
         }
         let seconds = resp.duration().or(ask.estimate).or_else(|| resp.subtitle_end()).unwrap_or(ask.bound_seconds);

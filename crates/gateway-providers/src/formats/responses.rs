@@ -30,9 +30,8 @@ use serde_json::{Value, json};
 use super::FormatError;
 use crate::providers::gen_id;
 use crate::types::{
-    ChatChunk, ChatMessage, ChatRequest, ChatResponse, ContentPart, FileContent, ImageUrl,
-    InputAudio, JsonObject, JsonSchemaFormat, MessageContent, ResponseFormat, Role, StreamOptions,
-    Tool, ToolCall, ToolChoice, Usage, finish_reason,
+    ChatChunk, ChatMessage, ChatRequest, ChatResponse, ContentPart, FileContent, ImageUrl, InputAudio, JsonObject, JsonSchemaFormat, MessageContent,
+    ResponseFormat, Role, StreamOptions, Tool, ToolCall, ToolChoice, Usage, finish_reason,
 };
 
 /// `POST /v1/responses` request body.
@@ -102,10 +101,7 @@ pub struct Translated {
 
 /// Translate a Responses request, continuing `history` (the conversation
 /// of `previous_response_id`, if any).
-pub fn to_chat_request(
-    req: &ResponsesRequest,
-    history: &[ChatMessage],
-) -> Result<Translated, FormatError> {
+pub fn to_chat_request(req: &ResponsesRequest, history: &[ChatMessage]) -> Result<Translated, FormatError> {
     if req.background == Some(true) {
         return Err(FormatError::new("background responses are not supported").param("background"));
     }
@@ -115,9 +111,7 @@ pub fn to_chat_request(
         Some(Value::String(s)) => conversation.push(ChatMessage::user(s.clone())),
         Some(Value::Array(items)) => append_items(items, &mut conversation)?,
         Some(_) => {
-            return Err(
-                FormatError::new("input: expected a string or a list of items").param("input"),
-            );
+            return Err(FormatError::new("input: expected a string or a list of items").param("input"));
         }
     }
     let mut messages = Vec::with_capacity(conversation.len() + 1);
@@ -138,17 +132,10 @@ pub fn to_chat_request(
     };
     if req.is_stream() {
         chat.stream = Some(true);
-        chat.stream_options = Some(StreamOptions {
-            include_usage: Some(true),
-            extra: JsonObject::new(),
-        });
+        chat.stream_options = Some(StreamOptions { include_usage: Some(true), extra: JsonObject::new() });
     }
     if let Some(tools) = &req.tools {
-        let tools = tools
-            .iter()
-            .enumerate()
-            .map(|(i, t)| tool(t, i))
-            .collect::<Result<Vec<_>, _>>()?;
+        let tools = tools.iter().enumerate().map(|(i, t)| tool(t, i)).collect::<Result<Vec<_>, _>>()?;
         if !tools.is_empty() {
             chat.tools = Some(tools);
         }
@@ -159,12 +146,7 @@ pub fn to_chat_request(
     if let Some(format) = req.text.as_ref().and_then(|t| t.get("format")) {
         chat.response_format = response_format(format)?;
     }
-    if let Some(effort) = req
-        .reasoning
-        .as_ref()
-        .and_then(|r| r.get("effort"))
-        .and_then(Value::as_str)
-    {
+    if let Some(effort) = req.reasoning.as_ref().and_then(|r| r.get("effort")).and_then(Value::as_str) {
         chat.reasoning_effort = Some(effort.to_owned());
     }
     if let Some(Value::String(mock)) = req.extra.get("mock_response") {
@@ -183,9 +165,7 @@ fn item_type(item: &Value) -> &str {
 }
 
 fn field<'a>(item: &'a Value, name: &str, at: &str) -> Result<&'a str, FormatError> {
-    item.get(name).and_then(Value::as_str).ok_or_else(|| {
-        FormatError::new(format!("{at}.{name}: Field required")).param(format!("{at}.{name}"))
-    })
+    item.get(name).and_then(Value::as_str).ok_or_else(|| FormatError::new(format!("{at}.{name}: Field required")).param(format!("{at}.{name}")))
 }
 
 /// Append input items to `out` as chat messages.
@@ -199,21 +179,13 @@ fn append_items(items: &[Value], out: &mut Vec<ChatMessage>) -> Result<(), Forma
                     .get("call_id")
                     .or_else(|| item.get("id"))
                     .and_then(Value::as_str)
-                    .ok_or_else(|| {
-                        FormatError::new(format!("{at}.call_id: Field required"))
-                            .param(format!("{at}.call_id"))
-                    })?;
+                    .ok_or_else(|| FormatError::new(format!("{at}.call_id: Field required")).param(format!("{at}.call_id")))?;
                 let name = field(item, "name", &at)?;
-                let arguments = item
-                    .get("arguments")
-                    .and_then(Value::as_str)
-                    .unwrap_or("{}");
+                let arguments = item.get("arguments").and_then(Value::as_str).unwrap_or("{}");
                 let call = ToolCall::function(call_id, name, arguments);
                 // Calls of one turn join the assistant message before them.
                 match out.last_mut() {
-                    Some(m) if m.role == Role::Assistant => {
-                        m.tool_calls.get_or_insert_with(Vec::new).push(call)
-                    }
+                    Some(m) if m.role == Role::Assistant => m.tool_calls.get_or_insert_with(Vec::new).push(call),
                     _ => {
                         let mut m = ChatMessage::assistant("");
                         m.content = None;
@@ -229,8 +201,7 @@ fn append_items(items: &[Value], out: &mut Vec<ChatMessage>) -> Result<(), Forma
                     Some(Value::Array(parts)) => parts_content(parts, &format!("{at}.output"))?,
                     Some(other) if !other.is_null() => MessageContent::Text(other.to_string()),
                     _ => {
-                        return Err(FormatError::new(format!("{at}.output: Field required"))
-                            .param(format!("{at}.output")));
+                        return Err(FormatError::new(format!("{at}.output: Field required")).param(format!("{at}.output")));
                     }
                 };
                 let mut m = ChatMessage::tool(call_id, "");
@@ -240,14 +211,10 @@ fn append_items(items: &[Value], out: &mut Vec<ChatMessage>) -> Result<(), Forma
             // Reasoning has no chat equivalent; the model re-derives it.
             "reasoning" => {}
             "" => {
-                return Err(FormatError::new(format!("{at}.type: Field required"))
-                    .param(format!("{at}.type")));
+                return Err(FormatError::new(format!("{at}.type: Field required")).param(format!("{at}.type")));
             }
             other => {
-                return Err(FormatError::new(format!(
-                    "{at}: input items of type {other:?} are not supported"
-                ))
-                .param(format!("{at}.type")));
+                return Err(FormatError::new(format!("{at}: input items of type {other:?} are not supported")).param(format!("{at}.type")));
             }
         }
     }
@@ -261,20 +228,14 @@ fn message(item: &Value, at: &str) -> Result<ChatMessage, FormatError> {
         "developer" => Role::Developer,
         "assistant" => Role::Assistant,
         other => {
-            return Err(
-                FormatError::new(format!("{at}.role: unexpected role {other:?}"))
-                    .param(format!("{at}.role")),
-            );
+            return Err(FormatError::new(format!("{at}.role: unexpected role {other:?}")).param(format!("{at}.role")));
         }
     };
     let content = match item.get("content") {
         Some(Value::String(s)) => MessageContent::Text(s.clone()),
         Some(Value::Array(parts)) => parts_content(parts, &format!("{at}.content"))?,
         _ => {
-            return Err(FormatError::new(format!(
-                "{at}.content: expected a string or a list of content parts"
-            ))
-            .param(format!("{at}.content")));
+            return Err(FormatError::new(format!("{at}.content: expected a string or a list of content parts")).param(format!("{at}.content")));
         }
     };
     let mut m = ChatMessage::user("");
@@ -289,11 +250,7 @@ fn message(item: &Value, at: &str) -> Result<ChatMessage, FormatError> {
 
 /// Content parts as chat content: plain text when there are only texts.
 fn parts_content(parts: &[Value], at: &str) -> Result<MessageContent, FormatError> {
-    let parts = parts
-        .iter()
-        .enumerate()
-        .map(|(j, p)| part(p, &format!("{at}.{j}")))
-        .collect::<Result<Vec<_>, _>>()?;
+    let parts = parts.iter().enumerate().map(|(j, p)| part(p, &format!("{at}.{j}"))).collect::<Result<Vec<_>, _>>()?;
     if parts.iter().all(|p| p.kind == "text") {
         let texts: Vec<&str> = parts.iter().filter_map(|p| p.text.as_deref()).collect();
         Ok(MessageContent::Text(texts.concat()))
@@ -310,59 +267,33 @@ fn part(p: &Value, at: &str) -> Result<ContentPart, FormatError> {
         "input_text" | "output_text" | "text" => out.text = Some(field(p, "text", at)?.to_owned()),
         "refusal" => out.text = Some(field(p, "refusal", at)?.to_owned()),
         "input_image" => {
-            let url = match (
-                p.get("image_url").and_then(Value::as_str),
-                p.get("file_id").and_then(Value::as_str),
-            ) {
+            let url = match (p.get("image_url").and_then(Value::as_str), p.get("file_id").and_then(Value::as_str)) {
                 (Some(url), _) => url,
                 (None, Some(id)) => {
                     out.kind = "file".into();
-                    out.file = Some(FileContent {
-                        file_id: Some(id.to_owned()),
-                        ..FileContent::default()
-                    });
+                    out.file = Some(FileContent { file_id: Some(id.to_owned()), ..FileContent::default() });
                     return Ok(out);
                 }
                 (None, None) => {
-                    return Err(FormatError::new(format!(
-                        "{at}: input_image needs image_url or file_id"
-                    ))
-                    .param(format!("{at}.image_url")));
+                    return Err(FormatError::new(format!("{at}: input_image needs image_url or file_id")).param(format!("{at}.image_url")));
                 }
             };
             out.kind = "image_url".into();
             out.image_url = Some(ImageUrl {
                 url: url.to_owned(),
-                detail: p
-                    .get("detail")
-                    .and_then(Value::as_str)
-                    .filter(|d| *d != "auto")
-                    .map(str::to_owned),
+                detail: p.get("detail").and_then(Value::as_str).filter(|d| *d != "auto").map(str::to_owned),
                 format: None,
             });
         }
         "input_file" => {
-            if p.get("file_url").is_some()
-                && p.get("file_data").is_none()
-                && p.get("file_id").is_none()
-            {
-                return Err(FormatError::new(format!(
-                    "{at}.file_url: file URLs are not supported; send file_data or file_id"
-                ))
-                .param(format!("{at}.file_url")));
+            if p.get("file_url").is_some() && p.get("file_data").is_none() && p.get("file_id").is_none() {
+                return Err(FormatError::new(format!("{at}.file_url: file URLs are not supported; send file_data or file_id"))
+                    .param(format!("{at}.file_url")));
             }
             let get = |k: &str| p.get(k).and_then(Value::as_str).map(str::to_owned);
-            let file = FileContent {
-                file_id: get("file_id"),
-                file_data: get("file_data"),
-                filename: get("filename"),
-                extra: JsonObject::new(),
-            };
+            let file = FileContent { file_id: get("file_id"), file_data: get("file_data"), filename: get("filename"), extra: JsonObject::new() };
             if file.file_id.is_none() && file.file_data.is_none() {
-                return Err(FormatError::new(format!(
-                    "{at}: input_file needs file_data or file_id"
-                ))
-                .param(format!("{at}.file_data")));
+                return Err(FormatError::new(format!("{at}: input_file needs file_data or file_id")).param(format!("{at}.file_data")));
             }
             out.kind = "file".into();
             out.file = Some(file);
@@ -370,16 +301,10 @@ fn part(p: &Value, at: &str) -> Result<ContentPart, FormatError> {
         "input_audio" => {
             let audio = p.get("input_audio").unwrap_or(p);
             out.kind = "input_audio".into();
-            out.input_audio = Some(InputAudio {
-                data: field(audio, "data", at)?.to_owned(),
-                format: field(audio, "format", at)?.to_owned(),
-            });
+            out.input_audio = Some(InputAudio { data: field(audio, "data", at)?.to_owned(), format: field(audio, "format", at)?.to_owned() });
         }
         other => {
-            return Err(FormatError::new(format!(
-                "{at}: content parts of type {other:?} are not supported"
-            ))
-            .param(format!("{at}.type")));
+            return Err(FormatError::new(format!("{at}: content parts of type {other:?} are not supported")).param(format!("{at}.type")));
         }
     }
     Ok(out)
@@ -411,12 +336,11 @@ fn tool_choice(tc: &Value) -> Result<ToolChoice, FormatError> {
         Value::String(m) if matches!(m.as_str(), "auto" | "none" | "required") => Ok(ToolChoice::Mode(m.clone())),
         Value::Object(o) => match o.get("type").and_then(Value::as_str) {
             Some("function") => Ok(ToolChoice::named(field(tc, "name", "tool_choice")?)),
-            Some("allowed_tools") => Ok(ToolChoice::Mode(
-                o.get("mode").and_then(Value::as_str).unwrap_or("auto").to_owned(),
-            )),
+            Some("allowed_tools") => Ok(ToolChoice::Mode(o.get("mode").and_then(Value::as_str).unwrap_or("auto").to_owned())),
             _ => Err(FormatError::new("tool_choice: only \"auto\", \"none\", \"required\" and function choices are supported").param("tool_choice")),
         },
-        _ => Err(FormatError::new("tool_choice: expected \"auto\", \"none\", \"required\" or {\"type\": \"function\", \"name\": ...}").param("tool_choice")),
+        _ => Err(FormatError::new("tool_choice: expected \"auto\", \"none\", \"required\" or {\"type\": \"function\", \"name\": ...}")
+            .param("tool_choice")),
     }
 }
 
@@ -424,33 +348,19 @@ fn response_format(format: &Value) -> Result<Option<ResponseFormat>, FormatError
     let kind = format.get("type").and_then(Value::as_str).unwrap_or("text");
     Ok(match kind {
         "text" => None,
-        "json_object" => Some(ResponseFormat {
-            kind: kind.into(),
-            json_schema: None,
-            extra: JsonObject::new(),
-        }),
+        "json_object" => Some(ResponseFormat { kind: kind.into(), json_schema: None, extra: JsonObject::new() }),
         "json_schema" => Some(ResponseFormat {
             kind: kind.into(),
             json_schema: Some(JsonSchemaFormat {
-                name: format
-                    .get("name")
-                    .and_then(Value::as_str)
-                    .unwrap_or("response")
-                    .to_owned(),
-                description: format
-                    .get("description")
-                    .and_then(Value::as_str)
-                    .map(str::to_owned),
+                name: format.get("name").and_then(Value::as_str).unwrap_or("response").to_owned(),
+                description: format.get("description").and_then(Value::as_str).map(str::to_owned),
                 schema: format.get("schema").cloned(),
                 strict: format.get("strict").and_then(Value::as_bool),
             }),
             extra: JsonObject::new(),
         }),
         other => {
-            return Err(FormatError::new(format!(
-                "text.format.type: unsupported format {other:?}"
-            ))
-            .param("text.format.type"));
+            return Err(FormatError::new(format!("text.format.type: unsupported format {other:?}")).param("text.format.type"));
         }
     })
 }
@@ -465,17 +375,8 @@ pub fn new_response_id() -> String {
 
 /// Responses usage from chat usage.
 pub fn usage(u: &Usage) -> Value {
-    let cached = u
-        .prompt_tokens_details
-        .as_ref()
-        .and_then(|d| d.cached_tokens)
-        .or(u.cache_read_input_tokens)
-        .unwrap_or(0);
-    let reasoning = u
-        .completion_tokens_details
-        .as_ref()
-        .and_then(|d| d.reasoning_tokens)
-        .unwrap_or(0);
+    let cached = u.prompt_tokens_details.as_ref().and_then(|d| d.cached_tokens).or(u.cache_read_input_tokens).unwrap_or(0);
+    let reasoning = u.completion_tokens_details.as_ref().and_then(|d| d.reasoning_tokens).unwrap_or(0);
     json!({
         "input_tokens": u.prompt_tokens,
         "input_tokens_details": {"cached_tokens": cached},
@@ -578,13 +479,7 @@ pub fn from_chat_response(req: &ResponsesRequest, rid: &ResponseId, resp: &ChatR
             output.push(message_item(&gen_id("msg_"), "completed", content));
         }
         for call in m.tool_calls.iter().flatten() {
-            output.push(function_call_item(
-                &gen_id("fc_"),
-                &call.id,
-                &call.function.name,
-                &call.function.arguments,
-                "completed",
-            ));
+            output.push(function_call_item(&gen_id("fc_"), &call.id, &call.function.name, &call.function.arguments, "completed"));
         }
     }
     let (status, incomplete) = status_for(choice.and_then(|c| c.finish_reason.as_deref()));
@@ -695,15 +590,7 @@ impl ResponsesStream {
     }
 
     fn snapshot(&self, status: &str) -> Value {
-        response_object(
-            &self.req,
-            &self.rid,
-            status,
-            self.output.clone(),
-            None,
-            None,
-            None,
-        )
+        response_object(&self.req, &self.rid, status, self.output.clone(), None, None, None)
     }
 
     fn start(&mut self, out: &mut Vec<Value>) {
@@ -717,10 +604,7 @@ impl ResponsesStream {
     }
 
     fn item_id(&self, index: usize) -> String {
-        self.output[index]["id"]
-            .as_str()
-            .unwrap_or_default()
-            .to_owned()
+        self.output[index]["id"].as_str().unwrap_or_default().to_owned()
     }
 
     fn close(&mut self, out: &mut Vec<Value>) {
@@ -746,29 +630,17 @@ impl ResponsesStream {
             Open::Message => {
                 let part = self.output[index]["content"][0].clone();
                 self.emit(out, "response.output_text.done", json!({"item_id": id, "output_index": index, "content_index": 0, "text": part["text"]}));
-                self.emit(
-                    out,
-                    "response.content_part.done",
-                    json!({"item_id": id, "output_index": index, "content_index": 0, "part": part}),
-                );
+                self.emit(out, "response.content_part.done", json!({"item_id": id, "output_index": index, "content_index": 0, "part": part}));
                 self.output[index]["status"] = json!("completed");
             }
             Open::Tool(_) => {
                 let args = self.output[index]["arguments"].clone();
-                self.emit(
-                    out,
-                    "response.function_call_arguments.done",
-                    json!({"item_id": id, "output_index": index, "arguments": args}),
-                );
+                self.emit(out, "response.function_call_arguments.done", json!({"item_id": id, "output_index": index, "arguments": args}));
                 self.output[index]["status"] = json!("completed");
             }
         }
         let item = self.output[index].clone();
-        self.emit(
-            out,
-            "response.output_item.done",
-            json!({"output_index": index, "item": item}),
-        );
+        self.emit(out, "response.output_item.done", json!({"output_index": index, "item": item}));
     }
 
     /// Make `kind` the open item, adding `item` if needed; its output index.
@@ -783,20 +655,24 @@ impl ResponsesStream {
         let item = item();
         self.output.push(item.clone());
         self.open = Some((index, kind));
-        self.emit(
-            out,
-            "response.output_item.added",
-            json!({"output_index": index, "item": item}),
-        );
+        self.emit(out, "response.output_item.added", json!({"output_index": index, "item": item}));
         let id = self.item_id(index);
         match kind {
             Open::Reasoning => {
                 self.output[index]["summary"] = json!([{"type": "summary_text", "text": ""}]);
-                self.emit(out, "response.reasoning_summary_part.added", json!({"item_id": id, "output_index": index, "summary_index": 0, "part": {"type": "summary_text", "text": ""}}));
+                self.emit(
+                    out,
+                    "response.reasoning_summary_part.added",
+                    json!({"item_id": id, "output_index": index, "summary_index": 0, "part": {"type": "summary_text", "text": ""}}),
+                );
             }
             Open::Message => {
                 self.output[index]["content"] = json!([output_text("")]);
-                self.emit(out, "response.content_part.added", json!({"item_id": id, "output_index": index, "content_index": 0, "part": output_text("")}));
+                self.emit(
+                    out,
+                    "response.content_part.added",
+                    json!({"item_id": id, "output_index": index, "content_index": 0, "part": output_text("")}),
+                );
             }
             Open::Tool(_) => {}
         }
@@ -826,39 +702,20 @@ impl ResponsesStream {
         let d = &choice.delta;
         if let Some(r) = d.reasoning_content.as_deref().filter(|r| !r.is_empty()) {
             self.output_chars += r.len() as u64;
-            let i = self.ensure(
-                Open::Reasoning,
-                || json!({"type": "reasoning", "id": gen_id("rs_"), "summary": []}),
-                &mut out,
-            );
+            let i = self.ensure(Open::Reasoning, || json!({"type": "reasoning", "id": gen_id("rs_"), "summary": []}), &mut out);
             Self::append(&mut self.output[i]["summary"][0]["text"], r);
             let id = self.item_id(i);
-            self.emit(
-                &mut out,
-                "response.reasoning_summary_text.delta",
-                json!({"item_id": id, "output_index": i, "summary_index": 0, "delta": r}),
-            );
+            self.emit(&mut out, "response.reasoning_summary_text.delta", json!({"item_id": id, "output_index": i, "summary_index": 0, "delta": r}));
         }
-        for text in [d.content.as_deref(), d.refusal.as_deref()]
-            .into_iter()
-            .flatten()
-        {
+        for text in [d.content.as_deref(), d.refusal.as_deref()].into_iter().flatten() {
             if text.is_empty() {
                 continue;
             }
             self.output_chars += text.len() as u64;
-            let i = self.ensure(
-                Open::Message,
-                || message_item(&gen_id("msg_"), "in_progress", Vec::new()),
-                &mut out,
-            );
+            let i = self.ensure(Open::Message, || message_item(&gen_id("msg_"), "in_progress", Vec::new()), &mut out);
             Self::append(&mut self.output[i]["content"][0]["text"], text);
             let id = self.item_id(i);
-            self.emit(
-                &mut out,
-                "response.output_text.delta",
-                json!({"item_id": id, "output_index": i, "content_index": 0, "delta": text}),
-            );
+            self.emit(&mut out, "response.output_text.delta", json!({"item_id": id, "output_index": i, "content_index": 0, "delta": text}));
         }
         for tc in d.tool_calls.iter().flatten() {
             let f = tc.function.as_ref();
@@ -868,27 +725,16 @@ impl ResponsesStream {
                     let call_id = tc.id.clone().unwrap_or_else(|| gen_id("call_"));
                     let name = f.and_then(|f| f.name.clone()).unwrap_or_default();
                     self.close(&mut out);
-                    let i = self.ensure(
-                        Open::Tool(tc.index),
-                        || function_call_item(&gen_id("fc_"), &call_id, &name, "", "in_progress"),
-                        &mut out,
-                    );
+                    let i = self.ensure(Open::Tool(tc.index), || function_call_item(&gen_id("fc_"), &call_id, &name, "", "in_progress"), &mut out);
                     self.tools.insert(tc.index, i);
                     i
                 }
             };
-            if let Some(args) = f
-                .and_then(|f| f.arguments.as_deref())
-                .filter(|a| !a.is_empty())
-            {
+            if let Some(args) = f.and_then(|f| f.arguments.as_deref()).filter(|a| !a.is_empty()) {
                 self.output_chars += args.len() as u64;
                 Self::append(&mut self.output[i]["arguments"], args);
                 let id = self.item_id(i);
-                self.emit(
-                    &mut out,
-                    "response.function_call_arguments.delta",
-                    json!({"item_id": id, "output_index": i, "delta": args}),
-                );
+                self.emit(&mut out, "response.function_call_arguments.delta", json!({"item_id": id, "output_index": i, "delta": args}));
             }
         }
         if let Some(f) = &choice.finish_reason {
@@ -907,25 +753,10 @@ impl ResponsesStream {
         self.close(&mut out);
         self.done = true;
         let (status, incomplete) = status_for(self.finish.as_deref());
-        let u = self
-            .usage
-            .clone()
-            .unwrap_or_else(|| Usage::new(self.input_estimate, self.output_chars.div_ceil(4)));
-        let r = response_object(
-            &self.req,
-            &self.rid,
-            status,
-            self.output.clone(),
-            Some(usage(&u)),
-            incomplete,
-            None,
-        );
+        let u = self.usage.clone().unwrap_or_else(|| Usage::new(self.input_estimate, self.output_chars.div_ceil(4)));
+        let r = response_object(&self.req, &self.rid, status, self.output.clone(), Some(usage(&u)), incomplete, None);
         self.final_response = Some(r.clone());
-        let kind = if status == "completed" {
-            "response.completed"
-        } else {
-            "response.incomplete"
-        };
+        let kind = if status == "completed" { "response.completed" } else { "response.incomplete" };
         self.emit(&mut out, kind, json!({"response": r}));
         out
     }
@@ -938,20 +769,8 @@ impl ResponsesStream {
         }
         self.start(&mut out);
         self.done = true;
-        self.emit(
-            &mut out,
-            "error",
-            json!({"code": code, "message": message, "param": null}),
-        );
-        let r = response_object(
-            &self.req,
-            &self.rid,
-            "failed",
-            self.output.clone(),
-            None,
-            None,
-            Some(error_object(code, message)),
-        );
+        self.emit(&mut out, "error", json!({"code": code, "message": message, "param": null}));
+        let r = response_object(&self.req, &self.rid, "failed", self.output.clone(), None, None, Some(error_object(code, message)));
         self.emit(&mut out, "response.failed", json!({"response": r}));
         out
     }
@@ -959,10 +778,7 @@ impl ResponsesStream {
 
 /// Events as SSE bytes, each named by its `type`.
 pub fn encode_events(events: &[Value]) -> String {
-    events
-        .iter()
-        .map(|e| super::sse_event(e["type"].as_str().unwrap_or("message"), e))
-        .collect()
+    events.iter().map(|e| super::sse_event(e["type"].as_str().unwrap_or("message"), e)).collect()
 }
 
 #[cfg(test)]

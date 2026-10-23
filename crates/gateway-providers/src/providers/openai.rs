@@ -12,9 +12,7 @@ use super::{HttpRequest, StreamTranslator, encode_path_segment, parse_json};
 use crate::deployment::{Deployment, Protocol, Provider};
 use crate::error::ProviderError;
 use crate::sse::SseEvent;
-use crate::types::{
-    ChatChunk, ChatRequest, ChatResponse, EmbeddingRequest, EmbeddingResponse, Usage,
-};
+use crate::types::{ChatChunk, ChatRequest, ChatResponse, EmbeddingRequest, EmbeddingResponse, Usage};
 
 /// Request fields understood by the gateway (LiteLLM proxy conventions) that
 /// must never reach an upstream.
@@ -62,13 +60,8 @@ pub(crate) fn with_auth(dep: &Deployment, req: HttpRequest) -> HttpRequest {
 
 /// Serialize `body`, drop gateway-only fields, set the upstream model and
 /// merge `extra_body`.
-pub(crate) fn upstream_body<T: serde::Serialize>(
-    dep: &Deployment,
-    body: &T,
-) -> Result<serde_json::Map<String, Value>, ProviderError> {
-    let Value::Object(mut obj) = serde_json::to_value(body)
-        .map_err(|e| ProviderError::bad_request(dep.provider.name(), e.to_string()))?
-    else {
+pub(crate) fn upstream_body<T: serde::Serialize>(dep: &Deployment, body: &T) -> Result<serde_json::Map<String, Value>, ProviderError> {
+    let Value::Object(mut obj) = serde_json::to_value(body).map_err(|e| ProviderError::bad_request(dep.provider.name(), e.to_string()))? else {
         unreachable!("request types serialize to objects")
     };
     for key in GATEWAY_ONLY_FIELDS {
@@ -81,11 +74,7 @@ pub(crate) fn upstream_body<T: serde::Serialize>(
     Ok(obj)
 }
 
-pub(crate) fn chat_request(
-    dep: &Deployment,
-    req: &ChatRequest,
-    stream: bool,
-) -> Result<HttpRequest, ProviderError> {
+pub(crate) fn chat_request(dep: &Deployment, req: &ChatRequest, stream: bool) -> Result<HttpRequest, ProviderError> {
     let mut obj = upstream_body(dep, req)?;
     // Most OpenAI-compatible servers only know the legacy name.
     if !matches!(dep.provider, Provider::OpenAi | Provider::Azure)
@@ -110,21 +99,12 @@ pub(crate) fn chat_request(
         obj.remove("stream");
         obj.remove("stream_options");
     }
-    Ok(with_auth(
-        dep,
-        HttpRequest::new(endpoint(dep, "chat/completions"), Value::Object(obj)),
-    ))
+    Ok(with_auth(dep, HttpRequest::new(endpoint(dep, "chat/completions"), Value::Object(obj))))
 }
 
-pub(crate) fn embeddings_request(
-    dep: &Deployment,
-    req: &EmbeddingRequest,
-) -> Result<HttpRequest, ProviderError> {
+pub(crate) fn embeddings_request(dep: &Deployment, req: &EmbeddingRequest) -> Result<HttpRequest, ProviderError> {
     let obj = upstream_body(dep, req)?;
-    Ok(with_auth(
-        dep,
-        HttpRequest::new(endpoint(dep, "embeddings"), Value::Object(obj)),
-    ))
+    Ok(with_auth(dep, HttpRequest::new(endpoint(dep, "embeddings"), Value::Object(obj))))
 }
 
 /// Some OpenAI-compatible servers report failures as `200 {"error": ...}`.
@@ -134,11 +114,8 @@ pub(crate) fn embedded_error(provider: &str, body: &str) -> Option<ProviderError
     if v.get("choices").is_some() || v.get("data").is_some() {
         return None;
     }
-    let status = err
-        .get("code")
-        .and_then(|c| c.as_u64().or_else(|| c.as_str()?.parse().ok()))
-        .filter(|c| (400..=599).contains(c))
-        .unwrap_or(500) as u16;
+    let status =
+        err.get("code").and_then(|c| c.as_u64().or_else(|| c.as_str()?.parse().ok())).filter(|c| (400..=599).contains(c)).unwrap_or(500) as u16;
     Some(ProviderError::from_upstream(provider, status, body, None))
 }
 
@@ -149,10 +126,7 @@ pub(crate) fn parse_chat(dep: &Deployment, body: &str) -> Result<ChatResponse, P
     parse_json(dep.provider.name(), body)
 }
 
-pub(crate) fn parse_embeddings(
-    dep: &Deployment,
-    body: &str,
-) -> Result<EmbeddingResponse, ProviderError> {
+pub(crate) fn parse_embeddings(dep: &Deployment, body: &str) -> Result<EmbeddingResponse, ProviderError> {
     if let Some(e) = embedded_error(dep.provider.name(), body) {
         return Err(e);
     }
@@ -178,12 +152,7 @@ pub(crate) struct OpenAiStream {
 
 impl OpenAiStream {
     pub fn new(provider: &'static str) -> Self {
-        Self {
-            provider,
-            usage: None,
-            last: None,
-            done: false,
-        }
+        Self { provider, usage: None, last: None, done: false }
     }
 
     fn usage_chunk(&mut self) -> Vec<ChatChunk> {
@@ -270,19 +239,11 @@ mod tests {
 
     #[test]
     fn openai_request_shape() {
-        let d = dep(
-            json!({"model": "openai/gpt-4o", "api_key": "sk", "organization": "org", "extra_body": {"service_tier": "flex"}}),
-        );
+        let d = dep(json!({"model": "openai/gpt-4o", "api_key": "sk", "organization": "org", "extra_body": {"service_tier": "flex"}}));
         let r = chat_request(&d, &request(), false).unwrap();
         assert_eq!(r.url, "https://api.openai.com/v1/chat/completions");
-        assert!(
-            r.headers
-                .contains(&("authorization".into(), "Bearer sk".into()))
-        );
-        assert!(
-            r.headers
-                .contains(&("openai-organization".into(), "org".into()))
-        );
+        assert!(r.headers.contains(&("authorization".into(), "Bearer sk".into())));
+        assert!(r.headers.contains(&("openai-organization".into(), "org".into())));
         assert_eq!(r.body["model"], "gpt-4o");
         assert_eq!(r.body["top_k"], 3);
         assert_eq!(r.body["service_tier"], "flex");
@@ -316,20 +277,10 @@ mod tests {
             "api_base": "https://res.openai.azure.com/", "api_version": "2024-10-21"
         }));
         let r = chat_request(&d, &request(), false).unwrap();
-        assert_eq!(
-            r.url,
-            "https://res.openai.azure.com/openai/deployments/my-gpt4o/chat/completions?api-version=2024-10-21"
-        );
+        assert_eq!(r.url, "https://res.openai.azure.com/openai/deployments/my-gpt4o/chat/completions?api-version=2024-10-21");
         assert_eq!(r.headers, vec![("api-key".to_owned(), "az".to_owned())]);
-        let e = embeddings_request(
-            &d,
-            &serde_json::from_value(json!({"model": "x", "input": "hi"})).unwrap(),
-        )
-        .unwrap();
-        assert!(
-            e.url
-                .ends_with("/openai/deployments/my-gpt4o/embeddings?api-version=2024-10-21")
-        );
+        let e = embeddings_request(&d, &serde_json::from_value(json!({"model": "x", "input": "hi"})).unwrap()).unwrap();
+        assert!(e.url.ends_with("/openai/deployments/my-gpt4o/embeddings?api-version=2024-10-21"));
     }
 
     #[test]
@@ -339,10 +290,7 @@ mod tests {
         assert_eq!(r.url, "http://vllm:8000/v1/chat/completions");
         assert!(r.headers.is_empty());
         let d = dep(json!({"model": "ollama_chat/llama3"}));
-        assert_eq!(
-            chat_request(&d, &request(), false).unwrap().url,
-            "http://localhost:11434/v1/chat/completions"
-        );
+        assert_eq!(chat_request(&d, &request(), false).unwrap().url, "http://localhost:11434/v1/chat/completions");
     }
 
     #[test]
@@ -357,10 +305,7 @@ mod tests {
         let err = parse_chat(&d, r#"{"error":{"message":"rate limited","code":429}}"#).unwrap_err();
         assert_eq!(err.status_code(), 429);
         assert!(err.is_retryable());
-        assert_eq!(
-            parse_chat(&d, "nope").unwrap_err().kind(),
-            crate::ErrorKind::InvalidResponse
-        );
+        assert_eq!(parse_chat(&d, "nope").unwrap_err().kind(), crate::ErrorKind::InvalidResponse);
     }
 
     #[test]
@@ -390,16 +335,15 @@ mod tests {
     fn stream_without_done_and_errors() {
         let chunks = translate_all(
             OpenAiStream::new("x"),
-            &[("", r#"{"id":"c","choices":[{"index":0,"delta":{"content":"a"}}],"usage":{"prompt_tokens":1,"completion_tokens":1,"total_tokens":2}}"#)],
+            &[(
+                "",
+                r#"{"id":"c","choices":[{"index":0,"delta":{"content":"a"}}],"usage":{"prompt_tokens":1,"completion_tokens":1,"total_tokens":2}}"#,
+            )],
         )
         .unwrap();
         assert_eq!(chunks.len(), 2);
         assert!(chunks[1].is_usage_only());
-        let err = translate_all(
-            OpenAiStream::new("x"),
-            &[("", r#"{"error":{"message":"overloaded","code":503}}"#)],
-        )
-        .unwrap_err();
+        let err = translate_all(OpenAiStream::new("x"), &[("", r#"{"error":{"message":"overloaded","code":503}}"#)]).unwrap_err();
         assert_eq!(err.status_code(), 503);
         assert!(translate_all(OpenAiStream::new("x"), &[("", "{bad")]).is_err());
     }

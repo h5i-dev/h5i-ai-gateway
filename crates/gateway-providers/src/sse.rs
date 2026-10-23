@@ -117,10 +117,7 @@ impl SseDecoder {
 
 /// Decode a byte stream into SSE events. Transport errors are mapped with
 /// [`ProviderError::from_reqwest`] and end the stream.
-pub(crate) fn events<S>(
-    provider: &'static str,
-    bytes: S,
-) -> impl Stream<Item = Result<SseEvent, ProviderError>> + Send + 'static
+pub(crate) fn events<S>(provider: &'static str, bytes: S) -> impl Stream<Item = Result<SseEvent, ProviderError>> + Send + 'static
 where
     S: Stream<Item = Result<Bytes, reqwest::Error>> + Send + 'static,
 {
@@ -130,12 +127,7 @@ where
         queue: VecDeque<SseEvent>,
         done: bool,
     }
-    let state = State {
-        bytes: Box::pin(bytes),
-        decoder: SseDecoder::new(),
-        queue: VecDeque::new(),
-        done: false,
-    };
+    let state = State { bytes: Box::pin(bytes), decoder: SseDecoder::new(), queue: VecDeque::new(), done: false };
     stream::unfold(state, move |mut st| async move {
         loop {
             if let Some(ev) = st.queue.pop_front() {
@@ -171,10 +163,7 @@ mod tests {
     }
 
     fn data(s: &str) -> SseEvent {
-        SseEvent {
-            data: s.into(),
-            ..SseEvent::default()
-        }
+        SseEvent { data: s.into(), ..SseEvent::default() }
     }
 
     #[test]
@@ -191,17 +180,8 @@ mod tests {
 
     #[test]
     fn multi_line_data_event_name_id_and_comments() {
-        let evs = decode_all(&[
-            b": keep-alive\n\nevent: content_block_delta\nid: 7\ndata: line1\ndata:line2\nretry: 10\n\n",
-        ]);
-        assert_eq!(
-            evs,
-            vec![SseEvent {
-                event: Some("content_block_delta".into()),
-                data: "line1\nline2".into(),
-                id: Some("7".into()),
-            }]
-        );
+        let evs = decode_all(&[b": keep-alive\n\nevent: content_block_delta\nid: 7\ndata: line1\ndata:line2\nretry: 10\n\n"]);
+        assert_eq!(evs, vec![SseEvent { event: Some("content_block_delta".into()), data: "line1\nline2".into(), id: Some("7".into()) }]);
     }
 
     #[test]
@@ -226,10 +206,7 @@ mod tests {
 
     #[tokio::test]
     async fn byte_stream_adapter() {
-        let chunks: Vec<Result<Bytes, reqwest::Error>> = vec![
-            Ok(Bytes::from_static(b"data: 1\n\nda")),
-            Ok(Bytes::from_static(b"ta: 2\n\n")),
-        ];
+        let chunks: Vec<Result<Bytes, reqwest::Error>> = vec![Ok(Bytes::from_static(b"data: 1\n\nda")), Ok(Bytes::from_static(b"ta: 2\n\n"))];
         let evs: Vec<_> = events("t", stream::iter(chunks)).collect().await;
         let evs: Vec<_> = evs.into_iter().map(Result::unwrap).collect();
         assert_eq!(evs, vec![data("1"), data("2")]);

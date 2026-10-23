@@ -1,0 +1,23 @@
+{
+  // proofs/.lake/packages is a symlink to the shared Lean package cache
+  // (~120k files: Mathlib, Aeneas, …); never watch, index or search it.
+  "files.watcherExclude": {
+    "**/.lake/**": true,
+    "**/target/**": true,
+    "**/.claude/worktrees/**": true,
+    "**/.h5i/**": true,
+    "**/.git/objects/**": true
+  },
+  "search.exclude": {
+    "**/.lake": true,
+    "**/target": true,
+    "**/.claude/worktrees": true,
+    "**/.h5i": true
+  },
+  "files.exclude": {
+    "**/.lake": true,
+    "**/.claude/worktrees": true
+  },
+  "search.followSymlinks": false,
+  "rust-analyzer.files.excludeDirs": ["proofs", ".claude"]
+}

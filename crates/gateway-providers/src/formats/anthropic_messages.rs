@@ -37,8 +37,8 @@ use super::FormatError;
 use crate::providers::gen_id;
 use crate::tokens::estimate_prompt_tokens;
 use crate::types::{
-    ChatChunk, ChatMessage, ChatRequest, ChatResponse, ContentPart, FileContent, JsonObject,
-    MessageContent, Stop, StreamOptions, Tool, ToolCall, ToolChoice, Usage, finish_reason,
+    ChatChunk, ChatMessage, ChatRequest, ChatResponse, ContentPart, FileContent, JsonObject, MessageContent, Stop, StreamOptions, Tool, ToolCall,
+    ToolChoice, Usage, finish_reason,
 };
 
 /// `POST /v1/messages` (and `/v1/messages/count_tokens`) request body.
@@ -88,12 +88,7 @@ pub struct InputMessage {
 }
 
 /// Native Messages API fields forwarded to upstreams that understand them.
-const PASSTHROUGH_FIELDS: &[&str] = &[
-    "service_tier",
-    "container",
-    "mcp_servers",
-    "context_management",
-];
+const PASSTHROUGH_FIELDS: &[&str] = &["service_tier", "container", "mcp_servers", "context_management"];
 
 /// `thinking.budget_tokens` -> `reasoning_effort`, the inverse of the
 /// budgets the Anthropic and Gemini adapters use for each effort.
@@ -124,10 +119,9 @@ pub fn to_chat_request(req: &MessagesRequest) -> Result<ChatRequest, FormatError
                 }
             }
             other => {
-                return Err(FormatError::new(format!(
-                    "{at}.role: unexpected role {other:?}; expected \"user\" or \"assistant\""
-                ))
-                .param(format!("{at}.role")));
+                return Err(
+                    FormatError::new(format!("{at}.role: unexpected role {other:?}; expected \"user\" or \"assistant\"")).param(format!("{at}.role"))
+                );
             }
         }
     }
@@ -145,17 +139,10 @@ pub fn to_chat_request(req: &MessagesRequest) -> Result<ChatRequest, FormatError
     }
     if req.is_stream() {
         chat.stream = Some(true);
-        chat.stream_options = Some(StreamOptions {
-            include_usage: Some(true),
-            extra: JsonObject::new(),
-        });
+        chat.stream_options = Some(StreamOptions { include_usage: Some(true), extra: JsonObject::new() });
     }
     if let Some(tools) = &req.tools {
-        let tools = tools
-            .iter()
-            .enumerate()
-            .map(|(i, t)| tool(t, i))
-            .collect::<Result<Vec<_>, _>>()?;
+        let tools = tools.iter().enumerate().map(|(i, t)| tool(t, i)).collect::<Result<Vec<_>, _>>()?;
         if !tools.is_empty() {
             chat.tools = Some(tools);
         }
@@ -176,13 +163,7 @@ pub fn to_chat_request(req: &MessagesRequest) -> Result<ChatRequest, FormatError
     if let Some(k) = req.top_k {
         chat.extra.insert("top_k".into(), json!(k));
     }
-    if let Some(user) = req
-        .metadata
-        .as_ref()
-        .and_then(|m| m.get("user_id"))
-        .and_then(Value::as_str)
-        .filter(|u| !u.is_empty())
-    {
+    if let Some(user) = req.metadata.as_ref().and_then(|m| m.get("user_id")).and_then(Value::as_str).filter(|u| !u.is_empty()) {
         chat.user = Some(user.to_owned());
     }
     for f in PASSTHROUGH_FIELDS {
@@ -208,16 +189,12 @@ fn blocks_of(content: &Value, at: &str) -> Result<Vec<Value>, FormatError> {
         Value::Array(blocks) => {
             for (j, b) in blocks.iter().enumerate() {
                 if b.get("type").and_then(Value::as_str).is_none() {
-                    return Err(FormatError::new(format!("{at}.{j}.type: Field required"))
-                        .param(format!("{at}.{j}.type")));
+                    return Err(FormatError::new(format!("{at}.{j}.type: Field required")).param(format!("{at}.{j}.type")));
                 }
             }
             Ok(blocks.clone())
         }
-        _ => Err(FormatError::new(format!(
-            "{at}: expected a string or a list of content blocks"
-        ))
-        .param(at)),
+        _ => Err(FormatError::new(format!("{at}: expected a string or a list of content blocks")).param(at)),
     }
 }
 
@@ -246,27 +223,21 @@ fn system_message(system: &Value) -> Result<Option<ChatMessage>, FormatError> {
             (!text.is_empty()).then(|| with_cache_control(ContentPart::text(text), b))
         })
         .collect();
-    Ok(content_of(parts).map(|content| ChatMessage {
-        content: Some(content),
-        ..ChatMessage::system("")
-    }))
+    Ok(content_of(parts).map(|content| ChatMessage { content: Some(content), ..ChatMessage::system("") }))
 }
 
 /// Parts as message content: plain text when that loses nothing.
 fn content_of(parts: Vec<ContentPart>) -> Option<MessageContent> {
     match parts.as_slice() {
         [] => None,
-        [p] if p.kind == "text" && p.extra.is_empty() => {
-            Some(MessageContent::Text(p.text.clone().unwrap_or_default()))
-        }
+        [p] if p.kind == "text" && p.extra.is_empty() => Some(MessageContent::Text(p.text.clone().unwrap_or_default())),
         _ => Some(MessageContent::Parts(parts)),
     }
 }
 
 /// A native block kept as is (only the Anthropic adapter understands it).
 fn native_part(b: &Value, at: &str) -> Result<ContentPart, FormatError> {
-    serde_json::from_value(b.clone())
-        .map_err(|e| FormatError::new(format!("{at}: invalid content block: {e}")).param(at))
+    serde_json::from_value(b.clone()).map_err(|e| FormatError::new(format!("{at}: invalid content block: {e}")).param(at))
 }
 
 fn data_url(source: &Value) -> Option<String> {
@@ -284,33 +255,24 @@ fn user_part(b: &Value, at: &str) -> Result<Option<ContentPart>, FormatError> {
             Some("") => return Ok(None),
             Some(t) => ContentPart::text(t),
             None => {
-                return Err(FormatError::new(format!("{at}.text: Field required"))
-                    .param(format!("{at}.text")));
+                return Err(FormatError::new(format!("{at}.text: Field required")).param(format!("{at}.text")));
             }
         },
         ("image", Some("base64")) => match data_url(source) {
             Some(url) => ContentPart::image_url(url),
             None => {
-                return Err(FormatError::new(format!(
-                    "{at}.source: base64 sources need media_type and data"
-                ))
-                .param(format!("{at}.source")));
+                return Err(FormatError::new(format!("{at}.source: base64 sources need media_type and data")).param(format!("{at}.source")));
             }
         },
         ("image", Some("url")) => match source.get("url").and_then(Value::as_str) {
             Some(url) => ContentPart::image_url(url),
             None => {
-                return Err(FormatError::new(format!("{at}.source.url: Field required"))
-                    .param(format!("{at}.source.url")));
+                return Err(FormatError::new(format!("{at}.source.url: Field required")).param(format!("{at}.source.url")));
             }
         },
         ("document", Some("base64")) => {
-            let file_data = data_url(source).ok_or_else(|| {
-                FormatError::new(format!(
-                    "{at}.source: base64 sources need media_type and data"
-                ))
-                .param(format!("{at}.source"))
-            })?;
+            let file_data = data_url(source)
+                .ok_or_else(|| FormatError::new(format!("{at}.source: base64 sources need media_type and data")).param(format!("{at}.source")))?;
             file_part(FileContent {
                 file_data: Some(file_data),
                 filename: b.get("title").and_then(Value::as_str).map(str::to_owned),
@@ -318,21 +280,14 @@ fn user_part(b: &Value, at: &str) -> Result<Option<ContentPart>, FormatError> {
             })
         }
         ("document", Some("text")) => {
-            let text = source
-                .get("data")
-                .and_then(Value::as_str)
-                .unwrap_or_default();
+            let text = source.get("data").and_then(Value::as_str).unwrap_or_default();
             match b.get("title").and_then(Value::as_str) {
                 Some(title) => ContentPart::text(format!("{title}\n\n{text}")),
                 None => ContentPart::text(text),
             }
         }
-        ("document" | "image", Some("file")) => match source.get("file_id").and_then(Value::as_str)
-        {
-            Some(id) => file_part(FileContent {
-                file_id: Some(id.to_owned()),
-                ..FileContent::default()
-            }),
+        ("document" | "image", Some("file")) => match source.get("file_id").and_then(Value::as_str) {
+            Some(id) => file_part(FileContent { file_id: Some(id.to_owned()), ..FileContent::default() }),
             None => native_part(b, at)?,
         },
         _ => native_part(b, at)?,
@@ -350,11 +305,7 @@ fn file_part(file: FileContent) -> ContentPart {
 
 /// A user turn: its `tool_result` blocks become `role: tool` messages, the
 /// rest one user message after them.
-fn user_messages(
-    blocks: &[Value],
-    at: &str,
-    out: &mut Vec<ChatMessage>,
-) -> Result<(), FormatError> {
+fn user_messages(blocks: &[Value], at: &str, out: &mut Vec<ChatMessage>) -> Result<(), FormatError> {
     let mut parts = Vec::new();
     for (j, b) in blocks.iter().enumerate() {
         let at = format!("{at}.content.{j}");
@@ -365,10 +316,7 @@ fn user_messages(
         }
     }
     if let Some(content) = content_of(parts) {
-        out.push(ChatMessage {
-            content: Some(content),
-            ..ChatMessage::user("")
-        });
+        out.push(ChatMessage { content: Some(content), ..ChatMessage::user("") });
     }
     Ok(())
 }
@@ -377,10 +325,7 @@ fn tool_message(b: &Value, at: &str) -> Result<ChatMessage, FormatError> {
     let id = b
         .get("tool_use_id")
         .and_then(Value::as_str)
-        .ok_or_else(|| {
-            FormatError::new(format!("{at}.tool_use_id: Field required"))
-                .param(format!("{at}.tool_use_id"))
-        })?;
+        .ok_or_else(|| FormatError::new(format!("{at}.tool_use_id: Field required")).param(format!("{at}.tool_use_id")))?;
     let content = match b.get("content") {
         None | Some(Value::Null) => MessageContent::Text(String::new()),
         Some(Value::String(s)) => MessageContent::Text(s.clone()),
@@ -399,10 +344,7 @@ fn tool_message(b: &Value, at: &str) -> Result<ChatMessage, FormatError> {
             }
         }
         Some(_) => {
-            return Err(FormatError::new(format!(
-                "{at}.content: expected a string or a list of content blocks"
-            ))
-            .param(format!("{at}.content")));
+            return Err(FormatError::new(format!("{at}.content: expected a string or a list of content blocks")).param(format!("{at}.content")));
         }
     };
     let mut m = ChatMessage::tool(id, "");
@@ -421,20 +363,16 @@ fn assistant_message(blocks: &[Value], at: &str) -> Result<Option<ChatMessage>, 
         let at = format!("{at}.content.{j}");
         match kind(b) {
             "text" => {
-                if let Some(t) = b
-                    .get("text")
-                    .and_then(Value::as_str)
-                    .filter(|t| !t.is_empty())
-                {
+                if let Some(t) = b.get("text").and_then(Value::as_str).filter(|t| !t.is_empty()) {
                     parts.push(with_cache_control(ContentPart::text(t), b));
                 }
             }
             "tool_use" => {
                 let id = b.get("id").and_then(Value::as_str).unwrap_or_default();
-                let name = b.get("name").and_then(Value::as_str).ok_or_else(|| {
-                    FormatError::new(format!("{at}.name: Field required"))
-                        .param(format!("{at}.name"))
-                })?;
+                let name = b
+                    .get("name")
+                    .and_then(Value::as_str)
+                    .ok_or_else(|| FormatError::new(format!("{at}.name: Field required")).param(format!("{at}.name")))?;
                 let input = b.get("input").cloned().unwrap_or_else(|| json!({}));
                 let mut call = ToolCall::function(id, name, input.to_string());
                 if let Some(cc) = cache_control(b) {
@@ -455,8 +393,7 @@ fn assistant_message(blocks: &[Value], at: &str) -> Result<Option<ChatMessage>, 
         m.tool_calls = Some(tool_calls);
     }
     if !thinking_blocks.is_empty() {
-        m.extra
-            .insert("thinking_blocks".into(), Value::Array(thinking_blocks));
+        m.extra.insert("thinking_blocks".into(), Value::Array(thinking_blocks));
     }
     Ok(Some(m))
 }
@@ -468,17 +405,12 @@ fn tool(t: &Value, i: usize) -> Result<Tool, FormatError> {
     };
     match obj.get("type").and_then(Value::as_str) {
         None | Some("custom") => {
-            let name = obj.get("name").and_then(Value::as_str).ok_or_else(|| {
-                FormatError::new(format!("{at}.name: Field required")).param(format!("{at}.name"))
-            })?;
-            let schema = obj
-                .get("input_schema")
-                .cloned()
-                .unwrap_or_else(|| json!({"type": "object", "properties": {}}));
-            let description = obj
-                .get("description")
+            let name = obj
+                .get("name")
                 .and_then(Value::as_str)
-                .map(str::to_owned);
+                .ok_or_else(|| FormatError::new(format!("{at}.name: Field required")).param(format!("{at}.name")))?;
+            let schema = obj.get("input_schema").cloned().unwrap_or_else(|| json!({"type": "object", "properties": {}}));
+            let description = obj.get("description").and_then(Value::as_str).map(str::to_owned);
             let mut tool = Tool::function(name, description, Some(schema));
             if let Some(cc) = cache_control(t) {
                 tool.extra.insert("cache_control".into(), cc.clone());
@@ -489,39 +421,28 @@ fn tool(t: &Value, i: usize) -> Result<Tool, FormatError> {
         Some(kind) => {
             let mut extra = obj.clone();
             extra.remove("type");
-            Ok(Tool {
-                kind: kind.to_owned(),
-                function: None,
-                extra,
-            })
+            Ok(Tool { kind: kind.to_owned(), function: None, extra })
         }
     }
 }
 
 fn tool_choice(tc: &Value) -> Result<(Option<ToolChoice>, Option<bool>), FormatError> {
-    let bad = || {
-        FormatError::new(
-            "tool_choice: expected {\"type\": \"auto\" | \"any\" | \"tool\" | \"none\"}",
-        )
-        .param("tool_choice")
-    };
+    let bad = || FormatError::new("tool_choice: expected {\"type\": \"auto\" | \"any\" | \"tool\" | \"none\"}").param("tool_choice");
     let kind = tc.get("type").and_then(Value::as_str).ok_or_else(bad)?;
     let choice = match kind {
         "auto" => ToolChoice::Mode("auto".into()),
         "any" => ToolChoice::Mode("required".into()),
         "none" => ToolChoice::Mode("none".into()),
         "tool" => {
-            let name = tc.get("name").and_then(Value::as_str).ok_or_else(|| {
-                FormatError::new("tool_choice.name: Field required").param("tool_choice.name")
-            })?;
+            let name = tc
+                .get("name")
+                .and_then(Value::as_str)
+                .ok_or_else(|| FormatError::new("tool_choice.name: Field required").param("tool_choice.name"))?;
             ToolChoice::named(name)
         }
         _ => return Err(bad()),
     };
-    let parallel = tc
-        .get("disable_parallel_tool_use")
-        .and_then(Value::as_bool)
-        .map(|disable| !disable);
+    let parallel = tc.get("disable_parallel_tool_use").and_then(Value::as_bool).map(|disable| !disable);
     Ok((Some(choice), parallel))
 }
 
@@ -542,14 +463,8 @@ pub fn stop_reason(finish: Option<&str>) -> &'static str {
 /// OpenAI's `prompt_tokens` includes.
 pub fn usage(u: &Usage) -> Value {
     let details = u.prompt_tokens_details.as_ref();
-    let cache_read = u
-        .cache_read_input_tokens
-        .or(details.and_then(|d| d.cached_tokens))
-        .unwrap_or(0);
-    let cache_creation = u
-        .cache_creation_input_tokens
-        .or(details.and_then(|d| d.cache_creation_tokens))
-        .unwrap_or(0);
+    let cache_read = u.cache_read_input_tokens.or(details.and_then(|d| d.cached_tokens)).unwrap_or(0);
+    let cache_creation = u.cache_creation_input_tokens.or(details.and_then(|d| d.cache_creation_tokens)).unwrap_or(0);
     json!({
         "input_tokens": u.prompt_tokens.saturating_sub(cache_read + cache_creation),
         "output_tokens": u.completion_tokens,
@@ -585,9 +500,7 @@ pub fn from_chat_response(resp: &ChatResponse, model: &str) -> Value {
     let choice = resp.choices.first();
     if let Some(m) = choice.map(|c| &c.message) {
         match m.extra.get("thinking_blocks") {
-            Some(Value::Array(blocks)) if !blocks.is_empty() => {
-                content.extend(blocks.iter().cloned())
-            }
+            Some(Value::Array(blocks)) if !blocks.is_empty() => content.extend(blocks.iter().cloned()),
             _ => {
                 if let Some(r) = m.reasoning_content.as_deref().filter(|r| !r.is_empty()) {
                     content.push(json!({"type": "thinking", "thinking": r, "signature": ""}));
@@ -774,20 +687,10 @@ impl MessagesStream {
         let d = &choice.delta;
         if let Some(r) = d.reasoning_content.as_deref().filter(|r| !r.is_empty()) {
             self.output_chars += r.len() as u64;
-            let i = self.ensure(
-                Open::Thinking,
-                || json!({"type": "thinking", "thinking": "", "signature": ""}),
-                &mut out,
-            );
-            out.push(Self::delta(
-                i,
-                json!({"type": "thinking_delta", "thinking": r}),
-            ));
+            let i = self.ensure(Open::Thinking, || json!({"type": "thinking", "thinking": "", "signature": ""}), &mut out);
+            out.push(Self::delta(i, json!({"type": "thinking_delta", "thinking": r})));
         }
-        for text in [d.content.as_deref(), d.refusal.as_deref()]
-            .into_iter()
-            .flatten()
-        {
+        for text in [d.content.as_deref(), d.refusal.as_deref()].into_iter().flatten() {
             if text.is_empty() {
                 continue;
             }
@@ -803,24 +706,14 @@ impl MessagesStream {
                     let id = tc.id.clone().unwrap_or_else(|| gen_id("toolu_"));
                     let name = f.and_then(|f| f.name.clone()).unwrap_or_default();
                     self.close(&mut out);
-                    let b = self.ensure(
-                        Open::Tool(tc.index),
-                        || json!({"type": "tool_use", "id": id, "name": name, "input": {}}),
-                        &mut out,
-                    );
+                    let b = self.ensure(Open::Tool(tc.index), || json!({"type": "tool_use", "id": id, "name": name, "input": {}}), &mut out);
                     self.tools.insert(tc.index, b);
                     b
                 }
             };
-            if let Some(args) = f
-                .and_then(|f| f.arguments.as_deref())
-                .filter(|a| !a.is_empty())
-            {
+            if let Some(args) = f.and_then(|f| f.arguments.as_deref()).filter(|a| !a.is_empty()) {
                 self.output_chars += args.len() as u64;
-                out.push(Self::delta(
-                    block,
-                    json!({"type": "input_json_delta", "partial_json": args}),
-                ));
+                out.push(Self::delta(block, json!({"type": "input_json_delta", "partial_json": args})));
             }
         }
         if let Some(f) = &choice.finish_reason {
@@ -842,10 +735,7 @@ impl MessagesStream {
             (None | Some(finish_reason::STOP), false) => "tool_use",
             (f, _) => stop_reason(f),
         };
-        let u = self
-            .usage
-            .clone()
-            .unwrap_or_else(|| Usage::new(self.input_estimate, self.output_chars.div_ceil(4)));
+        let u = self.usage.clone().unwrap_or_else(|| Usage::new(self.input_estimate, self.output_chars.div_ceil(4)));
         out.push(json!({
             "type": "message_delta",
             "delta": {"stop_reason": stop, "stop_sequence": null},
@@ -867,10 +757,7 @@ impl MessagesStream {
 
 /// Events as SSE bytes, each named by its `type`.
 pub fn encode_events(events: &[Value]) -> String {
-    events
-        .iter()
-        .map(|e| super::sse_event(e["type"].as_str().unwrap_or("message"), e))
-        .collect()
+    events.iter().map(|e| super::sse_event(e["type"].as_str().unwrap_or("message"), e)).collect()
 }
 
 #[cfg(test)]

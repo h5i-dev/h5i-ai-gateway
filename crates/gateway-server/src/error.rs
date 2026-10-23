@@ -54,7 +54,11 @@ impl ApiError {
             Refusal::KeyParallelLimit => (S::TOO_MANY_REQUESTS, "rate_limit_error", "Max parallel request limit reached for this key."),
             Refusal::KeyBudgetExceeded => (S::BAD_REQUEST, "budget_exceeded", "ExceededBudget: the key's budget does not cover this request."),
             Refusal::TeamBudgetExceeded => (S::BAD_REQUEST, "budget_exceeded", "ExceededBudget: the team's budget does not cover this request."),
-            Refusal::NoDeployment => (S::TOO_MANY_REQUESTS, "rate_limit_error", "No deployments available for selected model; all are cooling down, rate limited or failed."),
+            Refusal::NoDeployment => (
+                S::TOO_MANY_REQUESTS,
+                "rate_limit_error",
+                "No deployments available for selected model; all are cooling down, rate limited or failed.",
+            ),
             Refusal::NotExpired => (S::CONFLICT, "invalid_request_error", "The reservation has not expired yet."),
             Refusal::InUse => (S::CONFLICT, "invalid_request_error", "The team still has keys."),
             Refusal::Overflow => (S::INTERNAL_SERVER_ERROR, "internal_server_error", "Id space exhausted."),

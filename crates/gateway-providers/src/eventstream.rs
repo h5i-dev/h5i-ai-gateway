@@ -66,10 +66,7 @@ pub struct Message {
 impl Message {
     /// A string header's value.
     pub fn header(&self, name: &str) -> Option<&str> {
-        self.headers
-            .iter()
-            .find(|(n, _)| n == name)
-            .and_then(|(_, v)| v.as_str())
+        self.headers.iter().find(|(n, _)| n == name).and_then(|(_, v)| v.as_str())
     }
 }
 
@@ -112,11 +109,7 @@ impl EventStreamDecoder {
 
     /// Signal end of input: an error if a partial message is buffered.
     pub fn finish(&self) -> Result<(), DecodeError> {
-        if self.buf.is_empty() {
-            Ok(())
-        } else {
-            Err(DecodeError::Truncated(self.buf.len()))
-        }
+        if self.buf.is_empty() { Ok(()) } else { Err(DecodeError::Truncated(self.buf.len())) }
     }
 
     fn next_message(&mut self) -> Result<Option<Message>, DecodeError> {
@@ -128,15 +121,9 @@ impl EventStreamDecoder {
         let prelude_crc = be_u32(&self.buf[8..12]);
         let computed = crc32(&self.buf[0..8]);
         if computed != prelude_crc {
-            return Err(DecodeError::PreludeCrc {
-                expected: prelude_crc,
-                computed,
-            });
+            return Err(DecodeError::PreludeCrc { expected: prelude_crc, computed });
         }
-        if !(MIN_MESSAGE_LEN..=MAX_MESSAGE_LEN).contains(&total)
-            || headers_len > MAX_HEADERS_LEN
-            || headers_len > total - MIN_MESSAGE_LEN
-        {
+        if !(MIN_MESSAGE_LEN..=MAX_MESSAGE_LEN).contains(&total) || headers_len > MAX_HEADERS_LEN || headers_len > total - MIN_MESSAGE_LEN {
             return Err(DecodeError::Length(total));
         }
         if self.buf.len() < total {
@@ -160,11 +147,7 @@ fn be_u32(b: &[u8]) -> u32 {
 
 fn parse_headers(mut b: Bytes) -> Result<Vec<(String, HeaderValue)>, DecodeError> {
     let need = |b: &Bytes, n: usize| {
-        if b.remaining() < n {
-            Err(DecodeError::Headers("header runs past the header block"))
-        } else {
-            Ok(())
-        }
+        if b.remaining() < n { Err(DecodeError::Headers("header runs past the header block")) } else { Ok(()) }
     };
     let mut out = Vec::new();
     while b.has_remaining() {
@@ -173,8 +156,7 @@ fn parse_headers(mut b: Bytes) -> Result<Vec<(String, HeaderValue)>, DecodeError
             return Err(DecodeError::Headers("empty header name"));
         }
         need(&b, name_len + 1)?;
-        let name = String::from_utf8(b.split_to(name_len).to_vec())
-            .map_err(|_| DecodeError::Headers("header name is not UTF-8"))?;
+        let name = String::from_utf8(b.split_to(name_len).to_vec()).map_err(|_| DecodeError::Headers("header name is not UTF-8"))?;
         let value = match b.get_u8() {
             0 => HeaderValue::Bool(true),
             1 => HeaderValue::Bool(false),
@@ -202,10 +184,7 @@ fn parse_headers(mut b: Bytes) -> Result<Vec<(String, HeaderValue)>, DecodeError
                 if t == 6 {
                     HeaderValue::Bytes(raw)
                 } else {
-                    HeaderValue::String(
-                        String::from_utf8(raw.to_vec())
-                            .map_err(|_| DecodeError::Headers("string header is not UTF-8"))?,
-                    )
+                    HeaderValue::String(String::from_utf8(raw.to_vec()).map_err(|_| DecodeError::Headers("string header is not UTF-8"))?)
                 }
             }
             8 => {
@@ -233,11 +212,7 @@ pub fn crc32(data: &[u8]) -> u32 {
         for (i, slot) in table.iter_mut().enumerate() {
             let mut c = i as u32;
             for _ in 0..8 {
-                c = if c & 1 != 0 {
-                    0xEDB8_8320 ^ (c >> 1)
-                } else {
-                    c >> 1
-                };
+                c = if c & 1 != 0 { 0xEDB8_8320 ^ (c >> 1) } else { c >> 1 };
             }
             *slot = c;
         }
@@ -275,11 +250,7 @@ pub fn encode(headers: &[(&str, &str)], payload: &[u8]) -> Vec<u8> {
 
 /// HTTP status for an event-stream exception type (Bedrock runtime errors).
 fn exception_status(kind: &str) -> u16 {
-    match kind
-        .trim_end_matches("Exception")
-        .to_ascii_lowercase()
-        .as_str()
-    {
+    match kind.trim_end_matches("Exception").to_ascii_lowercase().as_str() {
         "throttling" | "servicequotaexceeded" => 429,
         "validation" => 400,
         "accessdenied" => 403,
@@ -296,24 +267,11 @@ fn exception_status(kind: &str) -> u16 {
 pub(crate) fn to_event(provider: &str, msg: Message) -> Result<SseEvent, ProviderError> {
     let payload = String::from_utf8_lossy(&msg.payload).into_owned();
     match msg.header(":message-type").unwrap_or("event") {
-        "event" => Ok(SseEvent {
-            event: msg.header(":event-type").map(str::to_owned),
-            data: payload,
-            id: None,
-        }),
+        "event" => Ok(SseEvent { event: msg.header(":event-type").map(str::to_owned), data: payload, id: None }),
         "exception" => {
             let kind = msg.header(":exception-type").unwrap_or("unknownException");
-            let body = if payload.trim().is_empty() {
-                kind
-            } else {
-                &payload
-            };
-            Err(ProviderError::from_upstream(
-                provider,
-                exception_status(kind),
-                body,
-                None,
-            ))
+            let body = if payload.trim().is_empty() { kind } else { &payload };
+            Err(ProviderError::from_upstream(provider, exception_status(kind), body, None))
         }
         _ => {
             let code = msg.header(":error-code").unwrap_or("InternalError");
@@ -330,10 +288,7 @@ pub(crate) fn to_event(provider: &str, msg: Message) -> Result<SseEvent, Provide
 
 /// Decode an event-stream byte stream into events. Framing errors and
 /// exception messages end the stream with an error.
-pub(crate) fn events<S>(
-    provider: &'static str,
-    bytes: S,
-) -> impl Stream<Item = Result<SseEvent, ProviderError>> + Send + 'static
+pub(crate) fn events<S>(provider: &'static str, bytes: S) -> impl Stream<Item = Result<SseEvent, ProviderError>> + Send + 'static
 where
     S: Stream<Item = Result<Bytes, reqwest::Error>> + Send + 'static,
 {
@@ -343,19 +298,8 @@ where
         queue: VecDeque<Result<SseEvent, ProviderError>>,
         done: bool,
     }
-    let state = State {
-        bytes: Box::pin(bytes),
-        decoder: EventStreamDecoder::new(),
-        queue: VecDeque::new(),
-        done: false,
-    };
-    let corrupt = move |e: DecodeError| {
-        ProviderError::new(
-            ErrorKind::InvalidResponse,
-            provider,
-            format!("malformed event stream: {e}"),
-        )
-    };
+    let state = State { bytes: Box::pin(bytes), decoder: EventStreamDecoder::new(), queue: VecDeque::new(), done: false };
+    let corrupt = move |e: DecodeError| ProviderError::new(ErrorKind::InvalidResponse, provider, format!("malformed event stream: {e}"));
     stream::unfold(state, move |mut st| async move {
         loop {
             if let Some(item) = st.queue.pop_front() {
@@ -370,9 +314,7 @@ where
             }
             match st.bytes.next().await {
                 Some(Ok(chunk)) => match st.decoder.feed(&chunk) {
-                    Ok(msgs) => st
-                        .queue
-                        .extend(msgs.into_iter().map(|m| to_event(provider, m))),
+                    Ok(msgs) => st.queue.extend(msgs.into_iter().map(|m| to_event(provider, m))),
                     Err(e) => {
                         st.done = true;
                         return Some((Err(corrupt(e)), st));
@@ -416,20 +358,17 @@ mod tests {
     #[test]
     fn crt_vectors() {
         let no_headers: &[u8] = &[
-            0x00, 0x00, 0x00, 0x1D, 0x00, 0x00, 0x00, 0x00, 0xfd, 0x52, 0x8c, 0x5a, 0x7b, 0x27,
-            0x66, 0x6f, 0x6f, 0x27, 0x3a, 0x27, 0x62, 0x61, 0x72, 0x27, 0x7d, 0xc3, 0x65, 0x39,
-            0x36,
+            0x00, 0x00, 0x00, 0x1D, 0x00, 0x00, 0x00, 0x00, 0xfd, 0x52, 0x8c, 0x5a, 0x7b, 0x27, 0x66, 0x6f, 0x6f, 0x27, 0x3a, 0x27, 0x62, 0x61, 0x72,
+            0x27, 0x7d, 0xc3, 0x65, 0x39, 0x36,
         ];
         let msg = decode_one(no_headers).unwrap();
         assert!(msg.headers.is_empty());
         assert_eq!(&msg.payload[..], b"{'foo':'bar'}");
 
         let one_header: &[u8] = &[
-            0x00, 0x00, 0x00, 0x3D, 0x00, 0x00, 0x00, 0x20, 0x07, 0xFD, 0x83, 0x96, 0x0C, b'c',
-            b'o', b'n', b't', b'e', b'n', b't', b'-', b't', b'y', b'p', b'e', 0x07, 0x00, 0x10,
-            b'a', b'p', b'p', b'l', b'i', b'c', b'a', b't', b'i', b'o', b'n', b'/', b'j', b's',
-            b'o', b'n', 0x7b, 0x27, 0x66, 0x6f, 0x6f, 0x27, 0x3a, 0x27, 0x62, 0x61, 0x72, 0x27,
-            0x7d, 0x8D, 0x9C, 0x08, 0xB1,
+            0x00, 0x00, 0x00, 0x3D, 0x00, 0x00, 0x00, 0x20, 0x07, 0xFD, 0x83, 0x96, 0x0C, b'c', b'o', b'n', b't', b'e', b'n', b't', b'-', b't', b'y',
+            b'p', b'e', 0x07, 0x00, 0x10, b'a', b'p', b'p', b'l', b'i', b'c', b'a', b't', b'i', b'o', b'n', b'/', b'j', b's', b'o', b'n', 0x7b, 0x27,
+            0x66, 0x6f, 0x6f, 0x27, 0x3a, 0x27, 0x62, 0x61, 0x72, 0x27, 0x7d, 0x8D, 0x9C, 0x08, 0xB1,
         ];
         let msg = decode_one(one_header).unwrap();
         assert_eq!(msg.header("content-type"), Some("application/json"));
@@ -446,11 +385,7 @@ mod tests {
             };
         }
         let msg = decode_one(fixture!("valid_with_all_headers_and_payload")).unwrap();
-        let values: Vec<(&str, HeaderValue)> = msg
-            .headers
-            .iter()
-            .map(|(n, v)| (n.as_str(), v.clone()))
-            .collect();
+        let values: Vec<(&str, HeaderValue)> = msg.headers.iter().map(|(n, v)| (n.as_str(), v.clone())).collect();
         assert_eq!(
             values,
             vec![
@@ -460,46 +395,18 @@ mod tests {
                 ("short", HeaderValue::Short(20_000)),
                 ("int", HeaderValue::Int(500_000)),
                 ("long", HeaderValue::Long(50_000_000_000)),
-                (
-                    "bytes",
-                    HeaderValue::Bytes(Bytes::from_static(b"some bytes"))
-                ),
+                ("bytes", HeaderValue::Bytes(Bytes::from_static(b"some bytes"))),
                 ("str", HeaderValue::String("some str".into())),
                 ("time", HeaderValue::Timestamp(5_000_000_000)),
-                (
-                    "uuid",
-                    HeaderValue::Uuid(0xb79bc914_de21_4e13_b8b2_bc47e85b7f0b_u128.to_be_bytes())
-                ),
+                ("uuid", HeaderValue::Uuid(0xb79bc914_de21_4e13_b8b2_bc47e85b7f0b_u128.to_be_bytes())),
             ]
         );
         assert_eq!(&msg.payload[..], b"some payload");
-        assert!(
-            decode_one(fixture!("valid_empty_payload"))
-                .unwrap()
-                .payload
-                .is_empty()
-        );
-        assert!(
-            decode_one(fixture!("valid_no_headers"))
-                .unwrap()
-                .headers
-                .is_empty()
-        );
+        assert!(decode_one(fixture!("valid_empty_payload")).unwrap().payload.is_empty());
+        assert!(decode_one(fixture!("valid_no_headers")).unwrap().headers.is_empty());
 
-        assert_eq!(
-            decode_one(fixture!("invalid_prelude_checksum")),
-            Err(DecodeError::PreludeCrc {
-                expected: 0xDEADBEEF,
-                computed: 0x8BB495FB
-            })
-        );
-        assert_eq!(
-            decode_one(fixture!("invalid_message_checksum")),
-            Err(DecodeError::MessageCrc {
-                expected: 0xDEADBEEF,
-                computed: 0x01a05860
-            })
-        );
+        assert_eq!(decode_one(fixture!("invalid_prelude_checksum")), Err(DecodeError::PreludeCrc { expected: 0xDEADBEEF, computed: 0x8BB495FB }));
+        assert_eq!(decode_one(fixture!("invalid_message_checksum")), Err(DecodeError::MessageCrc { expected: 0xDEADBEEF, computed: 0x01a05860 }));
         for bad in [
             fixture!("invalid_header_string_value_length"),
             fixture!("invalid_header_string_length_cut_off"),
@@ -515,15 +422,9 @@ mod tests {
     #[test]
     fn round_trip_split_anywhere() {
         let mut stream = Vec::new();
-        stream.extend(encode(
-            &[(":message-type", "event"), (":event-type", "messageStart")],
-            br#"{"role":"assistant"}"#,
-        ));
+        stream.extend(encode(&[(":message-type", "event"), (":event-type", "messageStart")], br#"{"role":"assistant"}"#));
         stream.extend(encode(&[(":event-type", "empty")], b""));
-        stream.extend(encode(
-            &[(":event-type", "contentBlockDelta")],
-            br#"{"delta":{"text":"hi"}}"#,
-        ));
+        stream.extend(encode(&[(":event-type", "contentBlockDelta")], br#"{"delta":{"text":"hi"}}"#));
         for split in 0..=stream.len() {
             let mut d = EventStreamDecoder::new();
             let mut msgs = d.feed(&stream[..split]).unwrap();
@@ -537,10 +438,7 @@ mod tests {
         }
         // Byte by byte.
         let mut d = EventStreamDecoder::new();
-        let n: usize = stream
-            .iter()
-            .map(|b| d.feed(std::slice::from_ref(b)).unwrap().len())
-            .sum();
+        let n: usize = stream.iter().map(|b| d.feed(std::slice::from_ref(b)).unwrap().len()).sum();
         assert_eq!(n, 3);
     }
 
@@ -598,23 +496,13 @@ mod tests {
         let mut bad = good.clone();
         let n = bad.len();
         bad[n - 6] ^= 0x01;
-        assert!(matches!(
-            EventStreamDecoder::new().feed(&bad),
-            Err(DecodeError::MessageCrc { .. })
-        ));
+        assert!(matches!(EventStreamDecoder::new().feed(&bad), Err(DecodeError::MessageCrc { .. })));
         // Corrupt the length: prelude CRC fails before any length is trusted.
         let mut bad = good.clone();
         bad[3] ^= 0x01;
-        assert!(matches!(
-            EventStreamDecoder::new().feed(&bad),
-            Err(DecodeError::PreludeCrc { .. })
-        ));
+        assert!(matches!(EventStreamDecoder::new().feed(&bad), Err(DecodeError::PreludeCrc { .. })));
         // A JSON error body is not an event stream.
-        assert!(
-            EventStreamDecoder::new()
-                .feed(br#"{"message":"bad"}"#)
-                .is_err()
-        );
+        assert!(EventStreamDecoder::new().feed(br#"{"message":"bad"}"#).is_err());
     }
 
     #[test]
@@ -629,20 +517,14 @@ mod tests {
         frame.extend_from_slice(&0u32.to_be_bytes());
         let c = crc32(&frame);
         frame.extend_from_slice(&c.to_be_bytes());
-        assert_eq!(
-            EventStreamDecoder::new().feed(&frame),
-            Err(DecodeError::Length(8))
-        );
+        assert_eq!(EventStreamDecoder::new().feed(&frame), Err(DecodeError::Length(8)));
     }
 
     #[test]
     fn exceptions_become_errors() {
         let msg = EventStreamDecoder::new()
             .feed(&encode(
-                &[
-                    (":message-type", "exception"),
-                    (":exception-type", "throttlingException"),
-                ],
+                &[(":message-type", "exception"), (":exception-type", "throttlingException")],
                 br#"{"message":"Too many requests, please wait"}"#,
             ))
             .unwrap()
@@ -653,10 +535,7 @@ mod tests {
 
         let msg = EventStreamDecoder::new()
             .feed(&encode(
-                &[
-                    (":message-type", "exception"),
-                    (":exception-type", "validationException"),
-                ],
+                &[(":message-type", "exception"), (":exception-type", "validationException")],
                 br#"{"message":"Input is too long for requested model."}"#,
             ))
             .unwrap()
@@ -665,14 +544,7 @@ mod tests {
         assert_eq!(err.kind(), ErrorKind::ContextWindowExceeded);
 
         let msg = EventStreamDecoder::new()
-            .feed(&encode(
-                &[
-                    (":message-type", "error"),
-                    (":error-code", "InternalServerException"),
-                    (":error-message", "boom"),
-                ],
-                b"",
-            ))
+            .feed(&encode(&[(":message-type", "error"), (":error-code", "InternalServerException"), (":error-message", "boom")], b""))
             .unwrap()
             .remove(0);
         let err = to_event("bedrock", msg).unwrap_err();
@@ -682,17 +554,10 @@ mod tests {
 
     #[tokio::test]
     async fn byte_stream_adapter() {
-        let mut body = encode(
-            &[(":message-type", "event"), (":event-type", "messageStart")],
-            br#"{"role":"assistant"}"#,
-        );
-        body.extend(encode(
-            &[(":message-type", "event"), (":event-type", "messageStop")],
-            br#"{"stopReason":"end_turn"}"#,
-        ));
+        let mut body = encode(&[(":message-type", "event"), (":event-type", "messageStart")], br#"{"role":"assistant"}"#);
+        body.extend(encode(&[(":message-type", "event"), (":event-type", "messageStop")], br#"{"stopReason":"end_turn"}"#));
         let (a, b) = body.split_at(7);
-        let chunks: Vec<Result<Bytes, reqwest::Error>> =
-            vec![Ok(Bytes::copy_from_slice(a)), Ok(Bytes::copy_from_slice(b))];
+        let chunks: Vec<Result<Bytes, reqwest::Error>> = vec![Ok(Bytes::copy_from_slice(a)), Ok(Bytes::copy_from_slice(b))];
         let evs: Vec<_> = events("bedrock", stream::iter(chunks)).collect().await;
         let evs: Vec<SseEvent> = evs.into_iter().map(Result::unwrap).collect();
         assert_eq!(evs.len(), 2);
@@ -701,13 +566,9 @@ mod tests {
 
         // Truncated stream -> InvalidResponse at the end.
         let good = encode(&[(":event-type", "x")], b"{}");
-        let chunks: Vec<Result<Bytes, reqwest::Error>> =
-            vec![Ok(Bytes::copy_from_slice(&good[..10]))];
+        let chunks: Vec<Result<Bytes, reqwest::Error>> = vec![Ok(Bytes::copy_from_slice(&good[..10]))];
         let evs: Vec<_> = events("bedrock", stream::iter(chunks)).collect().await;
         assert_eq!(evs.len(), 1);
-        assert_eq!(
-            evs[0].as_ref().unwrap_err().kind(),
-            ErrorKind::InvalidResponse
-        );
+        assert_eq!(evs[0].as_ref().unwrap_err().kind(), ErrorKind::InvalidResponse);
     }
 }

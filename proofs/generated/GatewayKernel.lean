@@ -195,7 +195,7 @@ inductive h5i_app_sql.Write where
 | DelWhere : Std.U32 → Std.U32 → h5i_app_sql.Val → h5i_app_sql.Write
 
 /-- [gateway_kernel::Principal]
-    Source: 'kernel/src/lib.rs', lines 31:0-40:1
+    Source: 'kernel/src/lib.rs', lines 43:0-52:1
     Visibility: public -/
 structure Principal where
   org : Std.U64
@@ -204,22 +204,22 @@ structure Principal where
   now : Std.U64
 
 /-- [gateway_kernel::WINDOW]
-    Source: 'kernel/src/lib.rs', lines 46:0-46:27
+    Source: 'kernel/src/lib.rs', lines 58:0-58:27
     Visibility: public -/
 @[global_simps, irreducible] def WINDOW : Std.U64 := 60#u64
 
 /-- [gateway_kernel::SCOPE_KEY]
-    Source: 'kernel/src/lib.rs', lines 49:0-49:29
+    Source: 'kernel/src/lib.rs', lines 61:0-61:29
     Visibility: public -/
 @[global_simps, irreducible] def SCOPE_KEY : Std.U64 := 0#u64
 
 /-- [gateway_kernel::SCOPE_TEAM]
-    Source: 'kernel/src/lib.rs', lines 50:0-50:30
+    Source: 'kernel/src/lib.rs', lines 62:0-62:30
     Visibility: public -/
 @[global_simps, irreducible] def SCOPE_TEAM : Std.U64 := 1#u64
 
 /-- [gateway_kernel::SCOPE_DEPLOYMENT]
-    Source: 'kernel/src/lib.rs', lines 51:0-51:36
+    Source: 'kernel/src/lib.rs', lines 63:0-63:36
     Visibility: public -/
 @[global_simps, irreducible] def SCOPE_DEPLOYMENT : Std.U64 := 2#u64
 
@@ -341,76 +341,76 @@ structure Snapshot where
   reservations : alloc.vec.Vec Reservation
 
 /-- [gateway_kernel::{impl core::clone::Clone for gateway_kernel::Reservation}::clone]:
-    Source: 'kernel/src/lib.rs', lines 178:13-178:18
+    Source: 'kernel/src/lib.rs', lines 190:13-190:18
     Visibility: public -/
 def Reservation.Insts.CoreCloneClone.clone
   (self : Reservation) : Result Reservation := do
   ok self
 
 /-- Trait implementation: [gateway_kernel::{impl core::clone::Clone for gateway_kernel::Reservation}]
-    Source: 'kernel/src/lib.rs', lines 178:13-178:18 -/
+    Source: 'kernel/src/lib.rs', lines 190:13-190:18 -/
 @[reducible]
 def Reservation.Insts.CoreCloneClone : core.clone.Clone Reservation := {
   clone := Reservation.Insts.CoreCloneClone.clone
 }
 
 /-- [gateway_kernel::{impl core::clone::Clone for gateway_kernel::Usage}::clone]:
-    Source: 'kernel/src/lib.rs', lines 167:13-167:18
+    Source: 'kernel/src/lib.rs', lines 179:13-179:18
     Visibility: public -/
 def Usage.Insts.CoreCloneClone.clone (self : Usage) : Result Usage := do
   ok self
 
 /-- Trait implementation: [gateway_kernel::{impl core::clone::Clone for gateway_kernel::Usage}]
-    Source: 'kernel/src/lib.rs', lines 167:13-167:18 -/
+    Source: 'kernel/src/lib.rs', lines 179:13-179:18 -/
 @[reducible]
 def Usage.Insts.CoreCloneClone : core.clone.Clone Usage := {
   clone := Usage.Insts.CoreCloneClone.clone
 }
 
 /-- [gateway_kernel::{impl core::clone::Clone for gateway_kernel::TeamModel}::clone]:
-    Source: 'kernel/src/lib.rs', lines 160:13-160:18
+    Source: 'kernel/src/lib.rs', lines 172:13-172:18
     Visibility: public -/
 def TeamModel.Insts.CoreCloneClone.clone
   (self : TeamModel) : Result TeamModel := do
   ok self
 
 /-- Trait implementation: [gateway_kernel::{impl core::clone::Clone for gateway_kernel::TeamModel}]
-    Source: 'kernel/src/lib.rs', lines 160:13-160:18 -/
+    Source: 'kernel/src/lib.rs', lines 172:13-172:18 -/
 @[reducible]
 def TeamModel.Insts.CoreCloneClone : core.clone.Clone TeamModel := {
   clone := TeamModel.Insts.CoreCloneClone.clone
 }
 
 /-- [gateway_kernel::{impl core::clone::Clone for gateway_kernel::KeyModel}::clone]:
-    Source: 'kernel/src/lib.rs', lines 154:13-154:18
+    Source: 'kernel/src/lib.rs', lines 166:13-166:18
     Visibility: public -/
 def KeyModel.Insts.CoreCloneClone.clone
   (self : KeyModel) : Result KeyModel := do
   ok self
 
 /-- Trait implementation: [gateway_kernel::{impl core::clone::Clone for gateway_kernel::KeyModel}]
-    Source: 'kernel/src/lib.rs', lines 154:13-154:18 -/
+    Source: 'kernel/src/lib.rs', lines 166:13-166:18 -/
 @[reducible]
 def KeyModel.Insts.CoreCloneClone : core.clone.Clone KeyModel := {
   clone := KeyModel.Insts.CoreCloneClone.clone
 }
 
 /-- [gateway_kernel::{impl core::clone::Clone for gateway_kernel::Deployment}::clone]:
-    Source: 'kernel/src/lib.rs', lines 135:13-135:18
+    Source: 'kernel/src/lib.rs', lines 147:13-147:18
     Visibility: public -/
 def Deployment.Insts.CoreCloneClone.clone
   (self : Deployment) : Result Deployment := do
   ok self
 
 /-- Trait implementation: [gateway_kernel::{impl core::clone::Clone for gateway_kernel::Deployment}]
-    Source: 'kernel/src/lib.rs', lines 135:13-135:18 -/
+    Source: 'kernel/src/lib.rs', lines 147:13-147:18 -/
 @[reducible]
 def Deployment.Insts.CoreCloneClone : core.clone.Clone Deployment := {
   clone := Deployment.Insts.CoreCloneClone.clone
 }
 
 /-- [gateway_kernel::{impl core::clone::Clone for gateway_kernel::Model}::clone]:
-    Source: 'kernel/src/lib.rs', lines 127:13-127:18
+    Source: 'kernel/src/lib.rs', lines 139:13-139:18
     Visibility: public -/
 def Model.Insts.CoreCloneClone.clone (self : Model) : Result Model := do
   let i ← lift (core.clone.impls.CloneU64.clone self.id)
@@ -418,47 +418,47 @@ def Model.Insts.CoreCloneClone.clone (self : Model) : Result Model := do
   ok { id := i, «name» := v }
 
 /-- Trait implementation: [gateway_kernel::{impl core::clone::Clone for gateway_kernel::Model}]
-    Source: 'kernel/src/lib.rs', lines 127:13-127:18 -/
+    Source: 'kernel/src/lib.rs', lines 139:13-139:18 -/
 @[reducible]
 def Model.Insts.CoreCloneClone : core.clone.Clone Model := {
   clone := Model.Insts.CoreCloneClone.clone
 }
 
 /-- [gateway_kernel::{impl core::clone::Clone for gateway_kernel::Key}::clone]:
-    Source: 'kernel/src/lib.rs', lines 103:13-103:18
+    Source: 'kernel/src/lib.rs', lines 115:13-115:18
     Visibility: public -/
 def Key.Insts.CoreCloneClone.clone (self : Key) : Result Key := do
   ok self
 
 /-- Trait implementation: [gateway_kernel::{impl core::clone::Clone for gateway_kernel::Key}]
-    Source: 'kernel/src/lib.rs', lines 103:13-103:18 -/
+    Source: 'kernel/src/lib.rs', lines 115:13-115:18 -/
 @[reducible]
 def Key.Insts.CoreCloneClone : core.clone.Clone Key := {
   clone := Key.Insts.CoreCloneClone.clone
 }
 
 /-- [gateway_kernel::{impl core::clone::Clone for gateway_kernel::Team}::clone]:
-    Source: 'kernel/src/lib.rs', lines 86:13-86:18
+    Source: 'kernel/src/lib.rs', lines 98:13-98:18
     Visibility: public -/
 def Team.Insts.CoreCloneClone.clone (self : Team) : Result Team := do
   ok self
 
 /-- Trait implementation: [gateway_kernel::{impl core::clone::Clone for gateway_kernel::Team}]
-    Source: 'kernel/src/lib.rs', lines 86:13-86:18 -/
+    Source: 'kernel/src/lib.rs', lines 98:13-98:18 -/
 @[reducible]
 def Team.Insts.CoreCloneClone : core.clone.Clone Team := {
   clone := Team.Insts.CoreCloneClone.clone
 }
 
 /-- [gateway_kernel::{impl core::clone::Clone for gateway_kernel::Settings}::clone]:
-    Source: 'kernel/src/lib.rs', lines 72:13-72:18
+    Source: 'kernel/src/lib.rs', lines 84:13-84:18
     Visibility: public -/
 def Settings.Insts.CoreCloneClone.clone
   (self : Settings) : Result Settings := do
   ok self
 
 /-- [gateway_kernel::{impl core::clone::Clone for gateway_kernel::Snapshot}::clone]:
-    Source: 'kernel/src/lib.rs', lines 57:13-57:18
+    Source: 'kernel/src/lib.rs', lines 69:13-69:18
     Visibility: public -/
 def Snapshot.Insts.CoreCloneClone.clone
   (self : Snapshot) : Result Snapshot := do
@@ -489,7 +489,7 @@ def Snapshot.Insts.CoreCloneClone.clone
     }
 
 /-- [gateway_kernel::CallStatus]
-    Source: 'kernel/src/lib.rs', lines 194:0-203:1
+    Source: 'kernel/src/lib.rs', lines 206:0-215:1
     Visibility: public -/
 @[discriminant isize]
 inductive CallStatus where
@@ -499,7 +499,7 @@ inductive CallStatus where
 | Expired : CallStatus
 
 /-- [gateway_kernel::{impl core::cmp::PartialEq<gateway_kernel::CallStatus> for gateway_kernel::CallStatus}::eq]:
-    Source: 'kernel/src/lib.rs', lines 193:29-193:38
+    Source: 'kernel/src/lib.rs', lines 205:29-205:38
     Visibility: public -/
 def CallStatus.Insts.CoreCmpPartialEqCallStatus.eq
   (self : CallStatus) (other : CallStatus) : Result Bool := do
@@ -508,7 +508,7 @@ def CallStatus.Insts.CoreCmpPartialEqCallStatus.eq
   ok (self1 = other1)
 
 /-- [gateway_kernel::SpendLog]
-    Source: 'kernel/src/lib.rs', lines 208:0-219:1
+    Source: 'kernel/src/lib.rs', lines 220:0-231:1
     Visibility: public -/
 structure SpendLog where
   reservation : Std.U64
@@ -523,14 +523,14 @@ structure SpendLog where
   status : CallStatus
 
 /-- [gateway_kernel::{impl core::clone::Clone for gateway_kernel::SpendLog}::clone]:
-    Source: 'kernel/src/lib.rs', lines 207:9-207:14
+    Source: 'kernel/src/lib.rs', lines 219:9-219:14
     Visibility: public -/
 def SpendLog.Insts.CoreCloneClone.clone
   (self : SpendLog) : Result SpendLog := do
   ok self
 
 /-- [gateway_kernel::KeyPatch]
-    Source: 'kernel/src/lib.rs', lines 223:0-232:1
+    Source: 'kernel/src/lib.rs', lines 235:0-244:1
     Visibility: public -/
 structure KeyPatch where
   max_budget : Option Std.U64
@@ -543,7 +543,7 @@ structure KeyPatch where
   all_models : Option Bool
 
 /-- [gateway_kernel::TeamPatch]
-    Source: 'kernel/src/lib.rs', lines 236:0-243:1
+    Source: 'kernel/src/lib.rs', lines 248:0-255:1
     Visibility: public -/
 structure TeamPatch where
   max_budget : Option Std.U64
@@ -554,7 +554,7 @@ structure TeamPatch where
   all_models : Option Bool
 
 /-- [gateway_kernel::KeySpec]
-    Source: 'kernel/src/lib.rs', lines 247:0-258:1
+    Source: 'kernel/src/lib.rs', lines 259:0-270:1
     Visibility: public -/
 structure KeySpec where
   team : Std.U64
@@ -569,7 +569,7 @@ structure KeySpec where
   all_models : Bool
 
 /-- [gateway_kernel::TeamSpec]
-    Source: 'kernel/src/lib.rs', lines 262:0-268:1
+    Source: 'kernel/src/lib.rs', lines 274:0-280:1
     Visibility: public -/
 structure TeamSpec where
   max_budget : Std.U64
@@ -579,7 +579,7 @@ structure TeamSpec where
   all_models : Bool
 
 /-- [gateway_kernel::DeploymentSpec]
-    Source: 'kernel/src/lib.rs', lines 272:0-280:1
+    Source: 'kernel/src/lib.rs', lines 284:0-292:1
     Visibility: public -/
 structure DeploymentSpec where
   id : Std.U64
@@ -590,8 +590,61 @@ structure DeploymentSpec where
   priority : Std.U64
   enabled : Bool
 
+/-- [gateway_kernel::BatchOp]
+    Source: 'kernel/src/lib.rs', lines 296:0-299:1
+    Visibility: public -/
+@[discriminant isize]
+inductive BatchOp where
+| Admit :
+  alloc.vec.Vec Std.U8 →
+  Std.U64 →
+  Std.U64 →
+  alloc.vec.Vec Std.U64 →
+  BatchOp
+| Settle : Std.U64 → Std.U64 → Std.U64 → CallStatus → BatchOp
+
+/-- [gateway_kernel::BatchItem]
+    Source: 'kernel/src/lib.rs', lines 303:0-307:1
+    Visibility: public -/
+structure BatchItem where
+  key : Std.U64
+  master : Bool
+  op : BatchOp
+
+/-- [gateway_kernel::Error]
+    Source: 'kernel/src/lib.rs', lines 465:0-485:1
+    Visibility: public -/
+@[discriminant isize]
+inductive Error where
+| Unauthorized : Error
+| Forbidden : Error
+| NotFound : Error
+| KeyBlocked : Error
+| KeyExpired : Error
+| TeamBlocked : Error
+| ModelNotFound : Error
+| ModelNotAllowed : Error
+| KeyRateLimited : Error
+| TeamRateLimited : Error
+| KeyParallelLimit : Error
+| KeyBudgetExceeded : Error
+| TeamBudgetExceeded : Error
+| NoDeployment : Error
+| NotExpired : Error
+| InUse : Error
+| Overflow : Error
+
+/-- [gateway_kernel::ItemOutcome]
+    Source: 'kernel/src/lib.rs', lines 311:0-315:1
+    Visibility: public -/
+@[discriminant isize]
+inductive ItemOutcome where
+| Admitted : Std.U64 → Std.U64 → Std.U64 → ItemOutcome
+| Settled : Std.U64 → ItemOutcome
+| Refused : Error → ItemOutcome
+
 /-- [gateway_kernel::Command]
-    Source: 'kernel/src/lib.rs', lines 283:0-319:1
+    Source: 'kernel/src/lib.rs', lines 318:0-412:1
     Visibility: public -/
 @[discriminant isize]
 inductive Command where
@@ -619,9 +672,10 @@ inductive Command where
 | KeyInfo : Std.U64 → Command
 | TeamInfo : Std.U64 → Command
 | ListModels : Command
+| Batch : alloc.vec.Vec BatchItem → Command
 
 /-- [gateway_kernel::Write]
-    Source: 'kernel/src/lib.rs', lines 322:0-340:1
+    Source: 'kernel/src/lib.rs', lines 415:0-433:1
     Visibility: public -/
 @[discriminant isize]
 inductive Write where
@@ -643,7 +697,7 @@ inductive Write where
 | Emit : SpendLog → Write
 
 /-- [gateway_kernel::{impl core::clone::Clone for gateway_kernel::Write}::clone]:
-    Source: 'kernel/src/lib.rs', lines 321:9-321:14
+    Source: 'kernel/src/lib.rs', lines 414:9-414:14
     Visibility: public -/
 def Write.Insts.CoreCloneClone.clone (self : Write) : Result Write := do
   match self with
@@ -699,7 +753,7 @@ def Write.Insts.CoreCloneClone.clone (self : Write) : Result Write := do
     ok (Write.Emit sl)
 
 /-- [gateway_kernel::Reply]
-    Source: 'kernel/src/lib.rs', lines 343:0-353:1
+    Source: 'kernel/src/lib.rs', lines 436:0-462:1
     Visibility: public -/
 @[discriminant isize]
 inductive Reply where
@@ -711,32 +765,10 @@ inductive Reply where
 | TeamInfo : Team → alloc.vec.Vec Std.U64 → Std.U64 → Reply
 | Models : alloc.vec.Vec Model → Reply
 | State : Snapshot → Reply
-
-/-- [gateway_kernel::Error]
-    Source: 'kernel/src/lib.rs', lines 356:0-376:1
-    Visibility: public -/
-@[discriminant isize]
-inductive Error where
-| Unauthorized : Error
-| Forbidden : Error
-| NotFound : Error
-| KeyBlocked : Error
-| KeyExpired : Error
-| TeamBlocked : Error
-| ModelNotFound : Error
-| ModelNotAllowed : Error
-| KeyRateLimited : Error
-| TeamRateLimited : Error
-| KeyParallelLimit : Error
-| KeyBudgetExceeded : Error
-| TeamBudgetExceeded : Error
-| NoDeployment : Error
-| NotExpired : Error
-| InUse : Error
-| Overflow : Error
+| Batch : alloc.vec.Vec ItemOutcome → Reply
 
 /-- [gateway_kernel::sat_add]:
-    Source: 'kernel/src/lib.rs', lines 384:0-386:1
+    Source: 'kernel/src/lib.rs', lines 493:0-495:1
     Visibility: public -/
 def sat_add (a : Std.U64) (b : Std.U64) : Result Std.U64 := do
   let i ← core.num.U64.MAX - b
@@ -745,7 +777,7 @@ def sat_add (a : Std.U64) (b : Std.U64) : Result Std.U64 := do
   else a + b
 
 /-- [gateway_kernel::sat_mul]:
-    Source: 'kernel/src/lib.rs', lines 389:0-391:1
+    Source: 'kernel/src/lib.rs', lines 498:0-500:1
     Visibility: public -/
 def sat_mul (a : Std.U64) (b : Std.U64) : Result Std.U64 := do
   if b != 0#u64
@@ -757,7 +789,7 @@ def sat_mul (a : Std.U64) (b : Std.U64) : Result Std.U64 := do
   else a * b
 
 /-- [gateway_kernel::cost]:
-    Source: 'kernel/src/lib.rs', lines 395:0-397:1
+    Source: 'kernel/src/lib.rs', lines 504:0-506:1
     Visibility: public -/
 def cost
   (input_cost : Std.U64) (output_cost : Std.U64) (prompt_tokens : Std.U64)
@@ -769,7 +801,7 @@ def cost
   sat_add i i1
 
 /-- [gateway_kernel::within_budget]:
-    Source: 'kernel/src/lib.rs', lines 401:0-403:1
+    Source: 'kernel/src/lib.rs', lines 510:0-512:1
     Visibility: public -/
 def within_budget
   (spend : Std.U64) (reserved : Std.U64) (amount : Std.U64)
@@ -781,13 +813,13 @@ def within_budget
   ok (i1 <= max_budget)
 
 /-- [gateway_kernel::window_of]:
-    Source: 'kernel/src/lib.rs', lines 406:0-408:1
+    Source: 'kernel/src/lib.rs', lines 515:0-517:1
     Visibility: public -/
 def window_of (now : Std.U64) : Result Std.U64 := do
   now / WINDOW
 
 /-- [gateway_kernel::bytes_eq]: loop body 0:
-    Source: 'kernel/src/lib.rs', lines 418:4-425:1
+    Source: 'kernel/src/lib.rs', lines 527:4-534:1
     Visibility: public -/
 @[rust_loop_body]
 def bytes_eq_loop.body
@@ -808,7 +840,7 @@ def bytes_eq_loop.body
   else ok (done true)
 
 /-- [gateway_kernel::bytes_eq]: loop 0:
-    Source: 'kernel/src/lib.rs', lines 418:4-425:1
+    Source: 'kernel/src/lib.rs', lines 527:4-534:1
     Visibility: public -/
 @[rust_loop]
 def bytes_eq_loop
@@ -820,7 +852,7 @@ def bytes_eq_loop
     i
 
 /-- [gateway_kernel::bytes_eq]:
-    Source: 'kernel/src/lib.rs', lines 413:0-425:1
+    Source: 'kernel/src/lib.rs', lines 522:0-534:1
     Visibility: public -/
 def bytes_eq
   (a : alloc.vec.Vec Std.U8) (b : alloc.vec.Vec Std.U8) : Result Bool := do
@@ -831,7 +863,7 @@ def bytes_eq
   else bytes_eq_loop a b 0#usize
 
 /-- [gateway_kernel::contains]: loop body 0:
-    Source: 'kernel/src/lib.rs', lines 429:4-436:1
+    Source: 'kernel/src/lib.rs', lines 538:4-545:1
     Visibility: public -/
 @[rust_loop_body]
 def contains_loop.body
@@ -850,7 +882,7 @@ def contains_loop.body
   else ok (done false)
 
 /-- [gateway_kernel::contains]: loop 0:
-    Source: 'kernel/src/lib.rs', lines 429:4-436:1
+    Source: 'kernel/src/lib.rs', lines 538:4-545:1
     Visibility: public -/
 @[rust_loop]
 def contains_loop
@@ -860,14 +892,14 @@ def contains_loop
     i
 
 /-- [gateway_kernel::contains]:
-    Source: 'kernel/src/lib.rs', lines 427:0-436:1
+    Source: 'kernel/src/lib.rs', lines 536:0-545:1
     Visibility: public -/
 @[reducible]
 def contains (v : alloc.vec.Vec Std.U64) (x : Std.U64) : Result Bool := do
   contains_loop v x 0#usize
 
 /-- [gateway_kernel::find_team]: loop body 0:
-    Source: 'kernel/src/lib.rs', lines 440:4-447:1
+    Source: 'kernel/src/lib.rs', lines 549:4-556:1
     Visibility: public -/
 @[rust_loop_body]
 def find_team_loop.body
@@ -886,7 +918,7 @@ def find_team_loop.body
   else ok (done none)
 
 /-- [gateway_kernel::find_team]: loop 0:
-    Source: 'kernel/src/lib.rs', lines 440:4-447:1
+    Source: 'kernel/src/lib.rs', lines 549:4-556:1
     Visibility: public -/
 @[rust_loop]
 def find_team_loop
@@ -898,7 +930,7 @@ def find_team_loop
     i
 
 /-- [gateway_kernel::find_team]:
-    Source: 'kernel/src/lib.rs', lines 438:0-447:1
+    Source: 'kernel/src/lib.rs', lines 547:0-556:1
     Visibility: public -/
 @[reducible]
 def find_team
@@ -906,7 +938,7 @@ def find_team
   find_team_loop v id 0#usize
 
 /-- [gateway_kernel::find_key]: loop body 0:
-    Source: 'kernel/src/lib.rs', lines 451:4-458:1
+    Source: 'kernel/src/lib.rs', lines 560:4-567:1
     Visibility: public -/
 @[rust_loop_body]
 def find_key_loop.body
@@ -925,7 +957,7 @@ def find_key_loop.body
   else ok (done none)
 
 /-- [gateway_kernel::find_key]: loop 0:
-    Source: 'kernel/src/lib.rs', lines 451:4-458:1
+    Source: 'kernel/src/lib.rs', lines 560:4-567:1
     Visibility: public -/
 @[rust_loop]
 def find_key_loop
@@ -937,14 +969,14 @@ def find_key_loop
     i
 
 /-- [gateway_kernel::find_key]:
-    Source: 'kernel/src/lib.rs', lines 449:0-458:1
+    Source: 'kernel/src/lib.rs', lines 558:0-567:1
     Visibility: public -/
 @[reducible]
 def find_key (v : alloc.vec.Vec Key) (id : Std.U64) : Result (Option Key) := do
   find_key_loop v id 0#usize
 
 /-- [gateway_kernel::find_deployment]: loop body 0:
-    Source: 'kernel/src/lib.rs', lines 462:4-469:1
+    Source: 'kernel/src/lib.rs', lines 571:4-578:1
     Visibility: public -/
 @[rust_loop_body]
 def find_deployment_loop.body
@@ -964,7 +996,7 @@ def find_deployment_loop.body
   else ok (done none)
 
 /-- [gateway_kernel::find_deployment]: loop 0:
-    Source: 'kernel/src/lib.rs', lines 462:4-469:1
+    Source: 'kernel/src/lib.rs', lines 571:4-578:1
     Visibility: public -/
 @[rust_loop]
 def find_deployment_loop
@@ -976,7 +1008,7 @@ def find_deployment_loop
     i
 
 /-- [gateway_kernel::find_deployment]:
-    Source: 'kernel/src/lib.rs', lines 460:0-469:1
+    Source: 'kernel/src/lib.rs', lines 569:0-578:1
     Visibility: public -/
 @[reducible]
 def find_deployment
@@ -986,7 +1018,7 @@ def find_deployment
   find_deployment_loop v id 0#usize
 
 /-- [gateway_kernel::find_reservation]: loop body 0:
-    Source: 'kernel/src/lib.rs', lines 473:4-480:1
+    Source: 'kernel/src/lib.rs', lines 582:4-589:1
     Visibility: public -/
 @[rust_loop_body]
 def find_reservation_loop.body
@@ -1006,7 +1038,7 @@ def find_reservation_loop.body
   else ok (done none)
 
 /-- [gateway_kernel::find_reservation]: loop 0:
-    Source: 'kernel/src/lib.rs', lines 473:4-480:1
+    Source: 'kernel/src/lib.rs', lines 582:4-589:1
     Visibility: public -/
 @[rust_loop]
 def find_reservation_loop
@@ -1018,7 +1050,7 @@ def find_reservation_loop
     i
 
 /-- [gateway_kernel::find_reservation]:
-    Source: 'kernel/src/lib.rs', lines 471:0-480:1
+    Source: 'kernel/src/lib.rs', lines 580:0-589:1
     Visibility: public -/
 @[reducible]
 def find_reservation
@@ -1028,7 +1060,7 @@ def find_reservation
   find_reservation_loop v id 0#usize
 
 /-- [gateway_kernel::find_model]: loop body 0:
-    Source: 'kernel/src/lib.rs', lines 485:4-492:1
+    Source: 'kernel/src/lib.rs', lines 594:4-601:1
     Visibility: public -/
 @[rust_loop_body]
 def find_model_loop.body
@@ -1048,7 +1080,7 @@ def find_model_loop.body
   else ok (done none)
 
 /-- [gateway_kernel::find_model]: loop 0:
-    Source: 'kernel/src/lib.rs', lines 485:4-492:1
+    Source: 'kernel/src/lib.rs', lines 594:4-601:1
     Visibility: public -/
 @[rust_loop]
 def find_model_loop
@@ -1060,7 +1092,7 @@ def find_model_loop
     i
 
 /-- [gateway_kernel::find_model]:
-    Source: 'kernel/src/lib.rs', lines 483:0-492:1
+    Source: 'kernel/src/lib.rs', lines 592:0-601:1
     Visibility: public -/
 @[reducible]
 def find_model
@@ -1070,7 +1102,7 @@ def find_model
   find_model_loop v «name» 0#usize
 
 /-- [gateway_kernel::find_usage]: loop body 0:
-    Source: 'kernel/src/lib.rs', lines 1:0-503:1
+    Source: 'kernel/src/lib.rs', lines 1:0-612:1
     Visibility: public -/
 @[rust_loop_body]
 def find_usage_loop.body
@@ -1093,7 +1125,7 @@ def find_usage_loop.body
   else ok (done none)
 
 /-- [gateway_kernel::find_usage]: loop 0:
-    Source: 'kernel/src/lib.rs', lines 1:0-503:1
+    Source: 'kernel/src/lib.rs', lines 1:0-612:1
     Visibility: public -/
 @[rust_loop]
 def find_usage_loop
@@ -1105,7 +1137,7 @@ def find_usage_loop
     i
 
 /-- [gateway_kernel::find_usage]:
-    Source: 'kernel/src/lib.rs', lines 494:0-503:1
+    Source: 'kernel/src/lib.rs', lines 603:0-612:1
     Visibility: public -/
 @[reducible]
 def find_usage
@@ -1115,7 +1147,7 @@ def find_usage
   find_usage_loop v scope id 0#usize
 
 /-- [gateway_kernel::key_may]: loop body 0:
-    Source: 'kernel/src/lib.rs', lines 1:0-514:1
+    Source: 'kernel/src/lib.rs', lines 1:0-623:1
     Visibility: public -/
 @[rust_loop_body]
 def key_may_loop.body
@@ -1139,7 +1171,7 @@ def key_may_loop.body
   else ok (done false)
 
 /-- [gateway_kernel::key_may]: loop 0:
-    Source: 'kernel/src/lib.rs', lines 1:0-514:1
+    Source: 'kernel/src/lib.rs', lines 1:0-623:1
     Visibility: public -/
 @[rust_loop]
 def key_may_loop
@@ -1152,7 +1184,7 @@ def key_may_loop
     i
 
 /-- [gateway_kernel::key_may]:
-    Source: 'kernel/src/lib.rs', lines 505:0-514:1
+    Source: 'kernel/src/lib.rs', lines 614:0-623:1
     Visibility: public -/
 @[reducible]
 def key_may
@@ -1162,7 +1194,7 @@ def key_may
   key_may_loop v key model 0#usize
 
 /-- [gateway_kernel::team_may]: loop body 0:
-    Source: 'kernel/src/lib.rs', lines 1:0-525:1
+    Source: 'kernel/src/lib.rs', lines 1:0-634:1
     Visibility: public -/
 @[rust_loop_body]
 def team_may_loop.body
@@ -1186,7 +1218,7 @@ def team_may_loop.body
   else ok (done false)
 
 /-- [gateway_kernel::team_may]: loop 0:
-    Source: 'kernel/src/lib.rs', lines 1:0-525:1
+    Source: 'kernel/src/lib.rs', lines 1:0-634:1
     Visibility: public -/
 @[rust_loop]
 def team_may_loop
@@ -1199,7 +1231,7 @@ def team_may_loop
     i
 
 /-- [gateway_kernel::team_may]:
-    Source: 'kernel/src/lib.rs', lines 516:0-525:1
+    Source: 'kernel/src/lib.rs', lines 625:0-634:1
     Visibility: public -/
 @[reducible]
 def team_may
@@ -1209,7 +1241,7 @@ def team_may
   team_may_loop v team model 0#usize
 
 /-- [gateway_kernel::models_of_key]: loop body 0:
-    Source: 'kernel/src/lib.rs', lines 531:4-536:5
+    Source: 'kernel/src/lib.rs', lines 640:4-645:5
     Visibility: public -/
 @[rust_loop_body]
 def models_of_key_loop.body
@@ -1232,7 +1264,7 @@ def models_of_key_loop.body
   else ok (done out)
 
 /-- [gateway_kernel::models_of_key]: loop 0:
-    Source: 'kernel/src/lib.rs', lines 531:4-536:5
+    Source: 'kernel/src/lib.rs', lines 640:4-645:5
     Visibility: public -/
 @[rust_loop]
 def models_of_key_loop
@@ -1245,7 +1277,7 @@ def models_of_key_loop
     (out, i)
 
 /-- [gateway_kernel::models_of_key]:
-    Source: 'kernel/src/lib.rs', lines 528:0-538:1
+    Source: 'kernel/src/lib.rs', lines 637:0-647:1
     Visibility: public -/
 @[reducible]
 def models_of_key
@@ -1255,7 +1287,7 @@ def models_of_key
   models_of_key_loop v key (alloc.vec.Vec.new Std.U64) 0#usize
 
 /-- [gateway_kernel::models_of_team]: loop body 0:
-    Source: 'kernel/src/lib.rs', lines 544:4-549:5
+    Source: 'kernel/src/lib.rs', lines 653:4-658:5
     Visibility: public -/
 @[rust_loop_body]
 def models_of_team_loop.body
@@ -1278,7 +1310,7 @@ def models_of_team_loop.body
   else ok (done out)
 
 /-- [gateway_kernel::models_of_team]: loop 0:
-    Source: 'kernel/src/lib.rs', lines 544:4-549:5
+    Source: 'kernel/src/lib.rs', lines 653:4-658:5
     Visibility: public -/
 @[rust_loop]
 def models_of_team_loop
@@ -1291,7 +1323,7 @@ def models_of_team_loop
     (out, i)
 
 /-- [gateway_kernel::models_of_team]:
-    Source: 'kernel/src/lib.rs', lines 541:0-551:1
+    Source: 'kernel/src/lib.rs', lines 650:0-660:1
     Visibility: public -/
 @[reducible]
 def models_of_team
@@ -1301,7 +1333,7 @@ def models_of_team
   models_of_team_loop v team (alloc.vec.Vec.new Std.U64) 0#usize
 
 /-- [gateway_kernel::team_in_use]: loop body 0:
-    Source: 'kernel/src/lib.rs', lines 556:4-563:1
+    Source: 'kernel/src/lib.rs', lines 665:4-672:1
     Visibility: public -/
 @[rust_loop_body]
 def team_in_use_loop.body
@@ -1320,7 +1352,7 @@ def team_in_use_loop.body
   else ok (done false)
 
 /-- [gateway_kernel::team_in_use]: loop 0:
-    Source: 'kernel/src/lib.rs', lines 556:4-563:1
+    Source: 'kernel/src/lib.rs', lines 665:4-672:1
     Visibility: public -/
 @[rust_loop]
 def team_in_use_loop
@@ -1330,14 +1362,14 @@ def team_in_use_loop
     i
 
 /-- [gateway_kernel::team_in_use]:
-    Source: 'kernel/src/lib.rs', lines 554:0-563:1
+    Source: 'kernel/src/lib.rs', lines 663:0-672:1
     Visibility: public -/
 @[reducible]
 def team_in_use (v : alloc.vec.Vec Key) (team : Std.U64) : Result Bool := do
   team_in_use_loop v team 0#usize
 
 /-- [gateway_kernel::resolve_models]: loop body 0:
-    Source: 'kernel/src/lib.rs', lines 569:4-577:1
+    Source: 'kernel/src/lib.rs', lines 678:4-686:1
     Visibility: public -/
 @[rust_loop_body]
 def resolve_models_loop.body
@@ -1362,7 +1394,7 @@ def resolve_models_loop.body
   else ok (done (core.result.Result.Ok out))
 
 /-- [gateway_kernel::resolve_models]: loop 0:
-    Source: 'kernel/src/lib.rs', lines 569:4-577:1
+    Source: 'kernel/src/lib.rs', lines 678:4-686:1
     Visibility: public -/
 @[rust_loop]
 def resolve_models_loop
@@ -1375,7 +1407,7 @@ def resolve_models_loop
     (out, i)
 
 /-- [gateway_kernel::resolve_models]:
-    Source: 'kernel/src/lib.rs', lines 566:0-577:1
+    Source: 'kernel/src/lib.rs', lines 675:0-686:1
     Visibility: public -/
 @[reducible]
 def resolve_models
@@ -1385,7 +1417,7 @@ def resolve_models
   resolve_models_loop v names (alloc.vec.Vec.new Std.U64) 0#usize
 
 /-- [gateway_kernel::in_flight]: loop body 0:
-    Source: 'kernel/src/lib.rs', lines 583:4-588:5
+    Source: 'kernel/src/lib.rs', lines 692:4-697:5
     Visibility: public -/
 @[rust_loop_body]
 def in_flight_loop.body
@@ -1407,7 +1439,7 @@ def in_flight_loop.body
   else ok (done n)
 
 /-- [gateway_kernel::in_flight]: loop 0:
-    Source: 'kernel/src/lib.rs', lines 583:4-588:5
+    Source: 'kernel/src/lib.rs', lines 692:4-697:5
     Visibility: public -/
 @[rust_loop]
 def in_flight_loop
@@ -1420,7 +1452,7 @@ def in_flight_loop
     (n, i)
 
 /-- [gateway_kernel::in_flight]:
-    Source: 'kernel/src/lib.rs', lines 580:0-590:1
+    Source: 'kernel/src/lib.rs', lines 689:0-699:1
     Visibility: public -/
 @[reducible]
 def in_flight
@@ -1428,7 +1460,7 @@ def in_flight
   in_flight_loop v key 0#u64 0#usize
 
 /-- [gateway_kernel::reserved_by_key]: loop body 0:
-    Source: 'kernel/src/lib.rs', lines 596:4-601:5
+    Source: 'kernel/src/lib.rs', lines 705:4-710:5
     Visibility: public -/
 @[rust_loop_body]
 def reserved_by_key_loop.body
@@ -1450,7 +1482,7 @@ def reserved_by_key_loop.body
   else ok (done total)
 
 /-- [gateway_kernel::reserved_by_key]: loop 0:
-    Source: 'kernel/src/lib.rs', lines 596:4-601:5
+    Source: 'kernel/src/lib.rs', lines 705:4-710:5
     Visibility: public -/
 @[rust_loop]
 def reserved_by_key_loop
@@ -1463,7 +1495,7 @@ def reserved_by_key_loop
     (total, i)
 
 /-- [gateway_kernel::reserved_by_key]:
-    Source: 'kernel/src/lib.rs', lines 593:0-603:1
+    Source: 'kernel/src/lib.rs', lines 702:0-712:1
     Visibility: public -/
 @[reducible]
 def reserved_by_key
@@ -1471,7 +1503,7 @@ def reserved_by_key
   reserved_by_key_loop v key 0#u64 0#usize
 
 /-- [gateway_kernel::reserved_by_team]: loop body 0:
-    Source: 'kernel/src/lib.rs', lines 609:4-614:5
+    Source: 'kernel/src/lib.rs', lines 718:4-723:5
     Visibility: public -/
 @[rust_loop_body]
 def reserved_by_team_loop.body
@@ -1493,7 +1525,7 @@ def reserved_by_team_loop.body
   else ok (done total)
 
 /-- [gateway_kernel::reserved_by_team]: loop 0:
-    Source: 'kernel/src/lib.rs', lines 609:4-614:5
+    Source: 'kernel/src/lib.rs', lines 718:4-723:5
     Visibility: public -/
 @[rust_loop]
 def reserved_by_team_loop
@@ -1506,7 +1538,7 @@ def reserved_by_team_loop
     (total, i)
 
 /-- [gateway_kernel::reserved_by_team]:
-    Source: 'kernel/src/lib.rs', lines 606:0-616:1
+    Source: 'kernel/src/lib.rs', lines 715:0-725:1
     Visibility: public -/
 @[reducible]
 def reserved_by_team
@@ -1514,7 +1546,7 @@ def reserved_by_team
   reserved_by_team_loop v team 0#u64 0#usize
 
 /-- [gateway_kernel::used]:
-    Source: 'kernel/src/lib.rs', lines 622:0-629:1
+    Source: 'kernel/src/lib.rs', lines 731:0-742:1
     Visibility: public -/
 def used
   (v : alloc.vec.Vec Usage) (scope : Std.U64) (id : Std.U64) (w : Std.U64) :
@@ -1529,7 +1561,7 @@ def used
     else ok (0#u64, 0#u64)
 
 /-- [gateway_kernel::count_request]:
-    Source: 'kernel/src/lib.rs', lines 632:0-635:1
+    Source: 'kernel/src/lib.rs', lines 745:0-748:1
     Visibility: public -/
 def count_request
   (v : alloc.vec.Vec Usage) (scope : Std.U64) (id : Std.U64) (w : Std.U64) :
@@ -1540,7 +1572,7 @@ def count_request
   ok { scope, id, window := w, requests := i, tokens := t }
 
 /-- [gateway_kernel::count_tokens]:
-    Source: 'kernel/src/lib.rs', lines 638:0-641:1
+    Source: 'kernel/src/lib.rs', lines 751:0-754:1
     Visibility: public -/
 def count_tokens
   (v : alloc.vec.Vec Usage) (scope : Std.U64) (id : Std.U64) (w : Std.U64)
@@ -1552,7 +1584,7 @@ def count_tokens
   ok { scope, id, window := w, requests := r, tokens := i }
 
 /-- [gateway_kernel::under_limits]:
-    Source: 'kernel/src/lib.rs', lines 644:0-646:1
+    Source: 'kernel/src/lib.rs', lines 757:0-759:1
     Visibility: public -/
 def under_limits
   (requests : Std.U64) (tokens : Std.U64) (rpm : Std.U64) (tpm : Std.U64) :
@@ -1563,7 +1595,7 @@ def under_limits
   else ok false
 
 /-- [gateway_kernel::key_now]:
-    Source: 'kernel/src/lib.rs', lines 652:0-661:1
+    Source: 'kernel/src/lib.rs', lines 765:0-774:1
     Visibility: public -/
 def key_now (k : Key) (now : Std.U64) : Result Key := do
   if k.budget_duration != 0#u64
@@ -1576,7 +1608,7 @@ def key_now (k : Key) (now : Std.U64) : Result Key := do
   else ok k
 
 /-- [gateway_kernel::team_now]:
-    Source: 'kernel/src/lib.rs', lines 664:0-673:1
+    Source: 'kernel/src/lib.rs', lines 777:0-786:1
     Visibility: public -/
 def team_now (t : Team) (now : Std.U64) : Result Team := do
   if t.budget_duration != 0#u64
@@ -1589,7 +1621,7 @@ def team_now (t : Team) (now : Std.U64) : Result Team := do
   else ok t
 
 /-- [gateway_kernel::eligible]:
-    Source: 'kernel/src/lib.rs', lines 681:0-687:1
+    Source: 'kernel/src/lib.rs', lines 794:0-800:1
     Visibility: public -/
 def eligible
   (d : Deployment) (usage : alloc.vec.Vec Usage) (model : Std.U64)
@@ -1614,7 +1646,7 @@ def eligible
     else ok false
 
 /-- [gateway_kernel::before]:
-    Source: 'kernel/src/lib.rs', lines 691:0-693:1
+    Source: 'kernel/src/lib.rs', lines 804:0-806:1
     Visibility: public -/
 def before
   (p1 : Std.U64) (l1 : Std.U64) (id1 : Std.U64) (p2 : Std.U64) (l2 : Std.U64)
@@ -1634,7 +1666,7 @@ def before
     else ok false
 
 /-- [gateway_kernel::route]: loop body 0:
-    Source: 'kernel/src/lib.rs', lines 701:4-719:5
+    Source: 'kernel/src/lib.rs', lines 814:4-832:5
     Visibility: public -/
 @[rust_loop_body]
 def route_loop.body
@@ -1695,7 +1727,7 @@ def route_loop.body
   else ok (done best)
 
 /-- [gateway_kernel::route]: loop 0:
-    Source: 'kernel/src/lib.rs', lines 701:4-719:5
+    Source: 'kernel/src/lib.rs', lines 814:4-832:5
     Visibility: public -/
 @[rust_loop]
 def route_loop
@@ -1711,7 +1743,7 @@ def route_loop
     (best, best_load, i)
 
 /-- [gateway_kernel::route]:
-    Source: 'kernel/src/lib.rs', lines 696:0-721:1
+    Source: 'kernel/src/lib.rs', lines 809:0-834:1
     Visibility: public -/
 def route
   (deps : alloc.vec.Vec Deployment) (usage : alloc.vec.Vec Usage)
@@ -1722,7 +1754,7 @@ def route
   route_loop deps usage model now exclude w none 0#u64 0#usize
 
 /-- [gateway_kernel::record_failure]:
-    Source: 'kernel/src/lib.rs', lines 725:0-737:1
+    Source: 'kernel/src/lib.rs', lines 838:0-850:1
     Visibility: public -/
 def record_failure
   (d : Deployment) (allowed_fails : Std.U64) (cooldown_secs : Std.U64)
@@ -1740,7 +1772,7 @@ def record_failure
   else ok { d with fails, fail_window := w }
 
 /-- [gateway_kernel::is_admin]:
-    Source: 'kernel/src/lib.rs', lines 743:0-751:1
+    Source: 'kernel/src/lib.rs', lines 856:0-864:1
     Visibility: public -/
 def is_admin (a : Principal) (s : Snapshot) : Result Bool := do
   if a.master
@@ -1757,7 +1789,7 @@ def is_admin (a : Principal) (s : Snapshot) : Result Bool := do
       else ok false
 
 /-- [gateway_kernel::may_call]:
-    Source: 'kernel/src/lib.rs', lines 754:0-770:1
+    Source: 'kernel/src/lib.rs', lines 867:0-883:1
     Visibility: public -/
 def may_call
   (s : Snapshot) (k : Key) (t : Option Team) (model : Std.U64) :
@@ -1784,7 +1816,7 @@ def may_call
     else ok false
 
 /-- [gateway_kernel::fresh]:
-    Source: 'kernel/src/lib.rs', lines 773:0-775:1
+    Source: 'kernel/src/lib.rs', lines 886:0-888:1
     Visibility: public -/
 def fresh (s : Snapshot) : Result (core.result.Result Std.U64 Error) := do
   if s.settings.next_id = core.num.U64.MAX
@@ -1793,17 +1825,17 @@ def fresh (s : Snapshot) : Result (core.result.Result Std.U64 Error) := do
        ok (core.result.Result.Ok i)
 
 /-- [gateway_kernel::with_next_id]:
-    Source: 'kernel/src/lib.rs', lines 777:0-779:1 -/
+    Source: 'kernel/src/lib.rs', lines 890:0-892:1 -/
 def with_next_id (st : Settings) (id : Std.U64) : Result Settings := do
   ok { st with next_id := id }
 
 /-- [gateway_kernel::one]:
-    Source: 'kernel/src/lib.rs', lines 781:0-785:1 -/
+    Source: 'kernel/src/lib.rs', lines 894:0-898:1 -/
 def one (w : Write) : Result (alloc.vec.Vec Write) := do
   alloc.vec.Vec.push (alloc.vec.Vec.new Write) w
 
 /-- [gateway_kernel::admit_master]:
-    Source: 'kernel/src/lib.rs', lines 791:0-818:1 -/
+    Source: 'kernel/src/lib.rs', lines 904:0-931:1 -/
 def admit_master
   (a : Principal) (s : Snapshot) (model : Std.U64) (prompt_tokens : Std.U64)
   (max_tokens : Std.U64) (exclude : alloc.vec.Vec Std.U64) :
@@ -1840,7 +1872,7 @@ def admit_master
     | core.result.Result.Err e => ok (core.result.Result.Err e)
 
 /-- [gateway_kernel::admit_key]:
-    Source: 'kernel/src/lib.rs', lines 823:0-916:1 -/
+    Source: 'kernel/src/lib.rs', lines 936:0-1029:1 -/
 def admit_key
   (a : Principal) (s : Snapshot) (model : Std.U64) (prompt_tokens : Std.U64)
   (max_tokens : Std.U64) (exclude : alloc.vec.Vec Std.U64) :
@@ -2004,7 +2036,7 @@ def admit_key
               else ok (core.result.Result.Err Error.ModelNotAllowed)
 
 /-- [gateway_kernel::admit]:
-    Source: 'kernel/src/lib.rs', lines 918:0-928:1
+    Source: 'kernel/src/lib.rs', lines 1031:0-1037:1
     Visibility: public -/
 def admit
   (a : Principal) (s : Snapshot) (model : alloc.vec.Vec Std.U8)
@@ -2021,7 +2053,7 @@ def admit
     else admit_key a s m prompt_tokens max_tokens exclude
 
 /-- [gateway_kernel::may_close]:
-    Source: 'kernel/src/lib.rs', lines 932:0-934:1
+    Source: 'kernel/src/lib.rs', lines 1041:0-1043:1
     Visibility: public -/
 def may_close
   (a : Principal) (s : Snapshot) (r : Reservation) : Result Bool := do
@@ -2032,7 +2064,7 @@ def may_close
        else is_admin a s
 
 /-- [gateway_kernel::settle]:
-    Source: 'kernel/src/lib.rs', lines 940:0-996:1
+    Source: 'kernel/src/lib.rs', lines 1049:0-1105:1
     Visibility: public -/
 def settle
   (a : Principal) (s : Snapshot) (id : Std.U64) (prompt_tokens : Std.U64)
@@ -2117,7 +2149,7 @@ def settle
     else ok (core.result.Result.Err Error.Forbidden)
 
 /-- [gateway_kernel::expire]:
-    Source: 'kernel/src/lib.rs', lines 999:0-1025:1
+    Source: 'kernel/src/lib.rs', lines 1108:0-1134:1
     Visibility: public -/
 def expire
   (a : Principal) (s : Snapshot) (id : Std.U64) :
@@ -2155,7 +2187,7 @@ def expire
     else ok (core.result.Result.Err Error.Forbidden)
 
 /-- [gateway_kernel::configure]:
-    Source: 'kernel/src/lib.rs', lines 1030:0-1033:1 -/
+    Source: 'kernel/src/lib.rs', lines 1139:0-1142:1 -/
 def configure
   (s : Snapshot) (allowed_fails : Std.U64) (cooldown_secs : Std.U64)
   (reservation_ttl : Std.U64) :
@@ -2167,7 +2199,7 @@ def configure
   ok (core.result.Result.Ok (v, Reply.Done))
 
 /-- [gateway_kernel::create_team]: loop body 0:
-    Source: 'kernel/src/lib.rs', lines 1058:4-1061:5 -/
+    Source: 'kernel/src/lib.rs', lines 1167:4-1170:5 -/
 @[rust_loop_body]
 def create_team_loop.body
   (ids : alloc.vec.Vec Std.U64) (id : Std.U64) (ws : alloc.vec.Vec Write)
@@ -2187,7 +2219,7 @@ def create_team_loop.body
   else ok (done ws)
 
 /-- [gateway_kernel::create_team]: loop 0:
-    Source: 'kernel/src/lib.rs', lines 1058:4-1061:5 -/
+    Source: 'kernel/src/lib.rs', lines 1167:4-1170:5 -/
 @[rust_loop]
 def create_team_loop
   (ids : alloc.vec.Vec Std.U64) (id : Std.U64) (ws : alloc.vec.Vec Write)
@@ -2199,7 +2231,7 @@ def create_team_loop
     (ws, i)
 
 /-- [gateway_kernel::create_team]:
-    Source: 'kernel/src/lib.rs', lines 1035:0-1064:1 -/
+    Source: 'kernel/src/lib.rs', lines 1144:0-1173:1 -/
 def create_team
   (a : Principal) (s : Snapshot) (spec : TeamSpec)
   (names : alloc.vec.Vec (alloc.vec.Vec Std.U8)) :
@@ -2233,7 +2265,7 @@ def create_team
   | core.result.Result.Err e => ok (core.result.Result.Err e)
 
 /-- [gateway_kernel::update_team]:
-    Source: 'kernel/src/lib.rs', lines 1066:0-1100:1 -/
+    Source: 'kernel/src/lib.rs', lines 1175:0-1209:1 -/
 def update_team
   (a : Principal) (s : Snapshot) (id : Std.U64) (p : TeamPatch) :
   Result (core.result.Result ((alloc.vec.Vec Write) × Reply) Error)
@@ -2273,7 +2305,7 @@ def update_team
     ok (core.result.Result.Ok (v, Reply.Done))
 
 /-- [gateway_kernel::clear_team_models]: loop body 0:
-    Source: 'kernel/src/lib.rs', lines 1105:4-1110:5 -/
+    Source: 'kernel/src/lib.rs', lines 1214:4-1219:5 -/
 @[rust_loop_body]
 def clear_team_models_loop.body
   (v : alloc.vec.Vec TeamModel) (team : Std.U64) (ws : alloc.vec.Vec Write)
@@ -2295,7 +2327,7 @@ def clear_team_models_loop.body
   else ok (done ws)
 
 /-- [gateway_kernel::clear_team_models]: loop 0:
-    Source: 'kernel/src/lib.rs', lines 1105:4-1110:5 -/
+    Source: 'kernel/src/lib.rs', lines 1214:4-1219:5 -/
 @[rust_loop]
 def clear_team_models_loop
   (v : alloc.vec.Vec TeamModel) (team : Std.U64) (ws : alloc.vec.Vec Write)
@@ -2307,7 +2339,7 @@ def clear_team_models_loop
     (ws, i)
 
 /-- [gateway_kernel::clear_team_models]:
-    Source: 'kernel/src/lib.rs', lines 1103:0-1111:1 -/
+    Source: 'kernel/src/lib.rs', lines 1212:0-1220:1 -/
 @[reducible]
 def clear_team_models
   (v : alloc.vec.Vec TeamModel) (team : Std.U64) (ws : alloc.vec.Vec Write) :
@@ -2316,7 +2348,7 @@ def clear_team_models
   clear_team_models_loop v team ws 0#usize
 
 /-- [gateway_kernel::clear_key_models]: loop body 0:
-    Source: 'kernel/src/lib.rs', lines 1116:4-1121:5 -/
+    Source: 'kernel/src/lib.rs', lines 1225:4-1230:5 -/
 @[rust_loop_body]
 def clear_key_models_loop.body
   (v : alloc.vec.Vec KeyModel) (key : Std.U64) (ws : alloc.vec.Vec Write)
@@ -2338,7 +2370,7 @@ def clear_key_models_loop.body
   else ok (done ws)
 
 /-- [gateway_kernel::clear_key_models]: loop 0:
-    Source: 'kernel/src/lib.rs', lines 1116:4-1121:5 -/
+    Source: 'kernel/src/lib.rs', lines 1225:4-1230:5 -/
 @[rust_loop]
 def clear_key_models_loop
   (v : alloc.vec.Vec KeyModel) (key : Std.U64) (ws : alloc.vec.Vec Write)
@@ -2350,7 +2382,7 @@ def clear_key_models_loop
     (ws, i)
 
 /-- [gateway_kernel::clear_key_models]:
-    Source: 'kernel/src/lib.rs', lines 1114:0-1122:1 -/
+    Source: 'kernel/src/lib.rs', lines 1223:0-1231:1 -/
 @[reducible]
 def clear_key_models
   (v : alloc.vec.Vec KeyModel) (key : Std.U64) (ws : alloc.vec.Vec Write) :
@@ -2359,7 +2391,7 @@ def clear_key_models
   clear_key_models_loop v key ws 0#usize
 
 /-- [gateway_kernel::delete_team]:
-    Source: 'kernel/src/lib.rs', lines 1124:0-1136:1 -/
+    Source: 'kernel/src/lib.rs', lines 1233:0-1245:1 -/
 def delete_team
   (s : Snapshot) (id : Std.U64) :
   Result (core.result.Result ((alloc.vec.Vec Write) × Reply) Error)
@@ -2377,7 +2409,7 @@ def delete_team
       ok (core.result.Result.Ok (ws1, Reply.Done))
 
 /-- [gateway_kernel::set_team_models]: loop body 0:
-    Source: 'kernel/src/lib.rs', lines 1150:4-1153:5 -/
+    Source: 'kernel/src/lib.rs', lines 1259:4-1262:5 -/
 @[rust_loop_body]
 def set_team_models_loop.body
   (id : Std.U64) (ids : alloc.vec.Vec Std.U64) (ws : alloc.vec.Vec Write)
@@ -2397,7 +2429,7 @@ def set_team_models_loop.body
   else ok (done ws)
 
 /-- [gateway_kernel::set_team_models]: loop 0:
-    Source: 'kernel/src/lib.rs', lines 1150:4-1153:5 -/
+    Source: 'kernel/src/lib.rs', lines 1259:4-1262:5 -/
 @[rust_loop]
 def set_team_models_loop
   (id : Std.U64) (ids : alloc.vec.Vec Std.U64) (ws : alloc.vec.Vec Write)
@@ -2409,7 +2441,7 @@ def set_team_models_loop
     (ws, i)
 
 /-- [gateway_kernel::set_team_models]:
-    Source: 'kernel/src/lib.rs', lines 1138:0-1155:1 -/
+    Source: 'kernel/src/lib.rs', lines 1247:0-1264:1 -/
 def set_team_models
   (s : Snapshot) (id : Std.U64) (names : alloc.vec.Vec (alloc.vec.Vec Std.U8))
   :
@@ -2428,7 +2460,7 @@ def set_team_models
     | core.result.Result.Err e => ok (core.result.Result.Err e)
 
 /-- [gateway_kernel::create_key]: loop body 0:
-    Source: 'kernel/src/lib.rs', lines 1191:4-1194:5 -/
+    Source: 'kernel/src/lib.rs', lines 1300:4-1303:5 -/
 @[rust_loop_body]
 def create_key_loop0.body
   (ids : alloc.vec.Vec Std.U64) (id : Std.U64) (ws : alloc.vec.Vec Write)
@@ -2448,7 +2480,7 @@ def create_key_loop0.body
   else ok (done ws)
 
 /-- [gateway_kernel::create_key]: loop 0:
-    Source: 'kernel/src/lib.rs', lines 1191:4-1194:5 -/
+    Source: 'kernel/src/lib.rs', lines 1300:4-1303:5 -/
 @[rust_loop]
 def create_key_loop0
   (ids : alloc.vec.Vec Std.U64) (id : Std.U64) (ws : alloc.vec.Vec Write)
@@ -2460,7 +2492,7 @@ def create_key_loop0
     (ws, i)
 
 /-- [gateway_kernel::create_key]: loop body 1:
-    Source: 'kernel/src/lib.rs', lines 1191:4-1194:5 -/
+    Source: 'kernel/src/lib.rs', lines 1300:4-1303:5 -/
 @[rust_loop_body]
 def create_key_loop1.body
   (ids : alloc.vec.Vec Std.U64) (id : Std.U64) (ws : alloc.vec.Vec Write)
@@ -2480,7 +2512,7 @@ def create_key_loop1.body
   else ok (done ws)
 
 /-- [gateway_kernel::create_key]: loop 1:
-    Source: 'kernel/src/lib.rs', lines 1191:4-1194:5 -/
+    Source: 'kernel/src/lib.rs', lines 1300:4-1303:5 -/
 @[rust_loop]
 def create_key_loop1
   (ids : alloc.vec.Vec Std.U64) (id : Std.U64) (ws : alloc.vec.Vec Write)
@@ -2492,7 +2524,7 @@ def create_key_loop1
     (ws, i)
 
 /-- [gateway_kernel::create_key]:
-    Source: 'kernel/src/lib.rs', lines 1157:0-1197:1 -/
+    Source: 'kernel/src/lib.rs', lines 1266:0-1306:1 -/
 def create_key
   (a : Principal) (s : Snapshot) (spec : KeySpec)
   (names : alloc.vec.Vec (alloc.vec.Vec Std.U8)) :
@@ -2569,7 +2601,7 @@ def create_key
     | core.result.Result.Err e => ok (core.result.Result.Err e)
 
 /-- [gateway_kernel::update_key]:
-    Source: 'kernel/src/lib.rs', lines 1199:0-1241:1 -/
+    Source: 'kernel/src/lib.rs', lines 1308:0-1350:1 -/
 def update_key
   (a : Principal) (s : Snapshot) (id : Std.U64) (p : KeyPatch) :
   Result (core.result.Result ((alloc.vec.Vec Write) × Reply) Error)
@@ -2617,7 +2649,7 @@ def update_key
     ok (core.result.Result.Ok (v, Reply.Done))
 
 /-- [gateway_kernel::delete_key]:
-    Source: 'kernel/src/lib.rs', lines 1243:0-1252:1 -/
+    Source: 'kernel/src/lib.rs', lines 1352:0-1361:1 -/
 def delete_key
   (s : Snapshot) (id : Std.U64) :
   Result (core.result.Result ((alloc.vec.Vec Write) × Reply) Error)
@@ -2631,7 +2663,7 @@ def delete_key
     ok (core.result.Result.Ok (ws1, Reply.Done))
 
 /-- [gateway_kernel::set_key_models]: loop body 0:
-    Source: 'kernel/src/lib.rs', lines 1266:4-1269:5 -/
+    Source: 'kernel/src/lib.rs', lines 1375:4-1378:5 -/
 @[rust_loop_body]
 def set_key_models_loop.body
   (id : Std.U64) (ids : alloc.vec.Vec Std.U64) (ws : alloc.vec.Vec Write)
@@ -2651,7 +2683,7 @@ def set_key_models_loop.body
   else ok (done ws)
 
 /-- [gateway_kernel::set_key_models]: loop 0:
-    Source: 'kernel/src/lib.rs', lines 1266:4-1269:5 -/
+    Source: 'kernel/src/lib.rs', lines 1375:4-1378:5 -/
 @[rust_loop]
 def set_key_models_loop
   (id : Std.U64) (ids : alloc.vec.Vec Std.U64) (ws : alloc.vec.Vec Write)
@@ -2663,7 +2695,7 @@ def set_key_models_loop
     (ws, i)
 
 /-- [gateway_kernel::set_key_models]:
-    Source: 'kernel/src/lib.rs', lines 1254:0-1271:1 -/
+    Source: 'kernel/src/lib.rs', lines 1363:0-1380:1 -/
 def set_key_models
   (s : Snapshot) (id : Std.U64) (names : alloc.vec.Vec (alloc.vec.Vec Std.U8))
   :
@@ -2682,7 +2714,7 @@ def set_key_models
     | core.result.Result.Err e => ok (core.result.Result.Err e)
 
 /-- [gateway_kernel::reset_key_spend]:
-    Source: 'kernel/src/lib.rs', lines 1273:0-1282:1 -/
+    Source: 'kernel/src/lib.rs', lines 1382:0-1391:1 -/
 def reset_key_spend
   (s : Snapshot) (id : Std.U64) :
   Result (core.result.Result ((alloc.vec.Vec Write) × Reply) Error)
@@ -2695,7 +2727,7 @@ def reset_key_spend
     ok (core.result.Result.Ok (v, Reply.Done))
 
 /-- [gateway_kernel::upsert_deployment]:
-    Source: 'kernel/src/lib.rs', lines 1284:0-1328:1 -/
+    Source: 'kernel/src/lib.rs', lines 1393:0-1437:1 -/
 def upsert_deployment
   (s : Snapshot) («name» : alloc.vec.Vec Std.U8) (spec : DeploymentSpec) :
   Result (core.result.Result ((alloc.vec.Vec Write) × Reply) Error)
@@ -2758,7 +2790,7 @@ def upsert_deployment
     ok (core.result.Result.Ok (ws, Reply.Created m))
 
 /-- [gateway_kernel::delete_deployment]:
-    Source: 'kernel/src/lib.rs', lines 1330:0-1335:1 -/
+    Source: 'kernel/src/lib.rs', lines 1439:0-1444:1 -/
 def delete_deployment
   (s : Snapshot) (id : Std.U64) :
   Result (core.result.Result ((alloc.vec.Vec Write) × Reply) Error)
@@ -2771,7 +2803,7 @@ def delete_deployment
     ok (core.result.Result.Ok (v, Reply.Done))
 
 /-- [gateway_kernel::key_info]:
-    Source: 'kernel/src/lib.rs', lines 1340:0-1351:1 -/
+    Source: 'kernel/src/lib.rs', lines 1449:0-1459:1 -/
 def key_info
   (a : Principal) (s : Snapshot) (id : Std.U64) :
   Result (core.result.Result ((alloc.vec.Vec Write) × Reply) Error)
@@ -2803,7 +2835,7 @@ def key_info
       else ok (core.result.Result.Err Error.Forbidden)
 
 /-- [gateway_kernel::team_info]:
-    Source: 'kernel/src/lib.rs', lines 1353:0-1374:1 -/
+    Source: 'kernel/src/lib.rs', lines 1461:0-1481:1 -/
 def team_info
   (a : Principal) (s : Snapshot) (id : Std.U64) :
   Result (core.result.Result ((alloc.vec.Vec Write) × Reply) Error)
@@ -2840,7 +2872,7 @@ def team_info
               t v i))
 
 /-- [gateway_kernel::list_models]: loop body 0:
-    Source: 'kernel/src/lib.rs', lines 1387:4-1392:5 -/
+    Source: 'kernel/src/lib.rs', lines 1494:4-1499:5 -/
 @[rust_loop_body]
 def list_models_loop.body
   (s : Settings) (v : alloc.vec.Vec Team) (v1 : alloc.vec.Vec Key)
@@ -2900,7 +2932,7 @@ def list_models_loop.body
   else ok (done out)
 
 /-- [gateway_kernel::list_models]: loop 0:
-    Source: 'kernel/src/lib.rs', lines 1387:4-1392:5 -/
+    Source: 'kernel/src/lib.rs', lines 1494:4-1499:5 -/
 @[rust_loop]
 def list_models_loop
   (s : Settings) (v : alloc.vec.Vec Team) (v1 : alloc.vec.Vec Key)
@@ -2919,7 +2951,7 @@ def list_models_loop
     (out, i11)
 
 /-- [gateway_kernel::list_models]:
-    Source: 'kernel/src/lib.rs', lines 1376:0-1394:1 -/
+    Source: 'kernel/src/lib.rs', lines 1483:0-1501:1 -/
 def list_models
   (a : Principal) (s : Snapshot) :
   Result (core.result.Result ((alloc.vec.Vec Write) × Reply) Error)
@@ -2944,143 +2976,6 @@ def list_models
           k.budget_duration k.budget_reset_at k.blocked k.admin k.all_models
           team (alloc.vec.Vec.new Model) 0#usize
       ok (core.result.Result.Ok (alloc.vec.Vec.new Write, Reply.Models out))
-
-/-- [gateway_kernel::manage]:
-    Source: 'kernel/src/lib.rs', lines 1421:0-1439:1 -/
-def manage
-  (a : Principal) (s : Snapshot) (cmd : Command) :
-  Result (core.result.Result ((alloc.vec.Vec Write) × Reply) Error)
-  := do
-  match cmd with
-  | Command.Configure allowed_fails cooldown_secs reservation_ttl =>
-    configure s allowed_fails cooldown_secs reservation_ttl
-  | Command.CreateTeam spec models => create_team a s spec models
-  | Command.UpdateTeam id patch => update_team a s id patch
-  | Command.DeleteTeam id => delete_team s id
-  | Command.SetTeamModels id models => set_team_models s id models
-  | Command.CreateKey spec models => create_key a s spec models
-  | Command.UpdateKey id patch => update_key a s id patch
-  | Command.DeleteKey id => delete_key s id
-  | Command.SetKeyModels id models => set_key_models s id models
-  | Command.ResetKeySpend id => reset_key_spend s id
-  | Command.UpsertDeployment model spec => upsert_deployment s model spec
-  | Command.DeleteDeployment id => delete_deployment s id
-  | Command.Dump =>
-    let s1 ← Snapshot.Insts.CoreCloneClone.clone s
-    ok (core.result.Result.Ok (alloc.vec.Vec.new Write, Reply.State s1))
-  | Command.Admit _ _ _ _ => ok (core.result.Result.Err Error.Forbidden)
-  | Command.Settle _ _ _ _ => ok (core.result.Result.Err Error.Forbidden)
-  | Command.Expire _ => ok (core.result.Result.Err Error.Forbidden)
-  | Command.KeyInfo _ => ok (core.result.Result.Err Error.Forbidden)
-  | Command.TeamInfo _ => ok (core.result.Result.Err Error.Forbidden)
-  | Command.ListModels => ok (core.result.Result.Err Error.Forbidden)
-
-/-- [gateway_kernel::transition]:
-    Source: 'kernel/src/lib.rs', lines 1401:0-1418:1
-    Visibility: public -/
-def transition
-  (a : Principal) (s : Snapshot) (cmd : Command) :
-  Result (core.result.Result ((alloc.vec.Vec Write) × Reply) Error)
-  := do
-  match cmd with
-  | Command.Configure _ _ _ =>
-    let b ← is_admin a s
-    if b
-    then manage a s cmd
-    else ok (core.result.Result.Err Error.Forbidden)
-  | Command.CreateTeam _ _ =>
-    let b ← is_admin a s
-    if b
-    then manage a s cmd
-    else ok (core.result.Result.Err Error.Forbidden)
-  | Command.UpdateTeam _ _ =>
-    let b ← is_admin a s
-    if b
-    then manage a s cmd
-    else ok (core.result.Result.Err Error.Forbidden)
-  | Command.DeleteTeam _ =>
-    let b ← is_admin a s
-    if b
-    then manage a s cmd
-    else ok (core.result.Result.Err Error.Forbidden)
-  | Command.SetTeamModels _ _ =>
-    let b ← is_admin a s
-    if b
-    then manage a s cmd
-    else ok (core.result.Result.Err Error.Forbidden)
-  | Command.CreateKey _ _ =>
-    let b ← is_admin a s
-    if b
-    then manage a s cmd
-    else ok (core.result.Result.Err Error.Forbidden)
-  | Command.UpdateKey _ _ =>
-    let b ← is_admin a s
-    if b
-    then manage a s cmd
-    else ok (core.result.Result.Err Error.Forbidden)
-  | Command.DeleteKey _ =>
-    let b ← is_admin a s
-    if b
-    then manage a s cmd
-    else ok (core.result.Result.Err Error.Forbidden)
-  | Command.SetKeyModels _ _ =>
-    let b ← is_admin a s
-    if b
-    then manage a s cmd
-    else ok (core.result.Result.Err Error.Forbidden)
-  | Command.ResetKeySpend _ =>
-    let b ← is_admin a s
-    if b
-    then manage a s cmd
-    else ok (core.result.Result.Err Error.Forbidden)
-  | Command.UpsertDeployment _ _ =>
-    let b ← is_admin a s
-    if b
-    then manage a s cmd
-    else ok (core.result.Result.Err Error.Forbidden)
-  | Command.DeleteDeployment _ =>
-    let b ← is_admin a s
-    if b
-    then manage a s cmd
-    else ok (core.result.Result.Err Error.Forbidden)
-  | Command.Dump =>
-    let b ← is_admin a s
-    if b
-    then manage a s Command.Dump
-    else ok (core.result.Result.Err Error.Forbidden)
-  | Command.Admit model prompt_tokens max_tokens exclude =>
-    admit a s model prompt_tokens max_tokens exclude
-  | Command.Settle reservation prompt_tokens completion_tokens status =>
-    settle a s reservation prompt_tokens completion_tokens status
-  | Command.Expire reservation => expire a s reservation
-  | Command.KeyInfo id => key_info a s id
-  | Command.TeamInfo id => team_info a s id
-  | Command.ListModels => list_models a s
-
-/-- [gateway_kernel::read_only]:
-    Source: 'kernel/src/lib.rs', lines 1442:0-1450:1
-    Visibility: public -/
-def read_only (cmd : Command) : Result Bool := do
-  match cmd with
-  | Command.Configure _ _ _ => ok false
-  | Command.CreateTeam _ _ => ok false
-  | Command.UpdateTeam _ _ => ok false
-  | Command.DeleteTeam _ => ok false
-  | Command.SetTeamModels _ _ => ok false
-  | Command.CreateKey _ _ => ok false
-  | Command.UpdateKey _ _ => ok false
-  | Command.DeleteKey _ => ok false
-  | Command.SetKeyModels _ _ => ok false
-  | Command.ResetKeySpend _ => ok false
-  | Command.UpsertDeployment _ _ => ok false
-  | Command.DeleteDeployment _ => ok false
-  | Command.Dump => ok true
-  | Command.Admit _ _ _ _ => ok false
-  | Command.Settle _ _ _ _ => ok false
-  | Command.Expire _ => ok false
-  | Command.KeyInfo _ => ok true
-  | Command.TeamInfo _ => ok true
-  | Command.ListModels => ok true
 
 /-- [gateway_kernel::{gateway_kernel::Reservation}::del]: loop body 0:
     Source: '/cargo/registry/src/index.crates.io-1949cf8c6b5b557f/h5i-app-schema-0.1.3/src/lib.rs', lines 234:16-239:17
@@ -3766,7 +3661,7 @@ def Team.put
   Team.put_loop v x 0#usize
 
 /-- [gateway_kernel::apply_write]:
-    Source: 'kernel/src/lib.rs', lines 1453:0-1473:1 -/
+    Source: 'kernel/src/lib.rs', lines 1624:0-1644:1 -/
 def apply_write (s : Snapshot) (w : Write) : Result Snapshot := do
   match w with
   | Write.SetSettings x => ok { s with settings := x }
@@ -3808,6 +3703,322 @@ def apply_write (s : Snapshot) (w : Write) : Result Snapshot := do
     let v ← Reservation.del s.reservations id
     ok { s with reservations := v }
   | Write.Emit _ => ok s
+
+/-- [gateway_kernel::apply]: loop body 0:
+    Source: '/cargo/registry/src/index.crates.io-1949cf8c6b5b557f/h5i-app-schema-0.1.3/src/lib.rs', lines 306:12-309:13
+    Visibility: public -/
+@[rust_loop_body]
+def apply_loop.body
+  (ws : alloc.vec.Vec Write) (s : Snapshot) (i : Std.Usize) :
+  Result (ControlFlow (Snapshot × Std.Usize) Snapshot)
+  := do
+  let i1 := alloc.vec.Vec.len ws
+  if i < i1
+  then
+    let w ←
+      alloc.vec.Vec.index (core.slice.index.SliceIndexUsizeSlice Write) ws i
+    let w1 ← Write.Insts.CoreCloneClone.clone w
+    let s1 ← apply_write s w1
+    let i2 ← i + 1#usize
+    ok (cont (s1, i2))
+  else ok (done s)
+
+/-- [gateway_kernel::apply]: loop 0:
+    Source: '/cargo/registry/src/index.crates.io-1949cf8c6b5b557f/h5i-app-schema-0.1.3/src/lib.rs', lines 306:12-309:13
+    Visibility: public -/
+@[rust_loop]
+def apply_loop
+  (ws : alloc.vec.Vec Write) (s : Snapshot) (i : Std.Usize) :
+  Result Snapshot
+  := do
+  loop
+    (fun (s1, i1) => apply_loop.body ws s1 i1)
+    (s, i)
+
+/-- [gateway_kernel::apply]:
+    Source: '/cargo/registry/src/index.crates.io-1949cf8c6b5b557f/h5i-app-schema-0.1.3/src/lib.rs', lines 303:8-311:9
+    Visibility: public -/
+def apply (snap : Snapshot) (ws : alloc.vec.Vec Write) : Result Snapshot := do
+  let s ← Snapshot.Insts.CoreCloneClone.clone snap
+  apply_loop ws s 0#usize
+
+/-- [gateway_kernel::append]: loop body 0:
+    Source: 'kernel/src/lib.rs', lines 1592:4-1595:5 -/
+@[rust_loop_body]
+def append_loop.body
+  (w : alloc.vec.Vec Write) (ws : alloc.vec.Vec Write) (i : Std.Usize) :
+  Result (ControlFlow ((alloc.vec.Vec Write) × Std.Usize) (alloc.vec.Vec
+    Write))
+  := do
+  let i1 := alloc.vec.Vec.len w
+  if i < i1
+  then
+    let w1 ←
+      alloc.vec.Vec.index (core.slice.index.SliceIndexUsizeSlice Write) w i
+    let w2 ← Write.Insts.CoreCloneClone.clone w1
+    let ws1 ← alloc.vec.Vec.push ws w2
+    let i2 ← i + 1#usize
+    ok (cont (ws1, i2))
+  else ok (done ws)
+
+/-- [gateway_kernel::append]: loop 0:
+    Source: 'kernel/src/lib.rs', lines 1592:4-1595:5 -/
+@[rust_loop]
+def append_loop
+  (ws : alloc.vec.Vec Write) (w : alloc.vec.Vec Write) (i : Std.Usize) :
+  Result (alloc.vec.Vec Write)
+  := do
+  loop
+    (fun (ws1, i1) => append_loop.body w ws1 i1)
+    (ws, i)
+
+/-- [gateway_kernel::append]:
+    Source: 'kernel/src/lib.rs', lines 1590:0-1596:1 -/
+@[reducible]
+def append
+  (ws : alloc.vec.Vec Write) (w : alloc.vec.Vec Write) :
+  Result (alloc.vec.Vec Write)
+  := do
+  append_loop ws w 0#usize
+
+/-- [gateway_kernel::outcome_of]:
+    Source: 'kernel/src/lib.rs', lines 1579:0-1588:1 -/
+def outcome_of (r : Reply) : Result ItemOutcome := do
+  match r with
+  | Reply.Created _ => ok (ItemOutcome.Refused Error.Forbidden)
+  | Reply.Done => ok (ItemOutcome.Refused Error.Forbidden)
+  | Reply.Admitted reservation deployment amount =>
+    ok (ItemOutcome.Admitted reservation deployment amount)
+  | Reply.Settled cost1 => ok (ItemOutcome.Settled cost1)
+  | Reply.KeyInfo _ _ _ => ok (ItemOutcome.Refused Error.Forbidden)
+  | Reply.TeamInfo _ _ _ => ok (ItemOutcome.Refused Error.Forbidden)
+  | Reply.Models _ => ok (ItemOutcome.Refused Error.Forbidden)
+  | Reply.State _ => ok (ItemOutcome.Refused Error.Forbidden)
+  | Reply.Batch _ => ok (ItemOutcome.Refused Error.Forbidden)
+
+/-- [gateway_kernel::item_principal]:
+    Source: 'kernel/src/lib.rs', lines 1564:0-1566:1
+    Visibility: public -/
+def item_principal (a : Principal) (it : BatchItem) : Result Principal := do
+  ok { a with key := it.key, master := it.master }
+
+/-- [gateway_kernel::run_item]:
+    Source: 'kernel/src/lib.rs', lines 1569:0-1577:1 -/
+def run_item
+  (a : Principal) (s : Snapshot) (it : BatchItem) :
+  Result (core.result.Result ((alloc.vec.Vec Write) × Reply) Error)
+  := do
+  let p ← item_principal a it
+  match it.op with
+  | BatchOp.Admit model prompt_tokens max_tokens exclude =>
+    admit p s model prompt_tokens max_tokens exclude
+  | BatchOp.Settle reservation prompt_tokens completion_tokens status =>
+    settle p s reservation prompt_tokens completion_tokens status
+
+/-- [gateway_kernel::batch]: loop body 0:
+    Source: 'kernel/src/lib.rs', lines 1609:4-1619:5 -/
+@[rust_loop_body]
+def batch_loop.body
+  (i : Std.U64) (i1 : Std.U64) (b : Bool) (i2 : Std.U64)
+  (items : alloc.vec.Vec BatchItem) (cur : Snapshot) (ws : alloc.vec.Vec Write)
+  (outs : alloc.vec.Vec ItemOutcome) (i3 : Std.Usize) :
+  Result (ControlFlow (Snapshot × (alloc.vec.Vec Write) × (alloc.vec.Vec
+    ItemOutcome) × Std.Usize) ((alloc.vec.Vec Write) × (alloc.vec.Vec
+    ItemOutcome)))
+  := do
+  let i4 := alloc.vec.Vec.len items
+  if i3 < i4
+  then
+    let bi ←
+      alloc.vec.Vec.index (core.slice.index.SliceIndexUsizeSlice BatchItem)
+        items i3
+    let r ← run_item { org := i, key := i1, master := b, now := i2 } cur bi
+    let (cur1, ws1, outs1) ←
+      match r with
+      | core.result.Result.Ok p =>
+        do
+        let (w, r1) := p
+        let cur2 ← apply cur w
+        let ws2 ← append ws w
+        let io ← outcome_of r1
+        let outs2 ← alloc.vec.Vec.push outs io
+        ok (cur2, ws2, outs2)
+      | core.result.Result.Err e =>
+        do
+        let outs2 ← alloc.vec.Vec.push outs (ItemOutcome.Refused e)
+        ok (cur, ws, outs2)
+    let i5 ← i3 + 1#usize
+    ok (cont (cur1, ws1, outs1, i5))
+  else ok (done (ws, outs))
+
+/-- [gateway_kernel::batch]: loop 0:
+    Source: 'kernel/src/lib.rs', lines 1609:4-1619:5 -/
+@[rust_loop]
+def batch_loop
+  (i : Std.U64) (i1 : Std.U64) (b : Bool) (i2 : Std.U64)
+  (items : alloc.vec.Vec BatchItem) (cur : Snapshot) (ws : alloc.vec.Vec Write)
+  (outs : alloc.vec.Vec ItemOutcome) (i3 : Std.Usize) :
+  Result ((alloc.vec.Vec Write) × (alloc.vec.Vec ItemOutcome))
+  := do
+  loop
+    (fun (cur1, ws1, outs1, i4) => batch_loop.body i i1 b i2 items cur1 ws1
+      outs1 i4)
+    (cur, ws, outs, i3)
+
+/-- [gateway_kernel::batch]:
+    Source: 'kernel/src/lib.rs', lines 1601:0-1621:1 -/
+def batch
+  (a : Principal) (s : Snapshot) (items : alloc.vec.Vec BatchItem) :
+  Result (core.result.Result ((alloc.vec.Vec Write) × Reply) Error)
+  := do
+  if a.master
+  then
+    let cur ← Snapshot.Insts.CoreCloneClone.clone s
+    let (ws, outs) ←
+      batch_loop a.org a.key a.master a.now items cur (alloc.vec.Vec.new Write)
+        (alloc.vec.Vec.new ItemOutcome) 0#usize
+    ok (core.result.Result.Ok (ws, Reply.Batch outs))
+  else ok (core.result.Result.Err Error.Forbidden)
+
+/-- [gateway_kernel::manage]:
+    Source: 'kernel/src/lib.rs', lines 1529:0-1547:1 -/
+def manage
+  (a : Principal) (s : Snapshot) (cmd : Command) :
+  Result (core.result.Result ((alloc.vec.Vec Write) × Reply) Error)
+  := do
+  match cmd with
+  | Command.Configure allowed_fails cooldown_secs reservation_ttl =>
+    configure s allowed_fails cooldown_secs reservation_ttl
+  | Command.CreateTeam spec models => create_team a s spec models
+  | Command.UpdateTeam id patch => update_team a s id patch
+  | Command.DeleteTeam id => delete_team s id
+  | Command.SetTeamModels id models => set_team_models s id models
+  | Command.CreateKey spec models => create_key a s spec models
+  | Command.UpdateKey id patch => update_key a s id patch
+  | Command.DeleteKey id => delete_key s id
+  | Command.SetKeyModels id models => set_key_models s id models
+  | Command.ResetKeySpend id => reset_key_spend s id
+  | Command.UpsertDeployment model spec => upsert_deployment s model spec
+  | Command.DeleteDeployment id => delete_deployment s id
+  | Command.Dump =>
+    let s1 ← Snapshot.Insts.CoreCloneClone.clone s
+    ok (core.result.Result.Ok (alloc.vec.Vec.new Write, Reply.State s1))
+  | Command.Admit _ _ _ _ => ok (core.result.Result.Err Error.Forbidden)
+  | Command.Settle _ _ _ _ => ok (core.result.Result.Err Error.Forbidden)
+  | Command.Expire _ => ok (core.result.Result.Err Error.Forbidden)
+  | Command.KeyInfo _ => ok (core.result.Result.Err Error.Forbidden)
+  | Command.TeamInfo _ => ok (core.result.Result.Err Error.Forbidden)
+  | Command.ListModels => ok (core.result.Result.Err Error.Forbidden)
+  | Command.Batch _ => ok (core.result.Result.Err Error.Forbidden)
+
+/-- [gateway_kernel::transition]:
+    Source: 'kernel/src/lib.rs', lines 1508:0-1526:1
+    Visibility: public -/
+def transition
+  (a : Principal) (s : Snapshot) (cmd : Command) :
+  Result (core.result.Result ((alloc.vec.Vec Write) × Reply) Error)
+  := do
+  match cmd with
+  | Command.Configure _ _ _ =>
+    let b ← is_admin a s
+    if b
+    then manage a s cmd
+    else ok (core.result.Result.Err Error.Forbidden)
+  | Command.CreateTeam _ _ =>
+    let b ← is_admin a s
+    if b
+    then manage a s cmd
+    else ok (core.result.Result.Err Error.Forbidden)
+  | Command.UpdateTeam _ _ =>
+    let b ← is_admin a s
+    if b
+    then manage a s cmd
+    else ok (core.result.Result.Err Error.Forbidden)
+  | Command.DeleteTeam _ =>
+    let b ← is_admin a s
+    if b
+    then manage a s cmd
+    else ok (core.result.Result.Err Error.Forbidden)
+  | Command.SetTeamModels _ _ =>
+    let b ← is_admin a s
+    if b
+    then manage a s cmd
+    else ok (core.result.Result.Err Error.Forbidden)
+  | Command.CreateKey _ _ =>
+    let b ← is_admin a s
+    if b
+    then manage a s cmd
+    else ok (core.result.Result.Err Error.Forbidden)
+  | Command.UpdateKey _ _ =>
+    let b ← is_admin a s
+    if b
+    then manage a s cmd
+    else ok (core.result.Result.Err Error.Forbidden)
+  | Command.DeleteKey _ =>
+    let b ← is_admin a s
+    if b
+    then manage a s cmd
+    else ok (core.result.Result.Err Error.Forbidden)
+  | Command.SetKeyModels _ _ =>
+    let b ← is_admin a s
+    if b
+    then manage a s cmd
+    else ok (core.result.Result.Err Error.Forbidden)
+  | Command.ResetKeySpend _ =>
+    let b ← is_admin a s
+    if b
+    then manage a s cmd
+    else ok (core.result.Result.Err Error.Forbidden)
+  | Command.UpsertDeployment _ _ =>
+    let b ← is_admin a s
+    if b
+    then manage a s cmd
+    else ok (core.result.Result.Err Error.Forbidden)
+  | Command.DeleteDeployment _ =>
+    let b ← is_admin a s
+    if b
+    then manage a s cmd
+    else ok (core.result.Result.Err Error.Forbidden)
+  | Command.Dump =>
+    let b ← is_admin a s
+    if b
+    then manage a s Command.Dump
+    else ok (core.result.Result.Err Error.Forbidden)
+  | Command.Admit model prompt_tokens max_tokens exclude =>
+    admit a s model prompt_tokens max_tokens exclude
+  | Command.Settle reservation prompt_tokens completion_tokens status =>
+    settle a s reservation prompt_tokens completion_tokens status
+  | Command.Expire reservation => expire a s reservation
+  | Command.KeyInfo id => key_info a s id
+  | Command.TeamInfo id => team_info a s id
+  | Command.ListModels => list_models a s
+  | Command.Batch items => batch a s items
+
+/-- [gateway_kernel::read_only]:
+    Source: 'kernel/src/lib.rs', lines 1550:0-1558:1
+    Visibility: public -/
+def read_only (cmd : Command) : Result Bool := do
+  match cmd with
+  | Command.Configure _ _ _ => ok false
+  | Command.CreateTeam _ _ => ok false
+  | Command.UpdateTeam _ _ => ok false
+  | Command.DeleteTeam _ => ok false
+  | Command.SetTeamModels _ _ => ok false
+  | Command.CreateKey _ _ => ok false
+  | Command.UpdateKey _ _ => ok false
+  | Command.DeleteKey _ => ok false
+  | Command.SetKeyModels _ _ => ok false
+  | Command.ResetKeySpend _ => ok false
+  | Command.UpsertDeployment _ _ => ok false
+  | Command.DeleteDeployment _ => ok false
+  | Command.Dump => ok true
+  | Command.Admit _ _ _ _ => ok false
+  | Command.Settle _ _ _ _ => ok false
+  | Command.Expire _ => ok false
+  | Command.KeyInfo _ => ok true
+  | Command.TeamInfo _ => ok true
+  | Command.ListModels => ok true
+  | Command.Batch _ => ok false
 
 /-- [gateway_kernel::{gateway_kernel::Reservation}::TABLE]
     Source: '/cargo/registry/src/index.crates.io-1949cf8c6b5b557f/h5i-app-schema-0.1.3/src/lib.rs', lines 135:12-135:60
@@ -4183,7 +4394,7 @@ def Settings.sql_put (self : Settings) : Result h5i_app_sql.Write := do
   ok (h5i_app_sql.Write.Put Settings.TABLE Settings.KEY_LEN v)
 
 /-- [gateway_kernel::sql_write]:
-    Source: 'kernel/src/lib.rs', lines 1476:0-1495:1 -/
+    Source: 'kernel/src/lib.rs', lines 1647:0-1666:1 -/
 def sql_write
   (w : Write) (out : alloc.vec.Vec h5i_app_sql.Write) :
   Result (alloc.vec.Vec h5i_app_sql.Write)
@@ -6073,44 +6284,6 @@ def decode (r : Rows) : Result (Option Snapshot) := do
                         usage := x7,
                         reservations := x8
                       })
-
-/-- [gateway_kernel::apply]: loop body 0:
-    Source: '/cargo/registry/src/index.crates.io-1949cf8c6b5b557f/h5i-app-schema-0.1.3/src/lib.rs', lines 306:12-309:13
-    Visibility: public -/
-@[rust_loop_body]
-def apply_loop.body
-  (ws : alloc.vec.Vec Write) (s : Snapshot) (i : Std.Usize) :
-  Result (ControlFlow (Snapshot × Std.Usize) Snapshot)
-  := do
-  let i1 := alloc.vec.Vec.len ws
-  if i < i1
-  then
-    let w ←
-      alloc.vec.Vec.index (core.slice.index.SliceIndexUsizeSlice Write) ws i
-    let w1 ← Write.Insts.CoreCloneClone.clone w
-    let s1 ← apply_write s w1
-    let i2 ← i + 1#usize
-    ok (cont (s1, i2))
-  else ok (done s)
-
-/-- [gateway_kernel::apply]: loop 0:
-    Source: '/cargo/registry/src/index.crates.io-1949cf8c6b5b557f/h5i-app-schema-0.1.3/src/lib.rs', lines 306:12-309:13
-    Visibility: public -/
-@[rust_loop]
-def apply_loop
-  (ws : alloc.vec.Vec Write) (s : Snapshot) (i : Std.Usize) :
-  Result Snapshot
-  := do
-  loop
-    (fun (s1, i1) => apply_loop.body ws s1 i1)
-    (s, i)
-
-/-- [gateway_kernel::apply]:
-    Source: '/cargo/registry/src/index.crates.io-1949cf8c6b5b557f/h5i-app-schema-0.1.3/src/lib.rs', lines 303:8-311:9
-    Visibility: public -/
-def apply (snap : Snapshot) (ws : alloc.vec.Vec Write) : Result Snapshot := do
-  let s ← Snapshot.Insts.CoreCloneClone.clone snap
-  apply_loop ws s 0#usize
 
 /-- [gateway_kernel::sql_writes]: loop body 0:
     Source: '/cargo/registry/src/index.crates.io-1949cf8c6b5b557f/h5i-app-schema-0.1.3/src/lib.rs', lines 317:12-320:13

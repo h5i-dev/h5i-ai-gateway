@@ -50,18 +50,11 @@ fn failure(f: Failure) -> Response {
 /// Authenticate here rather than with the `Actor` extractor, so that a bad
 /// key gets an Anthropic-shaped error.
 fn authenticate(st: &AppState, headers: &HeaderMap) -> Result<Principal, Response> {
-    st.keys
-        .authenticate(headers)
-        .map_err(|e| error(StatusCode::UNAUTHORIZED, &e.0))
+    st.keys.authenticate(headers).map_err(|e| error(StatusCode::UNAUTHORIZED, &e.0))
 }
 
 fn parse(body: &[u8]) -> Result<MessagesRequest, Response> {
-    serde_json::from_slice(body).map_err(|e| {
-        error(
-            StatusCode::BAD_REQUEST,
-            &format!("invalid request body: {e}"),
-        )
-    })
+    serde_json::from_slice(body).map_err(|e| error(StatusCode::BAD_REQUEST, &format!("invalid request body: {e}")))
 }
 
 /// What every deployment the request may reach understands: those of the
@@ -69,27 +62,13 @@ fn parse(body: &[u8]) -> Result<MessagesRequest, Response> {
 pub(crate) fn target(st: &AppState, model: &str) -> Target {
     let group = st.settings.aliases.get(model).map_or(model, String::as_str);
     let mut groups = vec![group];
-    groups.extend(
-        st.settings
-            .fallbacks
-            .get(group)
-            .into_iter()
-            .flatten()
-            .map(String::as_str),
-    );
-    Target::all(
-        st.registry
-            .all()
-            .into_iter()
-            .filter(|d| groups.contains(&d.model_name.as_str()))
-            .map(|d| &d.deployment),
-    )
+    groups.extend(st.settings.fallbacks.get(group).into_iter().flatten().map(String::as_str));
+    Target::all(st.registry.all().into_iter().filter(|d| groups.contains(&d.model_name.as_str())).map(|d| &d.deployment))
 }
 
 /// The chat request for a Messages request, adapted to its deployments.
 fn chat_request(st: &AppState, req: &MessagesRequest) -> Result<ChatRequest, Response> {
-    let mut chat =
-        am::to_chat_request(req).map_err(|e| error(StatusCode::BAD_REQUEST, &e.message))?;
+    let mut chat = am::to_chat_request(req).map_err(|e| error(StatusCode::BAD_REQUEST, &e.message))?;
     adapt_to_target(&mut chat, target(st, &req.model));
     Ok(chat)
 }
@@ -110,26 +89,21 @@ pub async fn messages(State(st): State<AppState>, headers: HeaderMap, body: Byte
     };
     let estimate = estimate_prompt_tokens(&chat);
     match run_chat(&st, actor, chat).await {
-        Ok((ChatOutcome::Complete(resp), info)) => (
-            info.headers(),
-            Json(am::from_chat_response(&resp, &req.model)),
-        )
-            .into_response(),
+        Ok((ChatOutcome::Complete(resp), info)) => (info.headers(), Json(am::from_chat_response(&resp, &req.model))).into_response(),
         Ok((ChatOutcome::Stream(s), info)) => {
             let encoder = am::MessagesStream::new(req.model.clone(), estimate);
-            let body =
-                futures::stream::unfold((s, encoder, false), |(mut s, mut enc, done)| async move {
-                    if done {
-                        return None;
-                    }
-                    let (events, done) = match s.next().await {
-                        Some(Ok(chunk)) => (enc.on_chunk(&chunk), false),
-                        Some(Err(e)) => (enc.error(e.status_code(), e.message()), true),
-                        None => (enc.finish(), true),
-                    };
-                    Some((Bytes::from(am::encode_events(&events)), (s, enc, done)))
-                })
-                .filter(|b| futures::future::ready(!b.is_empty()));
+            let body = futures::stream::unfold((s, encoder, false), |(mut s, mut enc, done)| async move {
+                if done {
+                    return None;
+                }
+                let (events, done) = match s.next().await {
+                    Some(Ok(chunk)) => (enc.on_chunk(&chunk), false),
+                    Some(Err(e)) => (enc.error(e.status_code(), e.message()), true),
+                    None => (enc.finish(), true),
+                };
+                Some((Bytes::from(am::encode_events(&events)), (s, enc, done)))
+            })
+            .filter(|b| futures::future::ready(!b.is_empty()));
             sse_response(&info, body)
         }
         Err(f) => failure(f),

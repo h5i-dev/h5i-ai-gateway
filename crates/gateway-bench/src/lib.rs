@@ -23,11 +23,7 @@ impl Args {
         })
     }
 
-    pub fn from_iter(
-        usage: &'static str,
-        switches: &[&str],
-        args: impl IntoIterator<Item = String>,
-    ) -> Result<Args, String> {
+    pub fn from_iter(usage: &'static str, switches: &[&str], args: impl IntoIterator<Item = String>) -> Result<Args, String> {
         let mut values: HashMap<String, Vec<String>> = HashMap::new();
         let mut it = args.into_iter();
         while let Some(flag) = it.next() {
@@ -91,20 +87,7 @@ mod tests {
 
     #[test]
     fn parses_flags_switches_and_equals() {
-        let a = Args::from_iter(
-            "",
-            &["stream"],
-            [
-                "--port",
-                "9",
-                "--stream",
-                "--header=a: b",
-                "--header",
-                "c: d",
-            ]
-            .map(String::from),
-        )
-        .unwrap();
+        let a = Args::from_iter("", &["stream"], ["--port", "9", "--stream", "--header=a: b", "--header", "c: d"].map(String::from)).unwrap();
         assert_eq!(a.get("port", 0u16), 9);
         assert!(a.flag("stream"));
         assert_eq!(a.all("header"), vec!["a: b", "c: d"]);

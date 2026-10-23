@@ -150,11 +150,7 @@ const fn openai_compatible(
 }
 
 const fn self_hosted(spec: ProviderSpec, base_suffix: &'static str) -> ProviderSpec {
-    ProviderSpec {
-        requires_api_key: false,
-        base_suffix,
-        ..spec
-    }
+    ProviderSpec { requires_api_key: false, base_suffix, ..spec }
 }
 
 pub(crate) static PROVIDERS: &[ProviderSpec] = &[
@@ -166,17 +162,7 @@ pub(crate) static PROVIDERS: &[ProviderSpec] = &[
         &["OPENAI_API_BASE", "OPENAI_BASE_URL"],
         true,
     ),
-    ProviderSpec {
-        protocol: Protocol::Azure,
-        ..openai_compatible(
-            Provider::Azure,
-            &["azure"],
-            None,
-            &["AZURE_API_KEY"],
-            &["AZURE_API_BASE"],
-            true,
-        )
-    },
+    ProviderSpec { protocol: Protocol::Azure, ..openai_compatible(Provider::Azure, &["azure"], None, &["AZURE_API_KEY"], &["AZURE_API_BASE"], true) },
     ProviderSpec {
         protocol: Protocol::Anthropic,
         ..openai_compatible(
@@ -199,39 +185,14 @@ pub(crate) static PROVIDERS: &[ProviderSpec] = &[
             true,
         )
     },
-    openai_compatible(
-        Provider::Groq,
-        &["groq"],
-        Some("https://api.groq.com/openai/v1"),
-        &["GROQ_API_KEY"],
-        &["GROQ_API_BASE"],
-        true,
-    ),
-    openai_compatible(
-        Provider::DeepSeek,
-        &["deepseek"],
-        Some("https://api.deepseek.com/beta"),
-        &["DEEPSEEK_API_KEY"],
-        &["DEEPSEEK_API_BASE"],
-        true,
-    ),
-    openai_compatible(
-        Provider::Mistral,
-        &["mistral"],
-        Some("https://api.mistral.ai/v1"),
-        &["MISTRAL_API_KEY"],
-        &["MISTRAL_API_BASE"],
-        false,
-    ),
+    openai_compatible(Provider::Groq, &["groq"], Some("https://api.groq.com/openai/v1"), &["GROQ_API_KEY"], &["GROQ_API_BASE"], true),
+    openai_compatible(Provider::DeepSeek, &["deepseek"], Some("https://api.deepseek.com/beta"), &["DEEPSEEK_API_KEY"], &["DEEPSEEK_API_BASE"], true),
+    openai_compatible(Provider::Mistral, &["mistral"], Some("https://api.mistral.ai/v1"), &["MISTRAL_API_KEY"], &["MISTRAL_API_BASE"], false),
     openai_compatible(
         Provider::TogetherAi,
         &["together_ai"],
         Some("https://api.together.xyz/v1"),
-        &[
-            "TOGETHERAI_API_KEY",
-            "TOGETHER_AI_API_KEY",
-            "TOGETHER_API_KEY",
-        ],
+        &["TOGETHERAI_API_KEY", "TOGETHER_AI_API_KEY", "TOGETHER_API_KEY"],
         &["TOGETHER_AI_API_BASE"],
         true,
     ),
@@ -239,11 +200,7 @@ pub(crate) static PROVIDERS: &[ProviderSpec] = &[
         Provider::FireworksAi,
         &["fireworks_ai"],
         Some("https://api.fireworks.ai/inference/v1"),
-        &[
-            "FIREWORKS_AI_API_KEY",
-            "FIREWORKS_API_KEY",
-            "FIREWORKSAI_API_KEY",
-        ],
+        &["FIREWORKS_AI_API_KEY", "FIREWORKS_API_KEY", "FIREWORKSAI_API_KEY"],
         &["FIREWORKS_AI_API_BASE"],
         false,
     ),
@@ -255,14 +212,7 @@ pub(crate) static PROVIDERS: &[ProviderSpec] = &[
         &["OPENROUTER_API_BASE"],
         true,
     ),
-    openai_compatible(
-        Provider::XAi,
-        &["xai"],
-        Some("https://api.x.ai/v1"),
-        &["XAI_API_KEY"],
-        &["XAI_API_BASE"],
-        true,
-    ),
+    openai_compatible(Provider::XAi, &["xai"], Some("https://api.x.ai/v1"), &["XAI_API_KEY"], &["XAI_API_BASE"], true),
     openai_compatible(
         Provider::Perplexity,
         &["perplexity"],
@@ -279,14 +229,7 @@ pub(crate) static PROVIDERS: &[ProviderSpec] = &[
         &["DEEPINFRA_API_BASE"],
         true,
     ),
-    openai_compatible(
-        Provider::Cerebras,
-        &["cerebras"],
-        Some("https://api.cerebras.ai/v1"),
-        &["CEREBRAS_API_KEY"],
-        &["CEREBRAS_API_BASE"],
-        false,
-    ),
+    openai_compatible(Provider::Cerebras, &["cerebras"], Some("https://api.cerebras.ai/v1"), &["CEREBRAS_API_KEY"], &["CEREBRAS_API_BASE"], false),
     openai_compatible(
         Provider::NvidiaNim,
         &["nvidia_nim"],
@@ -304,47 +247,16 @@ pub(crate) static PROVIDERS: &[ProviderSpec] = &[
         false,
     ),
     self_hosted(
-        openai_compatible(
-            Provider::HostedVllm,
-            &["hosted_vllm", "vllm"],
-            None,
-            &["HOSTED_VLLM_API_KEY"],
-            &["HOSTED_VLLM_API_BASE"],
-            true,
-        ),
+        openai_compatible(Provider::HostedVllm, &["hosted_vllm", "vllm"], None, &["HOSTED_VLLM_API_KEY"], &["HOSTED_VLLM_API_BASE"], true),
         "",
     ),
+    self_hosted(openai_compatible(Provider::OpenAiLike, &["openai_like", "custom_openai"], None, &[], &[], true), ""),
     self_hosted(
-        openai_compatible(
-            Provider::OpenAiLike,
-            &["openai_like", "custom_openai"],
-            None,
-            &[],
-            &[],
-            true,
-        ),
-        "",
-    ),
-    self_hosted(
-        openai_compatible(
-            Provider::Ollama,
-            &["ollama"],
-            Some("http://localhost:11434"),
-            &["OLLAMA_API_KEY"],
-            &["OLLAMA_API_BASE"],
-            true,
-        ),
+        openai_compatible(Provider::Ollama, &["ollama"], Some("http://localhost:11434"), &["OLLAMA_API_KEY"], &["OLLAMA_API_BASE"], true),
         "/v1",
     ),
     self_hosted(
-        openai_compatible(
-            Provider::OllamaChat,
-            &["ollama_chat"],
-            Some("http://localhost:11434"),
-            &["OLLAMA_API_KEY"],
-            &["OLLAMA_API_BASE"],
-            true,
-        ),
+        openai_compatible(Provider::OllamaChat, &["ollama_chat"], Some("http://localhost:11434"), &["OLLAMA_API_KEY"], &["OLLAMA_API_BASE"], true),
         "/v1",
     ),
     self_hosted(
@@ -381,21 +293,12 @@ pub(crate) static PROVIDERS: &[ProviderSpec] = &[
         stream_usage: false,
         base_suffix: "",
     },
-    ProviderSpec {
-        protocol: Protocol::Mock,
-        ..self_hosted(
-            openai_compatible(Provider::Mock, &["mock", "fake"], None, &[], &[], true),
-            "",
-        )
-    },
+    ProviderSpec { protocol: Protocol::Mock, ..self_hosted(openai_compatible(Provider::Mock, &["mock", "fake"], None, &[], &[], true), "") },
 ];
 
 impl Provider {
     pub(crate) fn spec(self) -> &'static ProviderSpec {
-        PROVIDERS
-            .iter()
-            .find(|s| s.provider == self)
-            .expect("every provider has a spec")
+        PROVIDERS.iter().find(|s| s.provider == self).expect("every provider has a spec")
     }
 
     /// Canonical LiteLLM provider name (e.g. `"together_ai"`).
@@ -406,31 +309,15 @@ impl Provider {
     /// Parse a LiteLLM provider name (case-insensitive), including aliases.
     pub fn from_name(name: &str) -> Option<Provider> {
         let name = name.to_ascii_lowercase();
-        PROVIDERS
-            .iter()
-            .find(|s| s.names.contains(&name.as_str()))
-            .map(|s| s.provider)
+        PROVIDERS.iter().find(|s| s.names.contains(&name.as_str())).map(|s| s.provider)
     }
 
     /// Infer the provider of a bare model name the way LiteLLM does for the
     /// common cases, falling back to the pricing table's `litellm_provider`.
     pub fn infer(model: &str) -> Option<Provider> {
         let m = model.to_ascii_lowercase();
-        let is_o_series = ["o1", "o3", "o4"]
-            .iter()
-            .any(|p| m == *p || m.starts_with(&format!("{p}-")));
-        if is_o_series
-            || [
-                "gpt-",
-                "chatgpt-",
-                "text-embedding-",
-                "omni-moderation",
-                "davinci",
-                "babbage",
-                "codex-",
-            ]
-            .iter()
-            .any(|p| m.starts_with(p))
+        let is_o_series = ["o1", "o3", "o4"].iter().any(|p| m == *p || m.starts_with(&format!("{p}-")));
+        if is_o_series || ["gpt-", "chatgpt-", "text-embedding-", "omni-moderation", "davinci", "babbage", "codex-"].iter().any(|p| m.starts_with(p))
         {
             return Some(Provider::OpenAi);
         }
@@ -440,13 +327,11 @@ impl Provider {
         if m.starts_with("gemini-") || m.starts_with("gemma-") {
             return Some(Provider::Gemini);
         }
-        pricing::lookup(model)
-            .and_then(|p| p.litellm_provider)
-            .and_then(|name| match name.as_str() {
-                "bedrock_converse" => Some(Provider::Bedrock),
-                n if n.starts_with("vertex_ai") => Some(Provider::VertexAi),
-                n => Provider::from_name(n),
-            })
+        pricing::lookup(model).and_then(|p| p.litellm_provider).and_then(|name| match name.as_str() {
+            "bedrock_converse" => Some(Provider::Bedrock),
+            n if n.starts_with("vertex_ai") => Some(Provider::VertexAi),
+            n => Provider::from_name(n),
+        })
     }
 
     pub(crate) fn protocol(self) -> Protocol {
@@ -545,23 +430,13 @@ impl Deployment {
     }
 
     /// Parse `litellm_params` with an injectable environment lookup.
-    pub fn from_litellm_params_with_env(
-        params: &Value,
-        env: impl Fn(&str) -> Option<String>,
-    ) -> Result<Self, ProviderError> {
+    pub fn from_litellm_params_with_env(params: &Value, env: impl Fn(&str) -> Option<String>) -> Result<Self, ProviderError> {
         let Value::Object(raw) = params else {
-            return Err(ProviderError::config(
-                "config",
-                "litellm_params must be an object",
-            ));
+            return Err(ProviderError::config("config", "litellm_params must be an object"));
         };
-        let mut obj = resolve_env(Value::Object(raw.clone()), &env)?
-            .as_object()
-            .cloned()
-            .unwrap_or_default();
+        let mut obj = resolve_env(Value::Object(raw.clone()), &env)?.as_object().cloned().unwrap_or_default();
 
-        let litellm_model = take_string(&mut obj, "model")?
-            .ok_or_else(|| ProviderError::config("config", "litellm_params.model is required"))?;
+        let litellm_model = take_string(&mut obj, "model")?.ok_or_else(|| ProviderError::config("config", "litellm_params.model is required"))?;
         let explicit = take_string(&mut obj, "custom_llm_provider")?;
         let (provider, mut model) = split_model(&litellm_model, explicit.as_deref())?;
         let spec = provider.spec();
@@ -576,49 +451,32 @@ impl Deployment {
         };
         let cloud = match provider.protocol() {
             Protocol::Bedrock => {
-                let (m, base, cfg) =
-                    bedrock::parse_config(&model, &mut obj, &env, explicit_key, configured_base)?;
+                let (m, base, cfg) = bedrock::parse_config(&model, &mut obj, &env, explicit_key, configured_base)?;
                 model = m;
                 configured_base = Some(base);
                 Some(CloudConfig::Bedrock(cfg))
             }
             Protocol::Vertex => {
-                let (base, cfg) =
-                    vertex::parse_config(&mut obj, &env, explicit_key, configured_base)?;
+                let (base, cfg) = vertex::parse_config(&mut obj, &env, explicit_key, configured_base)?;
                 configured_base = Some(base);
                 Some(CloudConfig::Vertex(cfg))
             }
             _ => None,
         };
-        let api_base = configured_base
-            .or_else(|| from_env(spec.api_base_env))
-            .or_else(|| spec.default_api_base.map(str::to_owned))
-            .map(|b| {
-                let b = b.trim_end_matches('/');
-                if b.ends_with(spec.base_suffix) {
-                    b.to_owned()
-                } else {
-                    format!("{b}{}", spec.base_suffix)
-                }
-            });
+        let api_base = configured_base.or_else(|| from_env(spec.api_base_env)).or_else(|| spec.default_api_base.map(str::to_owned)).map(|b| {
+            let b = b.trim_end_matches('/');
+            if b.ends_with(spec.base_suffix) { b.to_owned() } else { format!("{b}{}", spec.base_suffix) }
+        });
         let mut api_version = take_string(&mut obj, "api_version")?;
         if provider == Provider::Azure && api_version.is_none() {
-            api_version = Some(
-                from_env(&["AZURE_API_VERSION"])
-                    .unwrap_or_else(|| DEFAULT_AZURE_API_VERSION.to_owned()),
-            );
+            api_version = Some(from_env(&["AZURE_API_VERSION"]).unwrap_or_else(|| DEFAULT_AZURE_API_VERSION.to_owned()));
         }
 
         if api_base.is_none() && provider.protocol() != Protocol::Mock {
-            return Err(cfg_err(format!(
-                "api_base is required for provider '{provider}'"
-            )));
+            return Err(cfg_err(format!("api_base is required for provider '{provider}'")));
         }
         if api_key.is_none() && spec.requires_api_key {
-            return Err(cfg_err(format!(
-                "api_key is required for provider '{provider}' (set api_key or {})",
-                spec.api_key_env.join("/")
-            )));
+            return Err(cfg_err(format!("api_key is required for provider '{provider}' (set api_key or {})", spec.api_key_env.join("/"))));
         }
 
         let mut extra_headers = Vec::new();
@@ -627,8 +485,7 @@ impl Deployment {
                 None | Some(Value::Null) => {}
                 Some(Value::Object(h)) => {
                     for (k, v) in h {
-                        let v = scalar_string(&v)
-                            .ok_or_else(|| cfg_err(format!("{key}.{k} must be a string")))?;
+                        let v = scalar_string(&v).ok_or_else(|| cfg_err(format!("{key}.{k} must be a string")))?;
                         extra_headers.push((k, v));
                     }
                 }
@@ -655,14 +512,8 @@ impl Deployment {
             api_base,
             api_version,
             organization: take_string(&mut obj, "organization")?,
-            timeout: take_number(&mut obj, "timeout")?
-                .map(seconds)
-                .transpose()
-                .map_err(cfg_err)?,
-            stream_timeout: take_number(&mut obj, "stream_timeout")?
-                .map(seconds)
-                .transpose()
-                .map_err(cfg_err)?,
+            timeout: take_number(&mut obj, "timeout")?.map(seconds).transpose().map_err(cfg_err)?,
+            stream_timeout: take_number(&mut obj, "stream_timeout")?.map(seconds).transpose().map_err(cfg_err)?,
             max_retries: take_number(&mut obj, "max_retries")?.map(|n| n as u32),
             extra_headers,
             extra_body,
@@ -689,10 +540,7 @@ impl Deployment {
         if self.input_cost_per_token.is_none() && self.output_cost_per_token.is_none() {
             return base;
         }
-        let mut p = base.unwrap_or_else(|| Pricing {
-            litellm_provider: Some(self.provider.name().to_owned()),
-            ..Pricing::default()
-        });
+        let mut p = base.unwrap_or_else(|| Pricing { litellm_provider: Some(self.provider.name().to_owned()), ..Pricing::default() });
         if let Some(c) = self.input_cost_per_token {
             p.input_cost_per_token = c;
         }
@@ -711,8 +559,7 @@ impl Deployment {
 /// model name (e.g. `"meta-llama/Llama-3"` with `custom_llm_provider`).
 fn split_model(model: &str, explicit: Option<&str>) -> Result<(Provider, String), ProviderError> {
     if let Some(name) = explicit {
-        let provider = Provider::from_name(name)
-            .ok_or_else(|| ProviderError::config(name, format!("unknown provider '{name}'")))?;
+        let provider = Provider::from_name(name).ok_or_else(|| ProviderError::config(name, format!("unknown provider '{name}'")))?;
         let rest = match model.split_once('/') {
             Some((prefix, rest)) if Provider::from_name(prefix) == Some(provider) => rest,
             _ => model,
@@ -723,53 +570,28 @@ fn split_model(model: &str, explicit: Option<&str>) -> Result<(Provider, String)
         && let Some(provider) = Provider::from_name(prefix)
     {
         if rest.is_empty() {
-            return Err(ProviderError::config(
-                prefix,
-                format!("model name missing in '{model}'"),
-            ));
+            return Err(ProviderError::config(prefix, format!("model name missing in '{model}'")));
         }
         return Ok((provider, rest.to_owned()));
     }
     Provider::infer(model)
         .map(|p| (p, model.to_owned()))
-        .ok_or_else(|| {
-            ProviderError::config(
-                "config",
-                format!(
-                    "cannot determine the provider for model '{model}'; use '<provider>/{model}'"
-                ),
-            )
-        })
+        .ok_or_else(|| ProviderError::config("config", format!("cannot determine the provider for model '{model}'; use '<provider>/{model}'")))
 }
 
 const ENV_PREFIX: &str = "os.environ/";
 
 /// Recursively replace `os.environ/NAME` strings.
-fn resolve_env(
-    value: Value,
-    env: &impl Fn(&str) -> Option<String>,
-) -> Result<Value, ProviderError> {
+fn resolve_env(value: Value, env: &impl Fn(&str) -> Option<String>) -> Result<Value, ProviderError> {
     Ok(match value {
         Value::String(s) => match s.strip_prefix(ENV_PREFIX) {
-            Some(name) => Value::String(env(name).ok_or_else(|| {
-                ProviderError::config(
-                    "config",
-                    format!("environment variable '{name}' is not set"),
-                )
-            })?),
+            Some(name) => {
+                Value::String(env(name).ok_or_else(|| ProviderError::config("config", format!("environment variable '{name}' is not set")))?)
+            }
             None => Value::String(s),
         },
-        Value::Array(items) => Value::Array(
-            items
-                .into_iter()
-                .map(|v| resolve_env(v, env))
-                .collect::<Result<_, _>>()?,
-        ),
-        Value::Object(map) => Value::Object(
-            map.into_iter()
-                .map(|(k, v)| Ok((k, resolve_env(v, env)?)))
-                .collect::<Result<_, ProviderError>>()?,
-        ),
+        Value::Array(items) => Value::Array(items.into_iter().map(|v| resolve_env(v, env)).collect::<Result<_, _>>()?),
+        Value::Object(map) => Value::Object(map.into_iter().map(|(k, v)| Ok((k, resolve_env(v, env)?))).collect::<Result<_, ProviderError>>()?),
         other => other,
     })
 }
@@ -783,15 +605,10 @@ fn scalar_string(v: &Value) -> Option<String> {
     }
 }
 
-pub(crate) fn take_string(
-    obj: &mut JsonObject,
-    key: &str,
-) -> Result<Option<String>, ProviderError> {
+pub(crate) fn take_string(obj: &mut JsonObject, key: &str) -> Result<Option<String>, ProviderError> {
     match obj.remove(key) {
         None | Some(Value::Null) => Ok(None),
-        Some(v) => scalar_string(&v)
-            .map(Some)
-            .ok_or_else(|| ProviderError::config("config", format!("{key} must be a string"))),
+        Some(v) => scalar_string(&v).map(Some).ok_or_else(|| ProviderError::config("config", format!("{key} must be a string"))),
     }
 }
 
@@ -834,23 +651,11 @@ mod tests {
     fn provider_prefixes() {
         let cases = [
             ("openai/gpt-4o", Provider::OpenAi, "gpt-4o"),
-            (
-                "anthropic/claude-3-5-sonnet-20241022",
-                Provider::Anthropic,
-                "claude-3-5-sonnet-20241022",
-            ),
+            ("anthropic/claude-3-5-sonnet-20241022", Provider::Anthropic, "claude-3-5-sonnet-20241022"),
             ("gemini/gemini-1.5-pro", Provider::Gemini, "gemini-1.5-pro"),
             ("groq/llama3-8b-8192", Provider::Groq, "llama3-8b-8192"),
-            (
-                "openrouter/anthropic/claude-3.5-sonnet",
-                Provider::OpenRouter,
-                "anthropic/claude-3.5-sonnet",
-            ),
-            (
-                "together_ai/meta-llama/Llama-3-70b",
-                Provider::TogetherAi,
-                "meta-llama/Llama-3-70b",
-            ),
+            ("openrouter/anthropic/claude-3.5-sonnet", Provider::OpenRouter, "anthropic/claude-3.5-sonnet"),
+            ("together_ai/meta-llama/Llama-3-70b", Provider::TogetherAi, "meta-llama/Llama-3-70b"),
             ("ollama_chat/llama3", Provider::OllamaChat, "llama3"),
             ("fake/anything", Provider::Mock, "anything"),
         ];
@@ -866,14 +671,8 @@ mod tests {
         assert_eq!(Provider::infer("gpt-4o-mini"), Some(Provider::OpenAi));
         assert_eq!(Provider::infer("o1"), Some(Provider::OpenAi));
         assert_eq!(Provider::infer("o3-mini"), Some(Provider::OpenAi));
-        assert_eq!(
-            Provider::infer("text-embedding-3-small"),
-            Some(Provider::OpenAi)
-        );
-        assert_eq!(
-            Provider::infer("claude-3-haiku-20240307"),
-            Some(Provider::Anthropic)
-        );
+        assert_eq!(Provider::infer("text-embedding-3-small"), Some(Provider::OpenAi));
+        assert_eq!(Provider::infer("claude-3-haiku-20240307"), Some(Provider::Anthropic));
         assert_eq!(Provider::infer("gemini-2.0-flash"), Some(Provider::Gemini));
         assert_eq!(Provider::infer("o1x"), None);
         assert_eq!(Provider::infer("totally-unknown-model"), None);
@@ -894,12 +693,8 @@ mod tests {
         .unwrap();
         assert_eq!(d.api_key.as_ref().unwrap().expose(), "sk-from-env");
         assert_eq!(d.timeout, Some(Duration::from_secs_f64(12.5)));
-        assert_eq!(
-            d.extra_headers,
-            vec![("X-Key".to_owned(), "sk-from-env".to_owned())]
-        );
-        let err =
-            parse(json!({"model": "openai/gpt-4o", "api_key": "os.environ/NOPE"})).unwrap_err();
+        assert_eq!(d.extra_headers, vec![("X-Key".to_owned(), "sk-from-env".to_owned())]);
+        let err = parse(json!({"model": "openai/gpt-4o", "api_key": "os.environ/NOPE"})).unwrap_err();
         assert!(err.message().contains("NOPE"));
     }
 
@@ -935,14 +730,8 @@ mod tests {
         assert_eq!(d.extra["weight"], 3);
         assert_eq!(d.extra_body["foo"], "bar");
         let p = d.pricing().unwrap();
-        assert_eq!(
-            (p.input_cost_per_token, p.output_cost_per_token),
-            (0.000001, 0.000002)
-        );
-        assert!(
-            !format!("{d:?}").contains("\"az\""),
-            "api key must be redacted"
-        );
+        assert_eq!((p.input_cost_per_token, p.output_cost_per_token), (0.000001, 0.000002));
+        assert!(!format!("{d:?}").contains("\"az\""), "api key must be redacted");
     }
 
     #[test]
@@ -951,8 +740,7 @@ mod tests {
         assert_eq!(d.api_base.as_deref(), Some("https://api.anthropic.com"));
         assert_eq!(d.api_key.unwrap().expose(), "sk-ant");
 
-        let d =
-            parse(json!({"model": "azure/dep", "api_key": "k", "api_base": "https://x"})).unwrap();
+        let d = parse(json!({"model": "azure/dep", "api_key": "k", "api_base": "https://x"})).unwrap();
         assert_eq!(d.api_version.as_deref(), Some(DEFAULT_AZURE_API_VERSION));
 
         let d = parse(json!({"model": "ollama/llama3", "api_base": "http://gpu:11434/"})).unwrap();
@@ -960,25 +748,14 @@ mod tests {
         assert!(d.api_key.is_none());
         let d = parse(json!({"model": "ollama_chat/llama3"})).unwrap();
         assert_eq!(d.api_base.as_deref(), Some("http://localhost:11434/v1"));
-        let d =
-            parse(json!({"model": "ollama/llama3", "api_base": "http://gpu:11434/v1"})).unwrap();
+        let d = parse(json!({"model": "ollama/llama3", "api_base": "http://gpu:11434/v1"})).unwrap();
         assert_eq!(d.api_base.as_deref(), Some("http://gpu:11434/v1"));
 
-        assert_eq!(
-            parse(json!({"model": "hosted_vllm/m"})).unwrap_err().kind(),
-            crate::ErrorKind::Config
-        );
-        let d =
-            parse(json!({"model": "hosted_vllm/m", "api_base": "http://vllm:8000/v1"})).unwrap();
+        assert_eq!(parse(json!({"model": "hosted_vllm/m"})).unwrap_err().kind(), crate::ErrorKind::Config);
+        let d = parse(json!({"model": "hosted_vllm/m", "api_base": "http://vllm:8000/v1"})).unwrap();
         assert_eq!(d.api_base.as_deref(), Some("http://vllm:8000/v1"));
-        assert!(
-            parse(json!({"model": "groq/llama3-8b-8192"})).is_err(),
-            "groq key required"
-        );
-        assert!(
-            parse(json!({"model": "azure/dep", "api_key": "k"})).is_err(),
-            "azure base required"
-        );
+        assert!(parse(json!({"model": "groq/llama3-8b-8192"})).is_err(), "groq key required");
+        assert!(parse(json!({"model": "azure/dep", "api_key": "k"})).is_err(), "azure base required");
         assert!(parse(json!({"api_key": "k"})).is_err());
         assert!(parse(json!("openai/gpt-4o")).is_err());
     }
@@ -998,10 +775,7 @@ mod tests {
     #[test]
     fn provider_names_round_trip() {
         for spec in PROVIDERS {
-            assert_eq!(
-                Provider::from_name(spec.provider.name()),
-                Some(spec.provider)
-            );
+            assert_eq!(Provider::from_name(spec.provider.name()), Some(spec.provider));
         }
         assert_eq!(Provider::from_name("VLLM"), Some(Provider::HostedVllm));
     }
@@ -1013,9 +787,6 @@ mod tests {
         assert!(p.input_cost_per_token > 0.0);
         let d = parse(json!({"model": "fake/none", "input_cost_per_token": 0.5})).unwrap();
         let p = d.pricing().unwrap();
-        assert_eq!(
-            (p.input_cost_per_token, p.output_cost_per_token),
-            (0.5, 0.0)
-        );
+        assert_eq!((p.input_cost_per_token, p.output_cost_per_token), (0.5, 0.0));
     }
 }

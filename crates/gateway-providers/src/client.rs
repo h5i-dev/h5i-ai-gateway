@@ -14,9 +14,7 @@ use crate::ChatStream;
 use crate::auth::gcp::{GcpCredentials, TokenCache};
 use crate::deployment::{Deployment, Protocol};
 use crate::error::{ErrorKind, ProviderError};
-use crate::providers::{
-    self, HttpRequest, StreamTranslator, anthropic, bedrock, gemini, mock, openai, vertex,
-};
+use crate::providers::{self, HttpRequest, StreamTranslator, anthropic, bedrock, gemini, mock, openai, vertex};
 use crate::types::{ChatRequest, ChatResponse, EmbeddingRequest, EmbeddingResponse};
 use crate::{eventstream, sse};
 
@@ -62,25 +60,15 @@ impl Client {
             .pool_idle_timeout(settings.pool_idle_timeout)
             .user_agent(settings.user_agent.clone())
             .build()
-            .map_err(|e| {
-                ProviderError::config("client", format!("cannot build HTTP client: {e}"))
-            })?;
-        Ok(Self {
-            http,
-            settings,
-            tokens: Arc::default(),
-        })
+            .map_err(|e| ProviderError::config("client", format!("cannot build HTTP client: {e}")))?;
+        Ok(Self { http, settings, tokens: Arc::default() })
     }
 
     /// Non-streaming chat completion.
     ///
     /// The response's `model` is the upstream's model name; the server may
     /// replace it with the alias the client asked for.
-    pub async fn chat(
-        &self,
-        dep: &Deployment,
-        req: &ChatRequest,
-    ) -> Result<ChatResponse, ProviderError> {
+    pub async fn chat(&self, dep: &Deployment, req: &ChatRequest) -> Result<ChatResponse, ProviderError> {
         if let Some(text) = mock::mock_text(dep, req) {
             return mock::chat(dep, req, text);
         }
@@ -101,12 +89,7 @@ impl Client {
     }
 
     /// Build the upstream chat request (resolving Vertex AI credentials).
-    async fn chat_http(
-        &self,
-        dep: &Deployment,
-        req: &ChatRequest,
-        stream: bool,
-    ) -> Result<HttpRequest, ProviderError> {
+    async fn chat_http(&self, dep: &Deployment, req: &ChatRequest, stream: bool) -> Result<HttpRequest, ProviderError> {
         match dep.provider.protocol() {
             Protocol::OpenAi | Protocol::Azure => openai::chat_request(dep, req, stream),
             Protocol::Anthropic => anthropic::chat_request(dep, req, stream),
@@ -123,15 +106,10 @@ impl Client {
     /// The Vertex AI project and a valid access token for `dep`.
     async fn vertex_context(&self, dep: &Deployment) -> Result<vertex::Context, ProviderError> {
         let cfg = vertex::config(dep)?;
-        let token = self
-            .tokens
-            .access_token(&self.http, &cfg.credentials)
-            .await?;
+        let token = self.tokens.access_token(&self.http, &cfg.credentials).await?;
         let project = match (&cfg.project, &cfg.credentials) {
             (Some(p), _) => p.clone(),
-            (None, GcpCredentials::MetadataServer { host }) => {
-                self.tokens.metadata_project(&self.http, host).await?
-            }
+            (None, GcpCredentials::MetadataServer { host }) => self.tokens.metadata_project(&self.http, host).await?,
             // A fully custom api_base does not need the project.
             (None, _) => String::new(),
         };
@@ -146,32 +124,19 @@ impl Client {
     /// `choices`), whether or not the client set
     /// `stream_options.include_usage` (see
     /// [`ChatRequest::wants_stream_usage`]).
-    pub async fn chat_stream(
-        &self,
-        dep: &Deployment,
-        req: &ChatRequest,
-    ) -> Result<ChatStream, ProviderError> {
+    pub async fn chat_stream(&self, dep: &Deployment, req: &ChatRequest) -> Result<ChatStream, ProviderError> {
         if let Some(text) = mock::mock_text(dep, req) {
             return mock::chat_stream(dep, req, text);
         }
         let req = providers::apply_request_defaults(dep, req)?;
         let provider = dep.provider.name();
-        let timeout = dep
-            .stream_timeout
-            .or(dep.timeout)
-            .unwrap_or(self.settings.default_timeout);
+        let timeout = dep.stream_timeout.or(dep.timeout).unwrap_or(self.settings.default_timeout);
         let http = self.chat_http(dep, &req, true).await?;
         // No whole-request timeout: the stream may legitimately run long.
         // Time to headers and gaps between events are bounded instead.
         let response = tokio::time::timeout(timeout, self.send(dep, http, None))
             .await
-            .map_err(|_| {
-                ProviderError::new(
-                    ErrorKind::Timeout,
-                    provider,
-                    format!("no response headers within {}s", timeout.as_secs_f64()),
-                )
-            })??;
+            .map_err(|_| ProviderError::new(ErrorKind::Timeout, provider, format!("no response headers within {}s", timeout.as_secs_f64())))??;
         let translator: Box<dyn StreamTranslator> = match dep.provider.protocol() {
             Protocol::Anthropic => Box::new(anthropic::AnthropicStream::new(dep, &req)),
             Protocol::Gemini => Box::new(gemini::GeminiStream::new(dep)),
@@ -193,11 +158,7 @@ impl Client {
 
     /// Embeddings. Supported for OpenAI-compatible providers, Azure, Gemini,
     /// Vertex AI, Bedrock (Titan and Cohere) and mock deployments.
-    pub async fn embeddings(
-        &self,
-        dep: &Deployment,
-        req: &EmbeddingRequest,
-    ) -> Result<EmbeddingResponse, ProviderError> {
+    pub async fn embeddings(&self, dep: &Deployment, req: &EmbeddingRequest) -> Result<EmbeddingResponse, ProviderError> {
         let provider = dep.provider.name();
         let http = match dep.provider.protocol() {
             Protocol::Mock => return Ok(mock::embeddings(dep, req)),
@@ -209,10 +170,7 @@ impl Client {
             }
             Protocol::Bedrock => return self.bedrock_embeddings(dep, req).await,
             Protocol::Anthropic => {
-                return Err(ProviderError::bad_request(
-                    provider,
-                    "Anthropic does not offer an embeddings API",
-                ));
+                return Err(ProviderError::bad_request(provider, "Anthropic does not offer an embeddings API"));
             }
         };
         let body = self.send(dep, http, self.timeout(dep)).await?.text().await;
@@ -226,26 +184,14 @@ impl Client {
 
     /// Bedrock InvokeModel embeddings: one call per Titan input (run
     /// concurrently), one per Cohere batch.
-    async fn bedrock_embeddings(
-        &self,
-        dep: &Deployment,
-        req: &EmbeddingRequest,
-    ) -> Result<EmbeddingResponse, ProviderError> {
+    async fn bedrock_embeddings(&self, dep: &Deployment, req: &EmbeddingRequest) -> Result<EmbeddingResponse, ProviderError> {
         let provider = dep.provider.name();
-        let calls = bedrock::embeddings_requests(dep, req)?
-            .into_iter()
-            .map(|http| async move {
-                let response = self.send(dep, http, self.timeout(dep)).await?;
-                let tokens = response
-                    .headers()
-                    .get("x-amzn-bedrock-input-token-count")
-                    .and_then(|v| v.to_str().ok()?.trim().parse::<u64>().ok());
-                let body = response
-                    .text()
-                    .await
-                    .map_err(|e| ProviderError::from_reqwest(provider, e))?;
-                Ok::<_, ProviderError>((body, tokens))
-            });
+        let calls = bedrock::embeddings_requests(dep, req)?.into_iter().map(|http| async move {
+            let response = self.send(dep, http, self.timeout(dep)).await?;
+            let tokens = response.headers().get("x-amzn-bedrock-input-token-count").and_then(|v| v.to_str().ok()?.trim().parse::<u64>().ok());
+            let body = response.text().await.map_err(|e| ProviderError::from_reqwest(provider, e))?;
+            Ok::<_, ProviderError>((body, tokens))
+        });
         let responses = futures::future::try_join_all(calls).await?;
         bedrock::parse_embeddings(dep, req, &responses)
     }
@@ -256,9 +202,7 @@ impl Client {
 
     /// Time to response headers (and between chunks) for streamed bodies.
     pub(crate) fn stream_timeout(&self, dep: &Deployment) -> Duration {
-        dep.stream_timeout
-            .or(dep.timeout)
-            .unwrap_or(self.settings.default_timeout)
+        dep.stream_timeout.or(dep.timeout).unwrap_or(self.settings.default_timeout)
     }
 
     /// A POST to `url`, to be completed with a body and sent with
@@ -268,25 +212,16 @@ impl Client {
     }
 
     /// POST the request; non-2xx responses become classified errors.
-    pub(crate) async fn send(
-        &self,
-        dep: &Deployment,
-        req: HttpRequest,
-        timeout: Option<Duration>,
-    ) -> Result<reqwest::Response, ProviderError> {
+    pub(crate) async fn send(&self, dep: &Deployment, req: HttpRequest, timeout: Option<Duration>) -> Result<reqwest::Response, ProviderError> {
         let provider = dep.provider.name();
-        let body = serde_json::to_vec(&req.body).map_err(|e| {
-            ProviderError::config(provider, format!("cannot serialize request body: {e}"))
-        })?;
-        let mut headers: Vec<(String, String)> =
-            vec![("content-type".into(), "application/json".into())];
+        let body = serde_json::to_vec(&req.body).map_err(|e| ProviderError::config(provider, format!("cannot serialize request body: {e}")))?;
+        let mut headers: Vec<(String, String)> = vec![("content-type".into(), "application/json".into())];
         headers.extend(req.headers.iter().cloned());
         if dep.provider.protocol() == Protocol::Bedrock {
             // SigV4 covers the exact bytes and headers sent, `extra_headers` included; sign last.
             let mut signed_over = headers.clone();
             signed_over.extend(dep.extra_headers.iter().cloned());
-            let signed =
-                bedrock::sign_headers(dep, &req.url, &signed_over, &body, SystemTime::now())?;
+            let signed = bedrock::sign_headers(dep, &req.url, &signed_over, &body, SystemTime::now())?;
             headers.extend(signed);
         }
         let builder = self.http.post(&req.url).body(body);
@@ -305,12 +240,10 @@ impl Client {
         let provider = dep.provider.name();
         let mut headers = HeaderMap::new();
         for (name, value) in req_headers.iter().chain(&dep.extra_headers) {
-            let name = HeaderName::from_bytes(name.as_bytes()).map_err(|_| {
-                ProviderError::config(provider, format!("invalid header name '{name}'"))
-            })?;
-            let mut value = HeaderValue::from_str(value).map_err(|_| {
-                ProviderError::config(provider, format!("invalid value for header '{name}'"))
-            })?;
+            let name =
+                HeaderName::from_bytes(name.as_bytes()).map_err(|_| ProviderError::config(provider, format!("invalid header name '{name}'")))?;
+            let mut value =
+                HeaderValue::from_str(value).map_err(|_| ProviderError::config(provider, format!("invalid value for header '{name}'")))?;
             if is_credential(&name) {
                 value.set_sensitive(true);
             }
@@ -321,38 +254,25 @@ impl Client {
         if let Some(t) = timeout {
             builder = builder.timeout(t);
         }
-        let response = builder
-            .send()
-            .await
-            .map_err(|e| ProviderError::from_reqwest(provider, e))?;
+        let response = builder.send().await.map_err(|e| ProviderError::from_reqwest(provider, e))?;
         let status = response.status();
         if status.is_success() {
             return Ok(response);
         }
         let retry_after = retry_after(response.headers());
         let body = response.text().await.unwrap_or_default();
-        Err(ProviderError::from_upstream(
-            provider,
-            status.as_u16(),
-            &body,
-            retry_after,
-        ))
+        Err(ProviderError::from_upstream(provider, status.as_u16(), &body, retry_after))
     }
 }
 
 fn is_credential(name: &HeaderName) -> bool {
-    matches!(
-        name.as_str(),
-        "authorization" | "api-key" | "x-api-key" | "x-goog-api-key" | "x-amz-security-token"
-    )
+    matches!(name.as_str(), "authorization" | "api-key" | "x-api-key" | "x-goog-api-key" | "x-amz-security-token")
 }
 
 /// `retry-after-ms` (OpenAI) or `retry-after` in seconds.
 fn retry_after(headers: &HeaderMap) -> Option<Duration> {
     let parse = |name: &str| headers.get(name)?.to_str().ok()?.trim().parse::<f64>().ok();
-    let secs = parse("retry-after-ms")
-        .map(|ms| ms / 1000.0)
-        .or_else(|| parse("retry-after"))?;
+    let secs = parse("retry-after-ms").map(|ms| ms / 1000.0).or_else(|| parse("retry-after"))?;
     Duration::try_from_secs_f64(secs).ok()
 }
 
@@ -369,10 +289,7 @@ mod tests {
         h.insert("retry-after-ms", HeaderValue::from_static("1500"));
         assert_eq!(retry_after(&h), Some(Duration::from_millis(1500)));
         let mut h = HeaderMap::new();
-        h.insert(
-            "retry-after",
-            HeaderValue::from_static("Wed, 21 Oct 2015 07:28:00 GMT"),
-        );
+        h.insert("retry-after", HeaderValue::from_static("Wed, 21 Oct 2015 07:28:00 GMT"));
         assert_eq!(retry_after(&h), None);
     }
 

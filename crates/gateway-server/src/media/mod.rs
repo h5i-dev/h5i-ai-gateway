@@ -118,8 +118,8 @@ async fn read_form(multipart: Result<Multipart, MultipartRejection>, model: Opti
         match filename {
             Some(filename) => form.files.push(FilePart { field: name, filename, content_type, data }),
             None => {
-                let text = String::from_utf8(data.to_vec())
-                    .map_err(|_| bad(StatusCode::BAD_REQUEST, format!("form field '{name}' is not UTF-8 text")))?;
+                let text =
+                    String::from_utf8(data.to_vec()).map_err(|_| bad(StatusCode::BAD_REQUEST, format!("form field '{name}' is not UTF-8 text")))?;
                 if name == "model" {
                     form.model = text;
                 } else {
@@ -151,13 +151,8 @@ pub async fn image_generations(State(st): State<AppState>, actor: Actor<Gateway>
         Ok(r) => r,
         Err(f) => return f.into_response(),
     };
-    let ask = ImageAsk {
-        n: req.n.unwrap_or(1).into(),
-        size: req.size.clone(),
-        quality: req.quality.clone(),
-        prompt: req.prompt.clone(),
-        input_images: 0,
-    };
+    let ask =
+        ImageAsk { n: req.n.unwrap_or(1).into(), size: req.size.clone(), quality: req.quality.clone(), prompt: req.prompt.clone(), input_images: 0 };
     let bound = group_bound(&st, &req.model, |m| match m {
         MediaPricing::Images(p) => Some(p.reserve(&ask)),
         _ => None,
@@ -179,12 +174,7 @@ pub async fn image_generations(State(st): State<AppState>, actor: Actor<Gateway>
     respond(result, |resp, h| (h, Json(resp)).into_response())
 }
 
-pub async fn azure_image_generations(
-    st: State<AppState>,
-    Path(model): Path<String>,
-    actor: Actor<Gateway>,
-    Json(mut body): Json<Value>,
-) -> Response {
+pub async fn azure_image_generations(st: State<AppState>, Path(model): Path<String>, actor: Actor<Gateway>, Json(mut body): Json<Value>) -> Response {
     set_model(&mut body, model);
     image_generations(st, actor, Json(body)).await
 }
@@ -256,11 +246,7 @@ async fn transcribe(
         return ApiError::bad_request("streamed transcriptions are not supported; omit 'stream'").into_response();
     }
     let duration = audio_duration(&file.data);
-    let ask = AudioAsk {
-        bound_seconds: duration.bound,
-        estimate: duration.estimate,
-        prompt: form.field("prompt").unwrap_or_default().to_owned(),
-    };
+    let ask = AudioAsk { bound_seconds: duration.bound, estimate: duration.estimate, prompt: form.field("prompt").unwrap_or_default().to_owned() };
     let bound = group_bound(&st, &form.model, |m| match m {
         MediaPricing::Transcription(p) => Some(p.reserve(&ask)),
         _ => None,
@@ -285,11 +271,7 @@ async fn transcribe(
     })
 }
 
-pub async fn transcriptions(
-    State(st): State<AppState>,
-    actor: Actor<Gateway>,
-    multipart: Result<Multipart, MultipartRejection>,
-) -> Response {
+pub async fn transcriptions(State(st): State<AppState>, actor: Actor<Gateway>, multipart: Result<Multipart, MultipartRejection>) -> Response {
     transcribe(st, actor, None, multipart, false).await
 }
 

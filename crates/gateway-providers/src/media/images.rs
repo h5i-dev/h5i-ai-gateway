@@ -21,22 +21,13 @@ pub(crate) fn is_gemini_image_model(model: &str) -> bool {
     model.rsplit('/').next().unwrap_or(model).contains("gemini")
 }
 
-pub(crate) fn openai_request(
-    dep: &Deployment,
-    req: &ImageRequest,
-) -> Result<HttpRequest, ProviderError> {
+pub(crate) fn openai_request(dep: &Deployment, req: &ImageRequest) -> Result<HttpRequest, ProviderError> {
     let mut obj = openai::upstream_body(dep, req)?;
     if is_gpt_image(&dep.model) {
         obj.remove("response_format");
         obj.remove("style");
     }
-    Ok(openai::with_auth(
-        dep,
-        HttpRequest::new(
-            openai::endpoint(dep, "images/generations"),
-            Value::Object(obj),
-        ),
-    ))
+    Ok(openai::with_auth(dep, HttpRequest::new(openai::endpoint(dep, "images/generations"), Value::Object(obj))))
 }
 
 pub(crate) fn parse_openai(dep: &Deployment, body: &str) -> Result<ImageResponse, ProviderError> {
@@ -63,45 +54,22 @@ fn aspect_ratio(width: u64, height: u64, supported: &[&'static str]) -> &'static
         let (a, b) = r.split_once(':').unwrap_or(("1", "1"));
         (a.parse::<f64>().unwrap_or(1.0) / b.parse::<f64>().unwrap_or(1.0)).ln()
     };
-    supported
-        .iter()
-        .min_by(|a, b| {
-            (ratio(a) - target)
-                .abs()
-                .total_cmp(&(ratio(b) - target).abs())
-        })
-        .copied()
-        .unwrap_or("1:1")
+    supported.iter().min_by(|a, b| (ratio(a) - target).abs().total_cmp(&(ratio(b) - target).abs())).copied().unwrap_or("1:1")
 }
 
-const GEMINI_RATIOS: &[&str] = &[
-    "1:1", "2:3", "3:2", "3:4", "4:3", "4:5", "5:4", "9:16", "16:9", "21:9",
-];
+const GEMINI_RATIOS: &[&str] = &["1:1", "2:3", "3:2", "3:4", "4:3", "4:5", "5:4", "9:16", "16:9", "21:9"];
 const IMAGEN_RATIOS: &[&str] = &["1:1", "3:4", "4:3", "9:16", "16:9"];
 /// Imagen parameters passed through from the request's extra fields.
-const IMAGEN_PASSTHROUGH: &[&str] = &[
-    "personGeneration",
-    "safetyFilterLevel",
-    "addWatermark",
-    "enhancePrompt",
-    "negativePrompt",
-    "outputOptions",
-    "language",
-];
+const IMAGEN_PASSTHROUGH: &[&str] =
+    &["personGeneration", "safetyFilterLevel", "addWatermark", "enhancePrompt", "negativePrompt", "outputOptions", "language"];
 
-pub(crate) fn gemini_request(
-    dep: &Deployment,
-    req: &ImageRequest,
-) -> Result<HttpRequest, ProviderError> {
+pub(crate) fn gemini_request(dep: &Deployment, req: &ImageRequest) -> Result<HttpRequest, ProviderError> {
     let n = req.n.unwrap_or(1).max(1);
     let size = req.size.as_deref().and_then(parse_size);
     if is_gemini_image_model(&dep.model) {
         let mut image_config = Map::new();
         if let Some((w, h)) = size {
-            image_config.insert(
-                "aspectRatio".into(),
-                aspect_ratio(w, h, GEMINI_RATIOS).into(),
-            );
+            image_config.insert("aspectRatio".into(), aspect_ratio(w, h, GEMINI_RATIOS).into());
             // gemini-2.5-flash-image takes no imageSize (LiteLLM's supports_gemini_image_size).
             if !dep.model.contains("2.5-flash") {
                 let image_size = match w.max(h) {
@@ -130,18 +98,12 @@ pub(crate) fn gemini_request(
         if let Some(tools) = req.extra.get("tools") {
             body["tools"] = tools.clone();
         }
-        return Ok(HttpRequest::new(
-            gemini::model_url(dep, "generateContent", false),
-            body,
-        ));
+        return Ok(HttpRequest::new(gemini::model_url(dep, "generateContent", false), body));
     }
     let mut parameters = Map::new();
     parameters.insert("sampleCount".into(), n.into());
     if let Some((w, h)) = size {
-        parameters.insert(
-            "aspectRatio".into(),
-            aspect_ratio(w, h, IMAGEN_RATIOS).into(),
-        );
+        parameters.insert("aspectRatio".into(), aspect_ratio(w, h, IMAGEN_RATIOS).into());
         if w.max(h) > 1024 {
             parameters.insert("sampleImageSize".into(), "2K".into());
         }
@@ -152,10 +114,7 @@ pub(crate) fn gemini_request(
         }
     }
     let body = json!({"instances": [{"prompt": req.prompt}], "parameters": parameters});
-    Ok(HttpRequest::new(
-        gemini::model_url(dep, "predict", false),
-        body,
-    ))
+    Ok(HttpRequest::new(gemini::model_url(dep, "predict", false), body))
 }
 
 /// Sum `[{modality, tokenCount}]` into text and image tokens.
@@ -180,20 +139,14 @@ fn gemini_usage(m: &Value) -> ImageUsage {
     let candidates = get("candidatesTokenCount");
     let thoughts = get("thoughtsTokenCount");
     let input_details =
-        modality_tokens(m.get("promptTokensDetails")).unwrap_or(ImageTokenDetails {
-            text_tokens: input,
-            ..ImageTokenDetails::default()
-        });
+        modality_tokens(m.get("promptTokensDetails")).unwrap_or(ImageTokenDetails { text_tokens: input, ..ImageTokenDetails::default() });
     let mut output_details = match modality_tokens(m.get("candidatesTokensDetails")) {
         Some(mut d) => {
             let known = d.text_tokens + d.image_tokens;
             d.text_tokens += candidates.saturating_sub(known);
             d
         }
-        None => ImageTokenDetails {
-            image_tokens: candidates,
-            ..ImageTokenDetails::default()
-        },
+        None => ImageTokenDetails { image_tokens: candidates, ..ImageTokenDetails::default() },
     };
     output_details.text_tokens += thoughts;
     ImageUsage {
@@ -209,16 +162,8 @@ fn gemini_usage(m: &Value) -> ImageUsage {
 pub(crate) fn parse_gemini(dep: &Deployment, body: &str) -> Result<ImageResponse, ProviderError> {
     let v: Value = parse_json(dep.provider.name(), body)?;
     if v.get("error").is_some_and(|e| !e.is_null()) {
-        let status = v["error"]["code"]
-            .as_u64()
-            .filter(|c| (400..=599).contains(c))
-            .unwrap_or(500) as u16;
-        return Err(ProviderError::from_upstream(
-            dep.provider.name(),
-            status,
-            body,
-            None,
-        ));
+        let status = v["error"]["code"].as_u64().filter(|c| (400..=599).contains(c)).unwrap_or(500) as u16;
+        return Err(ProviderError::from_upstream(dep.provider.name(), status, body, None));
     }
     let mut data = Vec::new();
     // Imagen: predictions[].bytesBase64Encoded (filtered images carry only a reason).
@@ -235,40 +180,18 @@ pub(crate) fn parse_gemini(dep: &Deployment, body: &str) -> Result<ImageResponse
     for c in v["candidates"].as_array().into_iter().flatten() {
         for part in c["content"]["parts"].as_array().into_iter().flatten() {
             if let Some(b64) = part["inlineData"]["data"].as_str() {
-                data.push(ImageData {
-                    b64_json: Some(b64.to_owned()),
-                    ..ImageData::default()
-                });
+                data.push(ImageData { b64_json: Some(b64.to_owned()), ..ImageData::default() });
             }
         }
     }
-    Ok(ImageResponse {
-        created: now_unix(),
-        data,
-        usage: v.get("usageMetadata").map(gemini_usage),
-        extra: Map::new(),
-    })
+    Ok(ImageResponse { created: now_unix(), data, usage: v.get("usageMetadata").map(gemini_usage), extra: Map::new() })
 }
 
 /// `n` copies of the canned image URL (LiteLLM's `mock_image_generation`).
-pub(crate) fn mock(
-    dep: &Deployment,
-    n: Option<u32>,
-    text: &str,
-) -> Result<ImageResponse, ProviderError> {
+pub(crate) fn mock(dep: &Deployment, n: Option<u32>, text: &str) -> Result<ImageResponse, ProviderError> {
     mock::check_error_trigger(dep, text)?;
-    let data = (0..n.unwrap_or(1).clamp(1, 10))
-        .map(|_| ImageData {
-            url: Some(text.to_owned()),
-            ..ImageData::default()
-        })
-        .collect();
-    Ok(ImageResponse {
-        created: now_unix(),
-        data,
-        usage: None,
-        extra: Map::new(),
-    })
+    let data = (0..n.unwrap_or(1).clamp(1, 10)).map(|_| ImageData { url: Some(text.to_owned()), ..ImageData::default() }).collect();
+    Ok(ImageResponse { created: now_unix(), data, usage: None, extra: Map::new() })
 }
 
 #[cfg(test)]
@@ -287,17 +210,12 @@ mod tests {
     #[test]
     fn openai_request_passes_fields_through() {
         let d = dep(json!({"model": "openai/dall-e-3", "api_key": "sk", "extra_body": {"x": 1}}));
-        let r = req(
-            json!({"model": "img", "prompt": "a cat", "n": 1, "size": "1024x1792",
+        let r = req(json!({"model": "img", "prompt": "a cat", "n": 1, "size": "1024x1792",
             "quality": "hd", "style": "vivid", "response_format": "b64_json", "user": "u",
-            "mock_response": "nope", "metadata": {"a": 1}, "output_compression": 50}),
-        );
+            "mock_response": "nope", "metadata": {"a": 1}, "output_compression": 50}));
         let http = openai_request(&d, &r).unwrap();
         assert_eq!(http.url, "https://api.openai.com/v1/images/generations");
-        assert!(
-            http.headers
-                .contains(&("authorization".into(), "Bearer sk".into()))
-        );
+        assert!(http.headers.contains(&("authorization".into(), "Bearer sk".into())));
         assert_eq!(
             http.body,
             json!({"model": "dall-e-3", "prompt": "a cat", "n": 1, "size": "1024x1792", "quality": "hd",
@@ -312,15 +230,10 @@ mod tests {
 
     #[test]
     fn azure_url_shape() {
-        let d = dep(
-            json!({"model": "azure/my-dalle", "api_key": "k", "api_base": "https://r.openai.azure.com/",
-            "api_version": "2024-02-01"}),
-        );
+        let d = dep(json!({"model": "azure/my-dalle", "api_key": "k", "api_base": "https://r.openai.azure.com/",
+            "api_version": "2024-02-01"}));
         let http = openai_request(&d, &req(json!({"prompt": "x"}))).unwrap();
-        assert_eq!(
-            http.url,
-            "https://r.openai.azure.com/openai/deployments/my-dalle/images/generations?api-version=2024-02-01"
-        );
+        assert_eq!(http.url, "https://r.openai.azure.com/openai/deployments/my-dalle/images/generations?api-version=2024-02-01");
         assert!(http.headers.contains(&("api-key".into(), "k".into())));
     }
 
@@ -343,33 +256,22 @@ mod tests {
         assert_eq!(u.input_tokens_details.unwrap().text_tokens, 10);
         let e = parse_openai(&d, r#"{"error": {"message": "bad", "code": 400}}"#).unwrap_err();
         assert_eq!(e.status_code(), 400);
-        assert_eq!(
-            parse_openai(&d, "nope").unwrap_err().kind(),
-            ErrorKind::InvalidResponse
-        );
+        assert_eq!(parse_openai(&d, "nope").unwrap_err().kind(), ErrorKind::InvalidResponse);
     }
 
     #[test]
     fn imagen_request_and_response() {
         let d = dep(json!({"model": "gemini/imagen-3.0-generate-002", "api_key": "g"}));
-        let r = req(
-            json!({"prompt": "a dog", "n": 2, "size": "1792x1024", "personGeneration": "allow_adult"}),
-        );
+        let r = req(json!({"prompt": "a dog", "n": 2, "size": "1792x1024", "personGeneration": "allow_adult"}));
         let http = gemini_request(&d, &r).unwrap();
-        assert_eq!(
-            http.url,
-            "https://generativelanguage.googleapis.com/v1beta/models/imagen-3.0-generate-002:predict?key=g"
-        );
+        assert_eq!(http.url, "https://generativelanguage.googleapis.com/v1beta/models/imagen-3.0-generate-002:predict?key=g");
         assert_eq!(
             http.body,
             json!({"instances": [{"prompt": "a dog"}], "parameters": {"sampleCount": 2, "aspectRatio": "16:9",
                 "sampleImageSize": "2K", "personGeneration": "allow_adult"}})
         );
-        let resp = parse_gemini(
-            &d,
-            r#"{"predictions": [{"bytesBase64Encoded": "AAA", "mimeType": "image/png"}, {"raiFilteredReason": "x"}]}"#,
-        )
-        .unwrap();
+        let resp =
+            parse_gemini(&d, r#"{"predictions": [{"bytesBase64Encoded": "AAA", "mimeType": "image/png"}, {"raiFilteredReason": "x"}]}"#).unwrap();
         assert_eq!(resp.data.len(), 1);
         assert!(resp.usage.is_none());
     }
@@ -377,24 +279,15 @@ mod tests {
     #[test]
     fn gemini_image_model_request_and_response() {
         let d = dep(json!({"model": "gemini/gemini-2.5-flash-image", "api_key": "g"}));
-        let http =
-            gemini_request(&d, &req(json!({"prompt": "a dog", "size": "1024x1024"}))).unwrap();
-        assert!(
-            http.url
-                .ends_with("/models/gemini-2.5-flash-image:generateContent?key=g")
-        );
+        let http = gemini_request(&d, &req(json!({"prompt": "a dog", "size": "1024x1024"}))).unwrap();
+        assert!(http.url.ends_with("/models/gemini-2.5-flash-image:generateContent?key=g"));
         assert_eq!(
             http.body,
             json!({"contents": [{"role": "user", "parts": [{"text": "a dog"}]}],
                 "generationConfig": {"responseModalities": ["IMAGE", "TEXT"], "imageConfig": {"aspectRatio": "1:1"}}})
         );
         let pro = dep(json!({"model": "gemini/gemini-3-pro-image-preview", "api_key": "g"}));
-        let body = gemini_request(
-            &pro,
-            &req(json!({"prompt": "x", "size": "4096x4096", "n": 2})),
-        )
-        .unwrap()
-        .body;
+        let body = gemini_request(&pro, &req(json!({"prompt": "x", "size": "4096x4096", "n": 2}))).unwrap().body;
         assert_eq!(body["generationConfig"]["imageConfig"]["imageSize"], "4K");
         assert_eq!(body["generationConfig"]["candidateCount"], 2);
         let resp = parse_gemini(
@@ -410,11 +303,7 @@ mod tests {
         assert_eq!(u.output_tokens, 1320);
         let out = u.output_tokens_details.unwrap();
         assert_eq!((out.image_tokens, out.text_tokens), (1290, 30));
-        let e = parse_gemini(
-            &d,
-            r#"{"error": {"code": 429, "message": "slow down", "status": "RESOURCE_EXHAUSTED"}}"#,
-        )
-        .unwrap_err();
+        let e = parse_gemini(&d, r#"{"error": {"code": 429, "message": "slow down", "status": "RESOURCE_EXHAUSTED"}}"#).unwrap_err();
         assert_eq!(e.status_code(), 429);
     }
 
@@ -433,9 +322,6 @@ mod tests {
         let r = mock(&d, Some(3), "https://x/y.png").unwrap();
         assert_eq!(r.data.len(), 3);
         assert_eq!(r.data[2].url.as_deref(), Some("https://x/y.png"));
-        assert_eq!(
-            mock(&d, None, "litellm.RateLimitError").unwrap_err().kind(),
-            ErrorKind::RateLimited
-        );
+        assert_eq!(mock(&d, None, "litellm.RateLimitError").unwrap_err().kind(), ErrorKind::RateLimited);
     }
 }

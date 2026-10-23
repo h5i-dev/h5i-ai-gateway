@@ -29,10 +29,7 @@ pub struct FormatError {
 
 impl FormatError {
     pub fn new(message: impl Into<String>) -> Self {
-        Self {
-            message: message.into(),
-            param: None,
-        }
+        Self { message: message.into(), param: None }
     }
 
     pub fn param(mut self, param: impl Into<String>) -> Self {
@@ -70,20 +67,13 @@ pub struct Target {
 
 impl Target {
     /// Everything understood: nothing is removed.
-    pub const NATIVE: Target = Target {
-        anthropic: true,
-        top_k: true,
-    };
+    pub const NATIVE: Target = Target { anthropic: true, top_k: true };
 
     pub fn of(d: &Deployment) -> Target {
         let protocol = d.provider.protocol();
-        let claude_host =
-            matches!(d.provider.name(), "bedrock" | "vertex_ai") && d.model.contains("claude");
+        let claude_host = matches!(d.provider.name(), "bedrock" | "vertex_ai") && d.model.contains("claude");
         let anthropic = protocol == Protocol::Anthropic || claude_host;
-        Target {
-            anthropic,
-            top_k: anthropic || protocol == Protocol::Gemini,
-        }
+        Target { anthropic, top_k: anthropic || protocol == Protocol::Gemini }
     }
 
     /// What every one of `deps` understands (all of them may serve the
@@ -91,22 +81,13 @@ impl Target {
     pub fn all<'a>(deps: impl IntoIterator<Item = &'a Deployment>) -> Target {
         deps.into_iter().fold(Target::NATIVE, |acc, d| {
             let t = Target::of(d);
-            Target {
-                anthropic: acc.anthropic && t.anthropic,
-                top_k: acc.top_k && t.top_k,
-            }
+            Target { anthropic: acc.anthropic && t.anthropic, top_k: acc.top_k && t.top_k }
         })
     }
 }
 
 /// Request fields only Anthropic's Messages API understands.
-const ANTHROPIC_ONLY_FIELDS: &[&str] = &[
-    "thinking",
-    "service_tier",
-    "container",
-    "mcp_servers",
-    "context_management",
-];
+const ANTHROPIC_ONLY_FIELDS: &[&str] = &["thinking", "service_tier", "container", "mcp_servers", "context_management"];
 
 /// Remove from `req` what `target` does not understand: Anthropic-only
 /// fields, `cache_control` markers and replayed thinking blocks unless the
@@ -141,8 +122,7 @@ mod tests {
     use serde_json::json;
 
     fn dep(model: &str) -> Deployment {
-        Deployment::from_litellm_params_with_env(&json!({"model": model, "api_key": "k"}), |_| None)
-            .unwrap()
+        Deployment::from_litellm_params_with_env(&json!({"model": model, "api_key": "k"}), |_| None).unwrap()
     }
 
     #[test]
@@ -151,20 +131,8 @@ mod tests {
         let gpt = dep("openai/gpt-4o");
         let gemini = dep("gemini/gemini-1.5-pro");
         assert_eq!(Target::of(&claude), Target::NATIVE);
-        assert_eq!(
-            Target::of(&gemini),
-            Target {
-                anthropic: false,
-                top_k: true
-            }
-        );
-        assert_eq!(
-            Target::all([&claude, &gpt]),
-            Target {
-                anthropic: false,
-                top_k: false
-            }
-        );
+        assert_eq!(Target::of(&gemini), Target { anthropic: false, top_k: true });
+        assert_eq!(Target::all([&claude, &gpt]), Target { anthropic: false, top_k: false });
         assert_eq!(Target::all([]), Target::NATIVE);
     }
 
@@ -184,38 +152,19 @@ mod tests {
         let native = req.clone();
         adapt_to_target(&mut req, Target::NATIVE);
         assert_eq!(req, native);
-        adapt_to_target(
-            &mut req,
-            Target {
-                anthropic: false,
-                top_k: true,
-            },
-        );
+        adapt_to_target(&mut req, Target { anthropic: false, top_k: true });
         let v = serde_json::to_value(&req).unwrap();
         assert_eq!(v["top_k"], 3);
         assert!(v.get("thinking").is_none());
-        assert!(
-            v["messages"][0]["content"][0]
-                .get("cache_control")
-                .is_none()
-        );
+        assert!(v["messages"][0]["content"][0].get("cache_control").is_none());
         assert!(v["messages"][1].get("thinking_blocks").is_none());
         assert!(v["tools"][0].get("cache_control").is_none());
-        adapt_to_target(
-            &mut req,
-            Target {
-                anthropic: false,
-                top_k: false,
-            },
-        );
+        adapt_to_target(&mut req, Target { anthropic: false, top_k: false });
         assert!(req.extra.get("top_k").is_none());
     }
 
     #[test]
     fn sse_framing() {
-        assert_eq!(
-            sse_event("ping", &json!({"type": "ping"})),
-            "event: ping\ndata: {\"type\":\"ping\"}\n\n"
-        );
+        assert_eq!(sse_event("ping", &json!({"type": "ping"})), "event: ping\ndata: {\"type\":\"ping\"}\n\n");
     }
 }

@@ -26,17 +26,8 @@ const FILE_PART: u64 = 1_000;
 /// Estimate the prompt tokens of a chat request.
 pub fn estimate_prompt_tokens(req: &ChatRequest) -> u64 {
     let messages: u64 = req.messages.iter().map(message_tokens).sum();
-    let tools: u64 = req
-        .tools
-        .iter()
-        .flatten()
-        .map(|t| PER_TOOL + json_tokens(t))
-        .sum();
-    let schema = req
-        .response_format
-        .as_ref()
-        .and_then(|f| f.json_schema.as_ref())
-        .map_or(0, json_tokens);
+    let tools: u64 = req.tools.iter().flatten().map(|t| PER_TOOL + json_tokens(t)).sum();
+    let schema = req.response_format.as_ref().and_then(|f| f.json_schema.as_ref()).map_or(0, json_tokens);
     messages + tools + schema + REPLY_PRIMING
 }
 
@@ -56,15 +47,8 @@ fn message_tokens(m: &ChatMessage) -> u64 {
         Some(MessageContent::Parts(parts)) => parts.iter().map(part_tokens).sum(),
     };
     let name = m.name.as_deref().map_or(0, |n| 1 + text_tokens(n));
-    let calls: u64 = m
-        .tool_calls
-        .iter()
-        .flatten()
-        .map(|c| PER_TOOL + text_tokens(&c.function.name) + text_tokens(&c.function.arguments))
-        .sum();
-    let legacy_call = m.function_call.as_ref().map_or(0, |c| {
-        PER_TOOL + text_tokens(&c.name) + text_tokens(&c.arguments)
-    });
+    let calls: u64 = m.tool_calls.iter().flatten().map(|c| PER_TOOL + text_tokens(&c.function.name) + text_tokens(&c.function.arguments)).sum();
+    let legacy_call = m.function_call.as_ref().map_or(0, |c| PER_TOOL + text_tokens(&c.name) + text_tokens(&c.arguments));
     PER_MESSAGE + content + name + calls + legacy_call
 }
 
@@ -89,20 +73,13 @@ mod tests {
     use serde_json::json;
 
     fn req(messages: Vec<ChatMessage>) -> ChatRequest {
-        ChatRequest {
-            model: "m".into(),
-            messages,
-            ..ChatRequest::default()
-        }
+        ChatRequest { model: "m".into(), messages, ..ChatRequest::default() }
     }
 
     #[test]
     fn text_messages() {
         // 4 + ceil(11/4)=3, + 3 priming
-        assert_eq!(
-            estimate_prompt_tokens(&req(vec![ChatMessage::user("hello world")])),
-            10
-        );
+        assert_eq!(estimate_prompt_tokens(&req(vec![ChatMessage::user("hello world")])), 10);
         assert_eq!(estimate_prompt_tokens(&req(vec![])), 3);
         assert_eq!(text_tokens(""), 0);
         assert_eq!(text_tokens("日本"), 2); // 6 bytes
@@ -112,10 +89,7 @@ mod tests {
     fn media_tools_and_schema() {
         let mut image = ContentPart::image_url("https://x/y.png");
         let mut m = ChatMessage::user("");
-        m.content = Some(MessageContent::Parts(vec![
-            ContentPart::text("abcd"),
-            image.clone(),
-        ]));
+        m.content = Some(MessageContent::Parts(vec![ContentPart::text("abcd"), image.clone()]));
         let high = estimate_prompt_tokens(&req(vec![m.clone()]));
         assert_eq!(high, 4 + 1 + IMAGE_HIGH + 3);
         image.image_url.as_mut().unwrap().detail = Some("low".into());
@@ -125,17 +99,10 @@ mod tests {
         let mut a = ChatMessage::assistant("");
         a.content = None;
         a.tool_calls = Some(vec![ToolCall::function("c", "abcd", "{\"x\":1}")]);
-        assert_eq!(
-            estimate_prompt_tokens(&req(vec![a])),
-            4 + PER_TOOL + 1 + 2 + 3
-        );
+        assert_eq!(estimate_prompt_tokens(&req(vec![a])), 4 + PER_TOOL + 1 + 2 + 3);
 
         let mut r = req(vec![]);
-        r.tools = Some(vec![Tool::function(
-            "f",
-            None,
-            Some(json!({"type": "object"})),
-        )]);
+        r.tools = Some(vec![Tool::function("f", None, Some(json!({"type": "object"})))]);
         r.response_format = Some(
             serde_json::from_value(json!({
                 "type": "json_schema", "json_schema": {"name": "s", "schema": {"type": "object"}}

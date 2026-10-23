@@ -85,8 +85,7 @@ async fn transcriptions(State(log): State<Log>, path: OriginalUri, q: RawQuery, 
     record(&log, path.path().to_owned(), q.0, h, fields.clone());
     match fields["response_format"].as_str().unwrap_or("json") {
         "verbose_json" => {
-            Json(json!({"task": "transcribe", "language": "english", "duration": 9.5, "text": "hello world", "segments": []}))
-                .into_response()
+            Json(json!({"task": "transcribe", "language": "english", "duration": 9.5, "text": "hello world", "segments": []})).into_response()
         }
         "text" => ([(header::CONTENT_TYPE, "text/plain; charset=utf-8")], "hello world\n").into_response(),
         "srt" => ([(header::CONTENT_TYPE, "application/x-subrip")], "1\n00:00:00,000 --> 00:00:04,000\nhello world\n\n").into_response(),
@@ -481,16 +480,10 @@ async fn mock_responses_and_wrong_modes() {
     assert_eq!(r.json()["data"][1]["url"], "https://mock.example/a.png");
     assert!(close(r.cost(), 2.0 * 0.02), "{}", r.cost());
     // Request-level mocks, and LiteLLM's error triggers.
-    let r =
-        post_json(&app, "/v1/images/generations", &key, json!({"model": "dalle", "prompt": "x", "mock_response": "https://m/x.png"})).await;
+    let r = post_json(&app, "/v1/images/generations", &key, json!({"model": "dalle", "prompt": "x", "mock_response": "https://m/x.png"})).await;
     assert_eq!(r.json()["data"][0]["url"], "https://m/x.png");
-    let r = post_json(
-        &app,
-        "/v1/images/generations",
-        &key,
-        json!({"model": "dalle", "prompt": "x", "mock_response": "litellm.RateLimitError"}),
-    )
-    .await;
+    let r =
+        post_json(&app, "/v1/images/generations", &key, json!({"model": "dalle", "prompt": "x", "mock_response": "litellm.RateLimitError"})).await;
     assert_eq!(r.status, StatusCode::TOO_MANY_REQUESTS);
     let mut form = audio_form("whisper", Some("text"), 1.0);
     form.text("mock_response", "mocked words");

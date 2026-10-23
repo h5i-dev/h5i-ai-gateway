@@ -23,7 +23,19 @@
 //! never refuses. Times are Unix seconds, from the engine's clock.
 
 // The Aeneas subset: `&Vec` parameters, index loops, explicit matches.
-#![allow(clippy::ptr_arg, clippy::needless_range_loop, clippy::manual_map, clippy::question_mark, clippy::single_match, clippy::collapsible_if, clippy::collapsible_else_if, clippy::needless_return, clippy::collapsible_match, clippy::vec_init_then_push, clippy::match_like_matches_macro)]
+#![allow(
+    clippy::ptr_arg,
+    clippy::needless_range_loop,
+    clippy::manual_map,
+    clippy::question_mark,
+    clippy::single_match,
+    clippy::collapsible_if,
+    clippy::collapsible_else_if,
+    clippy::needless_return,
+    clippy::collapsible_match,
+    clippy::vec_init_then_push,
+    clippy::match_like_matches_macro
+)]
 
 /// Who is calling. The shell builds it from a verified credential and the
 /// engine stamps `now`; no field comes from the request body.
@@ -279,25 +291,81 @@ pub struct DeploymentSpec {
     pub enabled: bool,
 }
 
+/// A call to admit or settle, inside a `Batch`.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum BatchOp {
+    Admit { model: Vec<u8>, prompt_tokens: u64, max_tokens: u64, exclude: Vec<u64> },
+    Settle { reservation: u64, prompt_tokens: u64, completion_tokens: u64, status: CallStatus },
+}
+
+/// One request of a `Batch`, with the identity it authenticated with.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct BatchItem {
+    pub key: u64,
+    pub master: bool,
+    pub op: BatchOp,
+}
+
+/// What one item of a `Batch` got.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum ItemOutcome {
+    Admitted { reservation: u64, deployment: u64, amount: u64 },
+    Settled { cost: u64 },
+    Refused(Error),
+}
+
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum Command {
     // The master key or an admin key.
-    Configure { allowed_fails: u64, cooldown_secs: u64, reservation_ttl: u64 },
-    CreateTeam { spec: TeamSpec, models: Vec<Vec<u8>> },
-    UpdateTeam { id: u64, patch: TeamPatch },
+    Configure {
+        allowed_fails: u64,
+        cooldown_secs: u64,
+        reservation_ttl: u64,
+    },
+    CreateTeam {
+        spec: TeamSpec,
+        models: Vec<Vec<u8>>,
+    },
+    UpdateTeam {
+        id: u64,
+        patch: TeamPatch,
+    },
     /// Refused while a key belongs to the team.
-    DeleteTeam { id: u64 },
-    SetTeamModels { id: u64, models: Vec<Vec<u8>> },
-    CreateKey { spec: KeySpec, models: Vec<Vec<u8>> },
-    UpdateKey { id: u64, patch: KeyPatch },
-    DeleteKey { id: u64 },
-    SetKeyModels { id: u64, models: Vec<Vec<u8>> },
+    DeleteTeam {
+        id: u64,
+    },
+    SetTeamModels {
+        id: u64,
+        models: Vec<Vec<u8>>,
+    },
+    CreateKey {
+        spec: KeySpec,
+        models: Vec<Vec<u8>>,
+    },
+    UpdateKey {
+        id: u64,
+        patch: KeyPatch,
+    },
+    DeleteKey {
+        id: u64,
+    },
+    SetKeyModels {
+        id: u64,
+        models: Vec<Vec<u8>>,
+    },
     /// Set the key's spend back to 0.
-    ResetKeySpend { id: u64 },
+    ResetKeySpend {
+        id: u64,
+    },
     /// Create or replace deployment `spec.id` of the model named `model`,
     /// creating the model group if needed. Keeps its health.
-    UpsertDeployment { model: Vec<u8>, spec: DeploymentSpec },
-    DeleteDeployment { id: u64 },
+    UpsertDeployment {
+        model: Vec<u8>,
+        spec: DeploymentSpec,
+    },
+    DeleteDeployment {
+        id: u64,
+    },
     /// Every row of the tenant.
     Dump,
 
@@ -305,17 +373,42 @@ pub enum Command {
     /// Reserve a call of up to `prompt_tokens` + `max_tokens` tokens to the
     /// model named `model`, on a deployment not in `exclude` (those already
     /// tried for this request).
-    Admit { model: Vec<u8>, prompt_tokens: u64, max_tokens: u64, exclude: Vec<u64> },
+    Admit {
+        model: Vec<u8>,
+        prompt_tokens: u64,
+        max_tokens: u64,
+        exclude: Vec<u64>,
+    },
     /// The provider answered (or failed) the call of `reservation`.
-    Settle { reservation: u64, prompt_tokens: u64, completion_tokens: u64, status: CallStatus },
+    Settle {
+        reservation: u64,
+        prompt_tokens: u64,
+        completion_tokens: u64,
+        status: CallStatus,
+    },
     /// Release a reservation older than the reservation TTL.
-    Expire { reservation: u64 },
+    Expire {
+        reservation: u64,
+    },
     /// A key: itself, or any key for an admin.
-    KeyInfo { id: u64 },
+    KeyInfo {
+        id: u64,
+    },
     /// A team: one's own, or any team for an admin.
-    TeamInfo { id: u64 },
+    TeamInfo {
+        id: u64,
+    },
     /// The models the caller may call.
     ListModels,
+
+    // The master key only: the shell's group commit.
+    /// Run each item as its own principal (same tenant and time as the
+    /// caller), in order, each on the state the previous ones left; a refused
+    /// item writes nothing and the rest still run. One transaction commits
+    /// them all, exactly as if they had been sent one by one.
+    Batch {
+        items: Vec<BatchItem>,
+    },
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -344,12 +437,28 @@ pub enum Reply {
     Created(u64),
     Done,
     /// Call deployment `deployment`, then settle reservation `reservation`.
-    Admitted { reservation: u64, deployment: u64, amount: u64 },
-    Settled { cost: u64 },
-    KeyInfo { key: Key, models: Vec<u64>, reserved: u64 },
-    TeamInfo { team: Team, models: Vec<u64>, reserved: u64 },
+    Admitted {
+        reservation: u64,
+        deployment: u64,
+        amount: u64,
+    },
+    Settled {
+        cost: u64,
+    },
+    KeyInfo {
+        key: Key,
+        models: Vec<u64>,
+        reserved: u64,
+    },
+    TeamInfo {
+        team: Team,
+        models: Vec<u64>,
+        reserved: u64,
+    },
     Models(Vec<Model>),
     State(Snapshot),
+    /// One outcome per item of a `Batch`, in order.
+    Batch(Vec<ItemOutcome>),
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -622,7 +731,11 @@ pub fn reserved_by_team(v: &Vec<Reservation>, team: u64) -> u64 {
 pub fn used(v: &Vec<Usage>, scope: u64, id: u64, w: u64) -> (u64, u64) {
     match find_usage(v, scope, id) {
         Some(u) => {
-            if u.window == w { (u.requests, u.tokens) } else { (0, 0) }
+            if u.window == w {
+                (u.requests, u.tokens)
+            } else {
+                (0, 0)
+            }
         }
         None => (0, 0),
     }
@@ -920,11 +1033,7 @@ pub fn admit(a: &Principal, s: &Snapshot, model: &Vec<u8>, prompt_tokens: u64, m
         None => return Err(Error::ModelNotFound),
         Some(m) => m,
     };
-    if a.master {
-        admit_master(a, s, m, prompt_tokens, max_tokens, exclude)
-    } else {
-        admit_key(a, s, m, prompt_tokens, max_tokens, exclude)
-    }
+    if a.master { admit_master(a, s, m, prompt_tokens, max_tokens, exclude) } else { admit_key(a, s, m, prompt_tokens, max_tokens, exclude) }
 }
 
 /// The caller may settle or expire reservation `r`: it is the key that made
@@ -1343,10 +1452,9 @@ fn key_info(a: &Principal, s: &Snapshot, id: u64) -> Outcome {
     }
     match find_key(&s.keys, id) {
         None => Err(Error::NotFound),
-        Some(k) => Ok((
-            Vec::new(),
-            Reply::KeyInfo { key: k, models: models_of_key(&s.key_models, id), reserved: reserved_by_key(&s.reservations, id) },
-        )),
+        Some(k) => {
+            Ok((Vec::new(), Reply::KeyInfo { key: k, models: models_of_key(&s.key_models, id), reserved: reserved_by_key(&s.reservations, id) }))
+        }
     }
 }
 
@@ -1366,10 +1474,9 @@ fn team_info(a: &Principal, s: &Snapshot, id: u64) -> Outcome {
     }
     match find_team(&s.teams, id) {
         None => Err(Error::NotFound),
-        Some(t) => Ok((
-            Vec::new(),
-            Reply::TeamInfo { team: t, models: models_of_team(&s.team_models, id), reserved: reserved_by_team(&s.reservations, id) },
-        )),
+        Some(t) => {
+            Ok((Vec::new(), Reply::TeamInfo { team: t, models: models_of_team(&s.team_models, id), reserved: reserved_by_team(&s.reservations, id) }))
+        }
     }
 }
 
@@ -1408,6 +1515,7 @@ pub fn transition(a: &Principal, s: &Snapshot, cmd: &Command) -> Outcome {
         Command::KeyInfo { id } => key_info(a, s, *id),
         Command::TeamInfo { id } => team_info(a, s, *id),
         Command::ListModels => list_models(a, s),
+        Command::Batch { items } => batch(a, s, items),
         _ => {
             if !is_admin(a, s) {
                 return Err(Error::Forbidden);
@@ -1447,6 +1555,69 @@ pub fn read_only(cmd: &Command) -> bool {
         Command::ListModels => true,
         _ => false,
     }
+}
+
+// ---------------------------------------------------------------------------
+// Group commit
+
+/// The principal an item of a batch runs as: its own key, the batch's tenant and time.
+pub fn item_principal(a: &Principal, it: &BatchItem) -> Principal {
+    Principal { org: a.org, key: it.key, master: it.master, now: a.now }
+}
+
+/// One item on the state so far.
+fn run_item(a: &Principal, s: &Snapshot, it: &BatchItem) -> Outcome {
+    let p = item_principal(a, it);
+    match &it.op {
+        BatchOp::Admit { model, prompt_tokens, max_tokens, exclude } => admit(&p, s, model, *prompt_tokens, *max_tokens, exclude),
+        BatchOp::Settle { reservation, prompt_tokens, completion_tokens, status } => {
+            settle(&p, s, *reservation, *prompt_tokens, *completion_tokens, *status)
+        }
+    }
+}
+
+fn outcome_of(r: &Reply) -> ItemOutcome {
+    match r {
+        Reply::Admitted { reservation, deployment, amount } => {
+            ItemOutcome::Admitted { reservation: *reservation, deployment: *deployment, amount: *amount }
+        }
+        Reply::Settled { cost } => ItemOutcome::Settled { cost: *cost },
+        // `admit` and `settle` reply nothing else.
+        _ => ItemOutcome::Refused(Error::Forbidden),
+    }
+}
+
+fn append(ws: &mut Vec<Write>, w: &Vec<Write>) {
+    let mut i = 0;
+    while i < w.len() {
+        ws.push(w[i].clone());
+        i += 1;
+    }
+}
+
+/// Run the items one after another, each on the state the previous ones
+/// left. Only the master key may batch: the items carry identities the shell
+/// authenticated.
+fn batch(a: &Principal, s: &Snapshot, items: &Vec<BatchItem>) -> Outcome {
+    if !a.master {
+        return Err(Error::Forbidden);
+    }
+    let mut cur = s.clone();
+    let mut ws = Vec::new();
+    let mut outs = Vec::new();
+    let mut i = 0;
+    while i < items.len() {
+        match run_item(a, &cur, &items[i]) {
+            Ok((w, r)) => {
+                cur = apply(&cur, &w);
+                append(&mut ws, &w);
+                outs.push(outcome_of(&r));
+            }
+            Err(e) => outs.push(ItemOutcome::Refused(e)),
+        }
+        i += 1;
+    }
+    Ok((ws, Reply::Batch(outs)))
 }
 
 /// What one write does to the state; `schema!` builds `apply` from it.
@@ -1595,7 +1766,16 @@ mod tests {
     #[test]
     fn rate_limit_resets_with_the_window() {
         let (s, k) = setup(UNLIMITED);
-        let patch = KeyPatch { max_budget: None, rpm: Some(1), tpm: None, max_parallel: None, expires_at: None, budget_duration: None, blocked: None, all_models: None };
+        let patch = KeyPatch {
+            max_budget: None,
+            rpm: Some(1),
+            tpm: None,
+            max_parallel: None,
+            expires_at: None,
+            budget_duration: None,
+            blocked: None,
+            all_models: None,
+        };
         let (s, _) = ok(&s, &MASTER, Command::UpdateKey { id: k, patch });
         let (s, r) = run(&s, &as_key(k, 60), admit_cmd("gpt", 1, 1));
         admitted(r);
@@ -1654,7 +1834,16 @@ mod tests {
     #[test]
     fn blocked_expired_and_parallel_keys() {
         let (s, k) = setup(UNLIMITED);
-        let none = KeyPatch { max_budget: None, rpm: None, tpm: None, max_parallel: None, expires_at: None, budget_duration: None, blocked: None, all_models: None };
+        let none = KeyPatch {
+            max_budget: None,
+            rpm: None,
+            tpm: None,
+            max_parallel: None,
+            expires_at: None,
+            budget_duration: None,
+            blocked: None,
+            all_models: None,
+        };
         let (s1, _) = ok(&s, &MASTER, Command::UpdateKey { id: k, patch: KeyPatch { blocked: Some(true), ..none } });
         assert_eq!(run(&s1, &as_key(k, 1_000), admit_cmd("gpt", 1, 1)).1, Err(Error::KeyBlocked));
         let (s2, _) = ok(&s, &MASTER, Command::UpdateKey { id: k, patch: KeyPatch { expires_at: Some(1_000), ..none } });
@@ -1700,6 +1889,59 @@ mod tests {
         assert_eq!(d, 200);
         let settle = Command::Settle { reservation: res, prompt_tokens: 1, completion_tokens: 1, status: CallStatus::Success };
         ok(&s, &MASTER, settle);
+    }
+
+    #[test]
+    fn a_batch_runs_its_items_in_order() {
+        let (s, k) = setup(120_000);
+        let admit = |key: u64, master: bool| BatchItem {
+            key,
+            master,
+            op: BatchOp::Admit { model: b"gpt".to_vec(), prompt_tokens: 10, max_tokens: 20, exclude: Vec::new() },
+        };
+        // Each admission reserves 50_000: the third no longer fits, and the
+        // master's call is not limited by the key's budget.
+        let items = vec![admit(k, false), admit(k, false), admit(k, false), admit(0, true)];
+        let (s2, r) = ok(&s, &MASTER, Command::Batch { items: items.clone() });
+        let outs = match r {
+            Reply::Batch(o) => o,
+            r => panic!("{r:?}"),
+        };
+        assert!(matches!(outs[0], ItemOutcome::Admitted { .. }));
+        assert!(matches!(outs[1], ItemOutcome::Admitted { .. }));
+        assert_eq!(outs[2], ItemOutcome::Refused(Error::KeyBudgetExceeded));
+        assert!(matches!(outs[3], ItemOutcome::Admitted { .. }));
+        // The same as running them one by one.
+        let mut seq = s.clone();
+        for it in &items {
+            seq = run(
+                &seq,
+                &item_principal(&MASTER, it),
+                match &it.op {
+                    BatchOp::Admit { model, prompt_tokens, max_tokens, exclude } => {
+                        Command::Admit { model: model.clone(), prompt_tokens: *prompt_tokens, max_tokens: *max_tokens, exclude: exclude.clone() }
+                    }
+                    BatchOp::Settle { .. } => unreachable!(),
+                },
+            )
+            .0;
+        }
+        assert_eq!(s2, seq);
+        // Settling in a batch charges like `Settle`.
+        let res = match outs[0] {
+            ItemOutcome::Admitted { reservation, .. } => reservation,
+            _ => unreachable!(),
+        };
+        let settle = BatchItem {
+            key: k,
+            master: false,
+            op: BatchOp::Settle { reservation: res, prompt_tokens: 10, completion_tokens: 5, status: CallStatus::Success },
+        };
+        let (s3, r) = ok(&s2, &MASTER, Command::Batch { items: vec![settle.clone(), settle] });
+        assert_eq!(r, Reply::Batch(vec![ItemOutcome::Settled { cost: 20_000 }, ItemOutcome::Refused(Error::NotFound)]));
+        assert_eq!(find_key(&s3.keys, k).unwrap().spend, 20_000);
+        // Only the master key may batch.
+        assert_eq!(run(&s, &as_key(k, 1_000), Command::Batch { items }).1, Err(Error::Forbidden));
     }
 
     #[test]

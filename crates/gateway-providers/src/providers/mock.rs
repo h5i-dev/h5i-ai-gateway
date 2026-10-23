@@ -16,8 +16,8 @@ use super::{gen_id, now_unix};
 use crate::error::{ErrorKind, ProviderError};
 use crate::tokens::{estimate_prompt_tokens, text_tokens};
 use crate::types::{
-    ChatChunk, ChatMessage, ChatRequest, ChatResponse, Choice, Delta, Embedding, EmbeddingRequest,
-    EmbeddingResponse, EmbeddingVector, JsonObject, Role, Usage, finish_reason,
+    ChatChunk, ChatMessage, ChatRequest, ChatResponse, Choice, Delta, Embedding, EmbeddingRequest, EmbeddingResponse, EmbeddingVector, JsonObject,
+    Role, Usage, finish_reason,
 };
 use crate::{ChatStream, Deployment};
 
@@ -31,24 +31,15 @@ pub(crate) fn mock_text<'a>(dep: &'a Deployment, req: &'a ChatRequest) -> Option
     req.mock_response
         .as_deref()
         .or(dep.mock_response.as_deref())
-        .or_else(|| {
-            (dep.provider.protocol() == crate::deployment::Protocol::Mock)
-                .then_some(DEFAULT_MOCK_RESPONSE)
-        })
+        .or_else(|| (dep.provider.protocol() == crate::deployment::Protocol::Mock).then_some(DEFAULT_MOCK_RESPONSE))
 }
 
 pub(crate) fn check_error_trigger(dep: &Deployment, text: &str) -> Result<(), ProviderError> {
     let provider = dep.provider.name();
     let (kind, message) = match text {
         "litellm.RateLimitError" => (ErrorKind::RateLimited, "this is a mock rate limit error"),
-        "litellm.InternalServerError" => (
-            ErrorKind::ServiceUnavailable,
-            "this is a mock internal server error",
-        ),
-        "litellm.ContextWindowExceededError" => (
-            ErrorKind::ContextWindowExceeded,
-            "this is a mock context window exceeded error",
-        ),
+        "litellm.InternalServerError" => (ErrorKind::ServiceUnavailable, "this is a mock internal server error"),
+        "litellm.ContextWindowExceededError" => (ErrorKind::ContextWindowExceeded, "this is a mock context window exceeded error"),
         "litellm.Timeout" => (ErrorKind::Timeout, "this is a mock timeout error"),
         t if t.starts_with("Exception: content_filter_policy") => (ErrorKind::ContentPolicy, t),
         _ => return Ok(()),
@@ -65,11 +56,7 @@ fn usage(req: &ChatRequest, text: &str) -> Usage {
     Usage::new(estimate_prompt_tokens(req), text_tokens(text).max(1))
 }
 
-pub(crate) fn chat(
-    dep: &Deployment,
-    req: &ChatRequest,
-    text: &str,
-) -> Result<ChatResponse, ProviderError> {
+pub(crate) fn chat(dep: &Deployment, req: &ChatRequest, text: &str) -> Result<ChatResponse, ProviderError> {
     check_error_trigger(dep, text)?;
     let n = req.n.unwrap_or(1).max(1);
     let choices = (0..n)
@@ -95,32 +82,13 @@ pub(crate) fn chat(
 
 /// Role chunk, one chunk per word (whitespace kept), finish chunk, usage
 /// chunk.
-pub(crate) fn chat_stream(
-    dep: &Deployment,
-    req: &ChatRequest,
-    text: &str,
-) -> Result<ChatStream, ProviderError> {
+pub(crate) fn chat_stream(dep: &Deployment, req: &ChatRequest, text: &str) -> Result<ChatStream, ProviderError> {
     check_error_trigger(dep, text)?;
     let id = gen_id("chatcmpl-mock-");
     let created = now_unix();
     let chunk = || ChatChunk::new(id.clone(), dep.model.clone(), created);
-    let mut chunks = vec![chunk().with_delta(
-        Delta {
-            role: Some(Role::Assistant),
-            content: Some(String::new()),
-            ..Delta::default()
-        },
-        None,
-    )];
-    chunks.extend(split_words(text).map(|w| {
-        chunk().with_delta(
-            Delta {
-                content: Some(w.to_owned()),
-                ..Delta::default()
-            },
-            None,
-        )
-    }));
+    let mut chunks = vec![chunk().with_delta(Delta { role: Some(Role::Assistant), content: Some(String::new()), ..Delta::default() }, None)];
+    chunks.extend(split_words(text).map(|w| chunk().with_delta(Delta { content: Some(w.to_owned()), ..Delta::default() }, None)));
     chunks.push(chunk().with_delta(Delta::default(), Some(finish_reason::STOP.into())));
     chunks.push(chunk().with_usage(usage(req, text)));
     Ok(Box::pin(stream::iter(chunks.into_iter().map(Ok))))
@@ -134,9 +102,7 @@ fn split_words(text: &str) -> impl Iterator<Item = &str> {
             return None;
         }
         let word_end = rest.find(char::is_whitespace).unwrap_or(rest.len());
-        let end = rest[word_end..]
-            .find(|c: char| !c.is_whitespace())
-            .map_or(rest.len(), |i| word_end + i);
+        let end = rest[word_end..].find(|c: char| !c.is_whitespace()).map_or(rest.len(), |i| word_end + i);
         let (head, tail) = rest.split_at(end);
         rest = tail;
         Some(head)
@@ -150,9 +116,7 @@ pub(crate) fn embeddings(dep: &Deployment, req: &EmbeddingRequest) -> EmbeddingR
         crate::types::EmbeddingInput::Text(s) => vec![s.clone()],
         crate::types::EmbeddingInput::Texts(v) => v.clone(),
         crate::types::EmbeddingInput::Tokens(t) => vec![format!("{t:?}")],
-        crate::types::EmbeddingInput::TokenBatches(b) => {
-            b.iter().map(|t| format!("{t:?}")).collect()
-        }
+        crate::types::EmbeddingInput::TokenBatches(b) => b.iter().map(|t| format!("{t:?}")).collect(),
     };
     let data = inputs
         .iter()
@@ -171,13 +135,7 @@ pub(crate) fn embeddings(dep: &Deployment, req: &EmbeddingRequest) -> EmbeddingR
         })
         .collect();
     let prompt = inputs.iter().map(|t| text_tokens(t)).sum();
-    EmbeddingResponse {
-        object: "list".into(),
-        data,
-        model: dep.model.clone(),
-        usage: Usage::new(prompt, 0),
-        extra: JsonObject::new(),
-    }
+    EmbeddingResponse { object: "list".into(), data, model: dep.model.clone(), usage: Usage::new(prompt, 0), extra: JsonObject::new() }
 }
 
 fn fnv1a(bytes: &[u8], seed: u32) -> u64 {
@@ -215,13 +173,9 @@ mod tests {
         assert_eq!(mock_text(&real, &req(Some("hi"))), Some("hi"));
         let fake = dep(json!({"model": "fake/m"}));
         assert_eq!(mock_text(&fake, &req(None)), Some(DEFAULT_MOCK_RESPONSE));
-        let configured =
-            dep(json!({"model": "openai/gpt-4o", "api_key": "k", "mock_response": "canned"}));
+        let configured = dep(json!({"model": "openai/gpt-4o", "api_key": "k", "mock_response": "canned"}));
         assert_eq!(mock_text(&configured, &req(None)), Some("canned"));
-        assert_eq!(
-            mock_text(&configured, &req(Some("override"))),
-            Some("override")
-        );
+        assert_eq!(mock_text(&configured, &req(Some("override"))), Some("override"));
     }
 
     #[test]
@@ -243,22 +197,10 @@ mod tests {
         let d = dep(json!({"model": "fake/m"}));
         let kinds = [
             ("litellm.RateLimitError", ErrorKind::RateLimited, 429),
-            (
-                "litellm.InternalServerError",
-                ErrorKind::ServiceUnavailable,
-                500,
-            ),
-            (
-                "litellm.ContextWindowExceededError",
-                ErrorKind::ContextWindowExceeded,
-                400,
-            ),
+            ("litellm.InternalServerError", ErrorKind::ServiceUnavailable, 500),
+            ("litellm.ContextWindowExceededError", ErrorKind::ContextWindowExceeded, 400),
             ("litellm.Timeout", ErrorKind::Timeout, 408),
-            (
-                "Exception: content_filter_policy violated",
-                ErrorKind::ContentPolicy,
-                400,
-            ),
+            ("Exception: content_filter_policy violated", ErrorKind::ContentPolicy, 400),
         ];
         for (text, kind, status) in kinds {
             let e = chat(&d, &req(None), text).unwrap_err();
@@ -270,15 +212,8 @@ mod tests {
     #[tokio::test]
     async fn stream_shape() {
         let d = dep(json!({"model": "fake/m"}));
-        let chunks: Vec<ChatChunk> = chat_stream(&d, &req(None), "a b  c")
-            .unwrap()
-            .map(Result::unwrap)
-            .collect()
-            .await;
-        let text: String = chunks
-            .iter()
-            .filter_map(|c| c.choices.first()?.delta.content.clone())
-            .collect();
+        let chunks: Vec<ChatChunk> = chat_stream(&d, &req(None), "a b  c").unwrap().map(Result::unwrap).collect().await;
+        let text: String = chunks.iter().filter_map(|c| c.choices.first()?.delta.content.clone()).collect();
         assert_eq!(text, "a b  c");
         assert_eq!(chunks.len(), 1 + 3 + 2);
         assert_eq!(chunks[4].choices[0].finish_reason.as_deref(), Some("stop"));
@@ -287,10 +222,7 @@ mod tests {
 
     #[test]
     fn word_splitting() {
-        assert_eq!(
-            split_words("a b  c").collect::<Vec<_>>(),
-            vec!["a ", "b  ", "c"]
-        );
+        assert_eq!(split_words("a b  c").collect::<Vec<_>>(), vec!["a ", "b  ", "c"]);
         assert_eq!(split_words("  x").collect::<Vec<_>>(), vec!["  ", "x"]);
         assert_eq!(split_words("").count(), 0);
     }
@@ -298,15 +230,11 @@ mod tests {
     #[test]
     fn deterministic_embeddings() {
         let d = dep(json!({"model": "fake/e"}));
-        let r: EmbeddingRequest =
-            serde_json::from_value(json!({"model": "e", "input": ["a", "b"], "dimensions": 3}))
-                .unwrap();
+        let r: EmbeddingRequest = serde_json::from_value(json!({"model": "e", "input": ["a", "b"], "dimensions": 3})).unwrap();
         let a = embeddings(&d, &r);
         assert_eq!(a, embeddings(&d, &r));
         assert_eq!(a.data.len(), 2);
-        let EmbeddingVector::Float(v) = &a.data[0].embedding else {
-            panic!()
-        };
+        let EmbeddingVector::Float(v) = &a.data[0].embedding else { panic!() };
         assert_eq!(v.len(), 3);
         assert!(v.iter().all(|x| (-1.0..=1.0).contains(x)));
         assert_ne!(a.data[0], a.data[1]);

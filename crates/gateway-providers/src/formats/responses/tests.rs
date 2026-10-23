@@ -1,7 +1,5 @@
 use super::*;
-use crate::types::{
-    CompletionTokensDetails, Delta, FunctionCallDelta, PromptTokensDetails, ToolCallDelta,
-};
+use crate::types::{CompletionTokensDetails, Delta, FunctionCallDelta, PromptTokensDetails, ToolCallDelta};
 
 fn req(v: Value) -> ResponsesRequest {
     serde_json::from_value(v).unwrap()
@@ -16,10 +14,7 @@ fn err(v: Value) -> FormatError {
 }
 
 fn rid() -> ResponseId {
-    ResponseId {
-        id: "resp_1".into(),
-        created_at: 42,
-    }
+    ResponseId { id: "resp_1".into(), created_at: 42 }
 }
 
 #[test]
@@ -74,18 +69,9 @@ fn item_input_with_parts_and_tools() {
     // Calls join the assistant turn before them.
     assert_eq!(m[2]["content"], "Let me check.");
     assert_eq!(m[2]["tool_calls"].as_array().unwrap().len(), 2);
-    assert_eq!(
-        m[2]["tool_calls"][1]["function"],
-        json!({"name": "lookup", "arguments": "{\"q\":2}"})
-    );
-    assert_eq!(
-        m[3],
-        json!({"role": "tool", "content": "one", "tool_call_id": "call_1"})
-    );
-    assert_eq!(
-        m[4],
-        json!({"role": "tool", "content": "two", "tool_call_id": "call_2"})
-    );
+    assert_eq!(m[2]["tool_calls"][1]["function"], json!({"name": "lookup", "arguments": "{\"q\":2}"}));
+    assert_eq!(m[3], json!({"role": "tool", "content": "one", "tool_call_id": "call_1"}));
+    assert_eq!(m[4], json!({"role": "tool", "content": "two", "tool_call_id": "call_2"}));
 }
 
 #[test]
@@ -110,22 +96,12 @@ fn tools_choice_and_formats() {
         c["tools"],
         json!([{"type": "function", "function": {"name": "f", "description": "d", "parameters": {"type": "object"}, "strict": true}}])
     );
-    assert_eq!(
-        c["tool_choice"],
-        json!({"type": "function", "function": {"name": "f"}})
-    );
-    assert_eq!(
-        c["response_format"],
-        json!({"type": "json_schema", "json_schema": {"name": "out", "schema": {"type": "object"}, "strict": true}})
-    );
-    let c = chat(
-        json!({"model": "m", "input": "x", "tool_choice": "required", "text": {"format": {"type": "json_object"}}}),
-    );
+    assert_eq!(c["tool_choice"], json!({"type": "function", "function": {"name": "f"}}));
+    assert_eq!(c["response_format"], json!({"type": "json_schema", "json_schema": {"name": "out", "schema": {"type": "object"}, "strict": true}}));
+    let c = chat(json!({"model": "m", "input": "x", "tool_choice": "required", "text": {"format": {"type": "json_object"}}}));
     assert_eq!(c["tool_choice"], "required");
     assert_eq!(c["response_format"], json!({"type": "json_object"}));
-    let c = chat(
-        json!({"model": "m", "input": "x", "text": {"format": {"type": "text"}}, "stream": true}),
-    );
+    let c = chat(json!({"model": "m", "input": "x", "text": {"format": {"type": "text"}}, "stream": true}));
     assert!(c.get("response_format").is_none());
     assert_eq!(c["stream_options"], json!({"include_usage": true}));
 }
@@ -133,77 +109,31 @@ fn tools_choice_and_formats() {
 #[test]
 fn history_goes_before_the_input_and_instructions_are_not_kept() {
     let history = vec![ChatMessage::user("first"), ChatMessage::assistant("answer")];
-    let t = to_chat_request(
-        &req(json!({"model": "m", "input": "second", "instructions": "sys"})),
-        &history,
-    )
-    .unwrap();
+    let t = to_chat_request(&req(json!({"model": "m", "input": "second", "instructions": "sys"})), &history).unwrap();
     let roles: Vec<Role> = t.chat.messages.iter().map(|m| m.role).collect();
-    assert_eq!(
-        roles,
-        [Role::System, Role::User, Role::Assistant, Role::User]
-    );
+    assert_eq!(roles, [Role::System, Role::User, Role::Assistant, Role::User]);
     assert_eq!(t.conversation.len(), 3);
     assert!(t.conversation.iter().all(|m| m.role != Role::System));
 }
 
 #[test]
 fn invalid_requests() {
+    assert_eq!(err(json!({"model": "m", "input": "x", "tools": [{"type": "web_search_preview"}]})).param.as_deref(), Some("tools.0.type"));
+    assert_eq!(err(json!({"model": "m", "input": 5})).param.as_deref(), Some("input"));
+    assert_eq!(err(json!({"model": "m", "input": [{"type": "item_reference", "id": "x"}]})).param.as_deref(), Some("input.0.type"));
+    assert_eq!(err(json!({"model": "m", "input": [{"type": "function_call_output", "output": "x"}]})).param.as_deref(), Some("input.0.call_id"));
+    assert_eq!(err(json!({"model": "m", "input": [{"role": "tool", "content": "x"}]})).param.as_deref(), Some("input.0.role"));
     assert_eq!(
-        err(json!({"model": "m", "input": "x", "tools": [{"type": "web_search_preview"}]}))
-            .param
-            .as_deref(),
-        Some("tools.0.type")
+        err(json!({"model": "m", "input": [{"role": "user", "content": [{"type": "input_file", "file_url": "https://x"}]}]})).param.as_deref(),
+        Some("input.0.content.0.file_url")
     );
     assert_eq!(
-        err(json!({"model": "m", "input": 5})).param.as_deref(),
-        Some("input")
-    );
-    assert_eq!(
-        err(json!({"model": "m", "input": [{"type": "item_reference", "id": "x"}]}))
-            .param
-            .as_deref(),
-        Some("input.0.type")
-    );
-    assert_eq!(
-        err(json!({"model": "m", "input": [{"type": "function_call_output", "output": "x"}]}))
-            .param
-            .as_deref(),
-        Some("input.0.call_id")
-    );
-    assert_eq!(
-        err(json!({"model": "m", "input": [{"role": "tool", "content": "x"}]}))
-            .param
-            .as_deref(),
-        Some("input.0.role")
-    );
-    assert_eq!(err(json!({"model": "m", "input": [{"role": "user", "content": [{"type": "input_file", "file_url": "https://x"}]}]})).param.as_deref(), Some("input.0.content.0.file_url"));
-    assert_eq!(
-        err(
-            json!({"model": "m", "input": [{"role": "user", "content": [{"type": "input_image"}]}]})
-        )
-        .param
-        .as_deref(),
+        err(json!({"model": "m", "input": [{"role": "user", "content": [{"type": "input_image"}]}]})).param.as_deref(),
         Some("input.0.content.0.image_url")
     );
-    assert_eq!(
-        err(json!({"model": "m", "input": "x", "tool_choice": {"type": "file_search"}}))
-            .param
-            .as_deref(),
-        Some("tool_choice")
-    );
-    assert_eq!(
-        err(json!({"model": "m", "input": "x", "text": {"format": {"type": "yaml"}}}))
-            .param
-            .as_deref(),
-        Some("text.format.type")
-    );
-    assert_eq!(
-        err(json!({"model": "m", "input": "x", "background": true}))
-            .param
-            .as_deref(),
-        Some("background")
-    );
+    assert_eq!(err(json!({"model": "m", "input": "x", "tool_choice": {"type": "file_search"}})).param.as_deref(), Some("tool_choice"));
+    assert_eq!(err(json!({"model": "m", "input": "x", "text": {"format": {"type": "yaml"}}})).param.as_deref(), Some("text.format.type"));
+    assert_eq!(err(json!({"model": "m", "input": "x", "background": true})).param.as_deref(), Some("background"));
 }
 
 fn response(v: Value) -> ChatResponse {
@@ -212,8 +142,7 @@ fn response(v: Value) -> ChatResponse {
 
 #[test]
 fn text_response() {
-    let r =
-        req(json!({"model": "gpt", "input": "Hi", "instructions": "sys", "max_output_tokens": 9}));
+    let r = req(json!({"model": "gpt", "input": "Hi", "instructions": "sys", "max_output_tokens": 9}));
     let resp = response(
         json!({"id": "c", "model": "up", "choices": [{"index": 0, "message": {"role": "assistant", "content": "Hello"}, "finish_reason": "stop"}],
         "usage": {"prompt_tokens": 10, "completion_tokens": 2, "total_tokens": 12}}),
@@ -234,10 +163,7 @@ fn text_response() {
     assert_eq!(out[0]["role"], "assistant");
     assert_eq!(out[0]["status"], "completed");
     assert!(out[0]["id"].as_str().unwrap().starts_with("msg_"));
-    assert_eq!(
-        out[0]["content"],
-        json!([{"type": "output_text", "text": "Hello", "annotations": []}])
-    );
+    assert_eq!(out[0]["content"], json!([{"type": "output_text", "text": "Hello", "annotations": []}]));
     assert_eq!(
         o["usage"],
         json!({"input_tokens": 10, "input_tokens_details": {"cached_tokens": 0}, "output_tokens": 2,
@@ -248,18 +174,13 @@ fn text_response() {
 #[test]
 fn tool_reasoning_and_incomplete_responses() {
     let r = req(json!({"model": "m", "input": "x"}));
-    let resp = response(
-        json!({"id": "c", "model": "up", "choices": [{"index": 0, "message": {"role": "assistant", "content": null,
+    let resp = response(json!({"id": "c", "model": "up", "choices": [{"index": 0, "message": {"role": "assistant", "content": null,
         "reasoning_content": "thought", "tool_calls": [{"id": "call_9", "type": "function", "function": {"name": "f", "arguments": "{\"a\":1}"}}]},
-        "finish_reason": "tool_calls"}]}),
-    );
+        "finish_reason": "tool_calls"}]}));
     let o = from_chat_response(&r, &rid(), &resp);
     let out = o["output"].as_array().unwrap();
     assert_eq!(out[0]["type"], "reasoning");
-    assert_eq!(
-        out[0]["summary"],
-        json!([{"type": "summary_text", "text": "thought"}])
-    );
+    assert_eq!(out[0]["summary"], json!([{"type": "summary_text", "text": "thought"}]));
     assert_eq!(out[1]["type"], "function_call");
     assert_eq!(out[1]["call_id"], "call_9");
     assert_eq!(out[1]["arguments"], "{\"a\":1}");
@@ -270,23 +191,14 @@ fn tool_reasoning_and_incomplete_responses() {
     );
     let o = from_chat_response(&r, &rid(), &resp);
     assert_eq!(o["status"], "incomplete");
-    assert_eq!(
-        o["incomplete_details"],
-        json!({"reason": "max_output_tokens"})
-    );
+    assert_eq!(o["incomplete_details"], json!({"reason": "max_output_tokens"}));
 }
 
 #[test]
 fn usage_details() {
     let u = Usage {
-        prompt_tokens_details: Some(PromptTokensDetails {
-            cached_tokens: Some(4),
-            ..Default::default()
-        }),
-        completion_tokens_details: Some(CompletionTokensDetails {
-            reasoning_tokens: Some(3),
-            ..Default::default()
-        }),
+        prompt_tokens_details: Some(PromptTokensDetails { cached_tokens: Some(4), ..Default::default() }),
+        completion_tokens_details: Some(CompletionTokensDetails { reasoning_tokens: Some(3), ..Default::default() }),
         ..Usage::new(10, 5)
     };
     let v = usage(&u);
@@ -298,10 +210,8 @@ fn usage_details() {
 #[test]
 fn output_becomes_the_next_turns_history() {
     let r = req(json!({"model": "m", "input": "x"}));
-    let resp = response(
-        json!({"id": "c", "model": "up", "choices": [{"index": 0, "message": {"role": "assistant", "content": "calling",
-        "tool_calls": [{"id": "call_1", "type": "function", "function": {"name": "f", "arguments": "{}"}}]}, "finish_reason": "tool_calls"}]}),
-    );
+    let resp = response(json!({"id": "c", "model": "up", "choices": [{"index": 0, "message": {"role": "assistant", "content": "calling",
+        "tool_calls": [{"id": "call_1", "type": "function", "function": {"name": "f", "arguments": "{}"}}]}, "finish_reason": "tool_calls"}]}));
     let o = from_chat_response(&r, &rid(), &resp);
     let blocks = json!([{"type": "thinking", "thinking": "t", "signature": "s"}]);
     let msgs = output_messages(&o, Some(&blocks));
@@ -311,9 +221,7 @@ fn output_becomes_the_next_turns_history() {
     assert_eq!(msgs[0].tool_calls.as_ref().unwrap()[0].id, "call_1");
     assert_eq!(msgs[0].extra["thinking_blocks"], blocks);
     // The next turn answers the call.
-    let next = req(
-        json!({"model": "m", "input": [{"type": "function_call_output", "call_id": "call_1", "output": "42"}]}),
-    );
+    let next = req(json!({"model": "m", "input": [{"type": "function_call_output", "call_id": "call_1", "output": "42"}]}));
     let t = to_chat_request(&next, &msgs).unwrap();
     assert_eq!(t.chat.messages.len(), 2);
     assert_eq!(t.chat.messages[1].role, Role::Tool);
@@ -324,10 +232,7 @@ fn chunk(delta: Delta, finish: Option<&str>) -> ChatChunk {
 }
 
 fn text(t: &str) -> Delta {
-    Delta {
-        content: Some(t.into()),
-        ..Delta::default()
-    }
+    Delta { content: Some(t.into()), ..Delta::default() }
 }
 
 fn run(r: ResponsesRequest, chunks: &[ChatChunk]) -> (Vec<Value>, ResponsesStream) {
@@ -352,14 +257,7 @@ fn text_stream() {
     let (events, s) = run(
         req(json!({"model": "gpt", "input": "Hi"})),
         &[
-            chunk(
-                Delta {
-                    role: Some(Role::Assistant),
-                    content: Some(String::new()),
-                    ..Delta::default()
-                },
-                None,
-            ),
+            chunk(Delta { role: Some(Role::Assistant), content: Some(String::new()), ..Delta::default() }, None),
             chunk(text("Hel"), None),
             chunk(text("lo"), None),
             chunk(Delta::default(), Some("stop")),
@@ -405,10 +303,7 @@ fn tool_delta(index: u32, id: Option<&str>, name: Option<&str>, args: &str) -> D
             index,
             id: id.map(str::to_owned),
             kind: id.map(|_| "function".to_owned()),
-            function: Some(FunctionCallDelta {
-                name: name.map(str::to_owned),
-                arguments: Some(args.into()),
-            }),
+            function: Some(FunctionCallDelta { name: name.map(str::to_owned), arguments: Some(args.into()) }),
         }]),
         ..Delta::default()
     }
@@ -419,13 +314,7 @@ fn reasoning_and_tool_stream() {
     let (events, s) = run(
         req(json!({"model": "m", "input": "x"})),
         &[
-            chunk(
-                Delta {
-                    reasoning_content: Some("hmm".into()),
-                    ..Delta::default()
-                },
-                None,
-            ),
+            chunk(Delta { reasoning_content: Some("hmm".into()), ..Delta::default() }, None),
             chunk(tool_delta(0, Some("call_1"), Some("f"), ""), None),
             chunk(tool_delta(0, None, None, "{\"a\":"), None),
             chunk(tool_delta(0, None, None, "1}"), None),
@@ -472,19 +361,10 @@ fn reasoning_and_tool_stream() {
 
 #[test]
 fn incomplete_and_failed_streams() {
-    let (events, _) = run(
-        req(json!({"model": "m", "input": "x"})),
-        &[
-            chunk(text("a"), None),
-            chunk(Delta::default(), Some("length")),
-        ],
-    );
+    let (events, _) = run(req(json!({"model": "m", "input": "x"})), &[chunk(text("a"), None), chunk(Delta::default(), Some("length"))]);
     let last = events.last().unwrap();
     assert_eq!(last["type"], "response.incomplete");
-    assert_eq!(
-        last["response"]["incomplete_details"]["reason"],
-        "max_output_tokens"
-    );
+    assert_eq!(last["response"]["incomplete_details"]["reason"], "max_output_tokens");
 
     let mut s = ResponsesStream::new(req(json!({"model": "m", "input": "x"})), rid(), 1);
     let mut events = s.on_chunk(&chunk(text("a"), None));
@@ -495,21 +375,11 @@ fn incomplete_and_failed_streams() {
     assert_eq!(&t[t.len() - 2..], ["error", "response.failed"]);
     assert_eq!(events[events.len() - 2]["message"], "slow down");
     assert_eq!(events[events.len() - 1]["response"]["status"], "failed");
-    assert_eq!(
-        events[events.len() - 1]["response"]["error"]["code"],
-        "rate_limit_error"
-    );
+    assert_eq!(events[events.len() - 1]["response"]["error"]["code"], "rate_limit_error");
     assert!(s.final_response().is_none());
 
     let (events, _) = run(req(json!({"model": "m", "input": "x"})), &[]);
-    assert_eq!(
-        types(&events),
-        [
-            "response.created",
-            "response.in_progress",
-            "response.completed"
-        ]
-    );
+    assert_eq!(types(&events), ["response.created", "response.in_progress", "response.completed"]);
     let sse = encode_events(&events[..1]);
     assert!(sse.starts_with("event: response.created\ndata: {"), "{sse}");
 }

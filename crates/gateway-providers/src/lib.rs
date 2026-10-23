@@ -107,19 +107,14 @@ use futures::Stream;
 
 pub use auth::gcp::{AuthorizedUser, GcpCredentials, ServiceAccountKey};
 pub use client::{Client, HttpSettings};
-pub use deployment::{
-    CloudConfig, DEFAULT_AZURE_API_VERSION, Deployment, Provider, REQUEST_DEFAULT_KEYS, Secret,
-};
+pub use deployment::{CloudConfig, DEFAULT_AZURE_API_VERSION, Deployment, Provider, REQUEST_DEFAULT_KEYS, Secret};
 pub use error::{ErrorKind, ProviderError};
 pub use pricing::Pricing;
 pub use providers::bedrock::{AwsAuth, AwsCredentials, BedrockConfig};
 pub use providers::openai::GATEWAY_ONLY_FIELDS;
 pub use providers::vertex::VertexConfig;
 pub use tokens::estimate_prompt_tokens;
-pub use types::{
-    ChatChunk, ChatMessage, ChatRequest, ChatResponse, EmbeddingRequest, EmbeddingResponse,
-    ErrorBody, Usage,
-};
+pub use types::{ChatChunk, ChatMessage, ChatRequest, ChatResponse, EmbeddingRequest, EmbeddingResponse, ErrorBody, Usage};
 
 /// A streamed chat completion: OpenAI `chat.completion.chunk`s. Ends after
 /// the first `Err`.

@@ -119,11 +119,7 @@ async fn credentials_are_checked() {
     let app = gateway(MOCKS).await;
     let (s, _, _) = call(&app, "POST", "/v1/chat/completions", "sk-nope", Some(chat("gpt"))).await;
     assert_eq!(s, StatusCode::UNAUTHORIZED);
-    let resp = app
-        .clone()
-        .oneshot(Request::builder().method("GET").uri("/v1/models").body(Body::empty()).unwrap())
-        .await
-        .unwrap();
+    let resp = app.clone().oneshot(Request::builder().method("GET").uri("/v1/models").body(Body::empty()).unwrap()).await.unwrap();
     assert_eq!(resp.status(), StatusCode::UNAUTHORIZED);
     // The master key may call models directly.
     let (s, _, _) = call(&app, "POST", "/v1/chat/completions", MASTER, Some(chat("claude"))).await;

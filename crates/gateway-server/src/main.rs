@@ -167,6 +167,11 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     let addr = format!("{}:{}", args.host, args.port);
     let listener = tokio::net::TcpListener::bind(&addr).await?;
+    // Streamed responses are many small writes; without TCP_NODELAY each one
+    // waits for the client's delayed ACK (~40 ms).
+    let listener = axum::serve::ListenerExt::tap_io(listener, |tcp| {
+        let _ = tcp.set_nodelay(true);
+    });
     tracing::info!(%addr, "h5i-gateway listening");
     axum::serve(listener, router(state)).with_graceful_shutdown(shutdown()).await?;
     Ok(())

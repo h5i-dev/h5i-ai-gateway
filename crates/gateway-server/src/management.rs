@@ -2,14 +2,14 @@
 //! `/spend/*` and `/health/*`. Each handler turns JSON into a kernel command
 //! and the reply back into JSON; the kernel decides who may do what.
 
+use crate::AppState;
 use crate::auth::unix_now;
 use crate::config::parse_duration;
 use crate::error::ApiError;
 use crate::kernel::{Backend, Gateway};
 use crate::spend::{SpendFilter, nano, usd};
-use crate::AppState;
-use axum::extract::{Query, State};
 use axum::Json;
+use axum::extract::{Query, State};
 use gateway_kernel::{self as k, Command, Reply, UNLIMITED};
 use h5i_app_core::TenantId;
 use h5i_app_http::Actor;
@@ -39,9 +39,9 @@ impl Id {
 fn user_id(v: &Option<Value>) -> u64 {
     match v {
         Some(Value::Number(n)) => n.as_u64().unwrap_or(0),
-        Some(Value::String(s)) => s.parse().unwrap_or_else(|_| {
-            s.bytes().fold(0xcbf2_9ce4_8422_2325u64, |h, b| (h ^ u64::from(b)).wrapping_mul(0x0100_0000_01b3)) >> 1
-        }),
+        Some(Value::String(s)) => {
+            s.parse().unwrap_or_else(|_| s.bytes().fold(0xcbf2_9ce4_8422_2325u64, |h, b| (h ^ u64::from(b)).wrapping_mul(0x0100_0000_01b3)) >> 1)
+        }
         _ => 0,
     }
 }
@@ -268,7 +268,16 @@ async fn set_blocked(st: AppState, actor: Actor<Gateway>, key: String, blocked: 
 }
 
 fn no_key_patch() -> k::KeyPatch {
-    k::KeyPatch { max_budget: None, rpm: None, tpm: None, max_parallel: None, expires_at: None, budget_duration: None, blocked: None, all_models: None }
+    k::KeyPatch {
+        max_budget: None,
+        rpm: None,
+        tpm: None,
+        max_parallel: None,
+        expires_at: None,
+        budget_duration: None,
+        blocked: None,
+        all_models: None,
+    }
 }
 
 #[derive(Debug, Deserialize)]
@@ -444,11 +453,8 @@ async fn team_info_value(st: &AppState, actor: &Actor<Gateway>, id: u64) -> Resu
 
 pub async fn list_teams(State(st): State<AppState>, actor: Actor<Gateway>) -> Result<Json<Value>> {
     let s = st.dump(&actor).await?;
-    let teams: Vec<Value> = s
-        .teams
-        .iter()
-        .map(|t| st.team_json(t, &k::models_of_team(&s.team_models, t.id), k::reserved_by_team(&s.reservations, t.id)))
-        .collect();
+    let teams: Vec<Value> =
+        s.teams.iter().map(|t| st.team_json(t, &k::models_of_team(&s.team_models, t.id), k::reserved_by_team(&s.reservations, t.id))).collect();
     Ok(Json(Value::Array(teams)))
 }
 

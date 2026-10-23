@@ -34,11 +34,7 @@ pub(crate) struct HttpRequest {
 
 impl HttpRequest {
     pub fn new(url: String, body: Value) -> Self {
-        Self {
-            url,
-            headers: Vec::new(),
-            body,
-        }
+        Self { url, headers: Vec::new(), body }
     }
 
     pub fn header(mut self, name: &str, value: impl Into<String>) -> Self {
@@ -77,12 +73,7 @@ impl StreamTranslator for Box<dyn StreamTranslator> {
 
 /// Drive `events` through `translator`, enforcing `idle_timeout` between
 /// events. The stream ends after the first error.
-pub(crate) fn drive<S, T>(
-    provider: &'static str,
-    events: S,
-    translator: T,
-    idle_timeout: Duration,
-) -> ChatStream
+pub(crate) fn drive<S, T>(provider: &'static str, events: S, translator: T, idle_timeout: Duration) -> ChatStream
 where
     S: Stream<Item = Result<SseEvent, ProviderError>> + Send + 'static,
     T: StreamTranslator,
@@ -93,12 +84,7 @@ where
         queue: VecDeque<Result<ChatChunk, ProviderError>>,
         finished: bool,
     }
-    let state = State {
-        events: Box::pin(events),
-        translator,
-        queue: VecDeque::new(),
-        finished: false,
-    };
+    let state = State { events: Box::pin(events), translator, queue: VecDeque::new(), finished: false };
     Box::pin(stream::unfold(state, move |mut st| async move {
         loop {
             if let Some(item) = st.queue.pop_front() {
@@ -109,11 +95,7 @@ where
             }
             let next = tokio::time::timeout(idle_timeout, st.events.next()).await;
             let result = match next {
-                Err(_) => Err(ProviderError::new(
-                    ErrorKind::Timeout,
-                    provider,
-                    format!("no data from upstream for {}s", idle_timeout.as_secs_f64()),
-                )),
+                Err(_) => Err(ProviderError::new(ErrorKind::Timeout, provider, format!("no data from upstream for {}s", idle_timeout.as_secs_f64()))),
                 Ok(Some(Ok(event))) => {
                     let result = st.translator.on_event(event);
                     st.finished = st.translator.is_done();
@@ -138,17 +120,10 @@ where
 
 /// Run a translator over a fixed list of events (unit tests).
 #[cfg(test)]
-pub(crate) fn translate_all<T: StreamTranslator>(
-    mut translator: T,
-    events: &[(&str, &str)],
-) -> Result<Vec<ChatChunk>, ProviderError> {
+pub(crate) fn translate_all<T: StreamTranslator>(mut translator: T, events: &[(&str, &str)]) -> Result<Vec<ChatChunk>, ProviderError> {
     let mut out = Vec::new();
     for (event, data) in events {
-        out.extend(translator.on_event(SseEvent {
-            event: (!event.is_empty()).then(|| (*event).to_owned()),
-            data: (*data).to_owned(),
-            id: None,
-        })?);
+        out.extend(translator.on_event(SseEvent { event: (!event.is_empty()).then(|| (*event).to_owned()), data: (*data).to_owned(), id: None })?);
         if translator.is_done() {
             return Ok(out);
         }
@@ -192,17 +167,13 @@ pub(crate) fn map_finish_reason(reason: &str) -> &'static str {
 
 /// Seconds since the Unix epoch.
 pub(crate) fn now_unix() -> u64 {
-    SystemTime::now()
-        .duration_since(UNIX_EPOCH)
-        .map_or(0, |d| d.as_secs())
+    SystemTime::now().duration_since(UNIX_EPOCH).map_or(0, |d| d.as_secs())
 }
 
 /// A process-unique id such as `chatcmpl-18f0c3a2b4e5-1`.
 pub(crate) fn gen_id(prefix: &str) -> String {
     static COUNTER: AtomicU64 = AtomicU64::new(0);
-    let nanos = SystemTime::now()
-        .duration_since(UNIX_EPOCH)
-        .map_or(0, |d| d.as_nanos() as u64);
+    let nanos = SystemTime::now().duration_since(UNIX_EPOCH).map_or(0, |d| d.as_nanos() as u64);
     let n = COUNTER.fetch_add(1, Ordering::Relaxed);
     format!("{prefix}{nanos:x}{n:x}")
 }
@@ -214,14 +185,7 @@ pub(crate) fn parse_data_url(url: &str) -> Option<(&str, &str)> {
     let mime = meta.strip_suffix(";base64")?;
     // Drop parameters such as `;charset=utf-8`.
     let mime = mime.split(';').next().unwrap_or(mime);
-    Some((
-        if mime.is_empty() {
-            "application/octet-stream"
-        } else {
-            mime
-        },
-        data,
-    ))
+    Some((if mime.is_empty() { "application/octet-stream" } else { mime }, data))
 }
 
 /// Guess a MIME type from a URL's file extension.
@@ -256,10 +220,7 @@ pub(crate) fn encode_path_segment(s: &str) -> String {
 
 /// Fill request parameters the client left unset from the deployment's
 /// `litellm_params` defaults.
-pub(crate) fn apply_request_defaults(
-    dep: &Deployment,
-    req: &ChatRequest,
-) -> Result<ChatRequest, ProviderError> {
+pub(crate) fn apply_request_defaults(dep: &Deployment, req: &ChatRequest) -> Result<ChatRequest, ProviderError> {
     if dep.request_defaults.is_empty() {
         return Ok(req.clone());
     }
@@ -269,12 +230,8 @@ pub(crate) fn apply_request_defaults(
     for (k, v) in &dep.request_defaults {
         obj.entry(k.clone()).or_insert_with(|| v.clone());
     }
-    serde_json::from_value(Value::Object(obj)).map_err(|e| {
-        ProviderError::config(
-            dep.provider.name(),
-            format!("invalid request default in litellm_params: {e}"),
-        )
-    })
+    serde_json::from_value(Value::Object(obj))
+        .map_err(|e| ProviderError::config(dep.provider.name(), format!("invalid request default in litellm_params: {e}")))
 }
 
 /// Parse a JSON tool-call argument string; empty means `{}`.
@@ -282,28 +239,17 @@ pub(crate) fn parse_arguments(provider: &str, args: &str) -> Result<Value, Provi
     if args.trim().is_empty() {
         return Ok(Value::Object(JsonObject::new()));
     }
-    serde_json::from_str(args).map_err(|e| {
-        ProviderError::bad_request(
-            provider,
-            format!("tool call arguments are not valid JSON: {e}"),
-        )
-    })
+    serde_json::from_str(args).map_err(|e| ProviderError::bad_request(provider, format!("tool call arguments are not valid JSON: {e}")))
 }
 
 /// Parse an upstream JSON body, mapping failures to `InvalidResponse`.
-pub(crate) fn parse_json<T: serde::de::DeserializeOwned>(
-    provider: &str,
-    body: &str,
-) -> Result<T, ProviderError> {
+pub(crate) fn parse_json<T: serde::de::DeserializeOwned>(provider: &str, body: &str) -> Result<T, ProviderError> {
     serde_json::from_str(body).map_err(|e| {
         let mut end = body.len().min(300);
         while !body.is_char_boundary(end) {
             end -= 1;
         }
-        ProviderError::invalid_response(
-            provider,
-            format!("could not parse upstream response ({e}): {}", &body[..end]),
-        )
+        ProviderError::invalid_response(provider, format!("could not parse upstream response ({e}): {}", &body[..end]))
     })
 }
 
@@ -318,18 +264,9 @@ mod tests {
 
     #[test]
     fn data_urls() {
-        assert_eq!(
-            parse_data_url("data:image/png;base64,AAAA"),
-            Some(("image/png", "AAAA"))
-        );
-        assert_eq!(
-            parse_data_url("data:text/plain;charset=utf-8;base64,aGk="),
-            Some(("text/plain", "aGk="))
-        );
-        assert_eq!(
-            parse_data_url("data:;base64,AA"),
-            Some(("application/octet-stream", "AA"))
-        );
+        assert_eq!(parse_data_url("data:image/png;base64,AAAA"), Some(("image/png", "AAAA")));
+        assert_eq!(parse_data_url("data:text/plain;charset=utf-8;base64,aGk="), Some(("text/plain", "aGk=")));
+        assert_eq!(parse_data_url("data:;base64,AA"), Some(("application/octet-stream", "AA")));
         assert_eq!(parse_data_url("data:image/png,raw"), None);
         assert_eq!(parse_data_url("https://x/y.png"), None);
     }
@@ -369,16 +306,8 @@ mod tests {
 
     #[test]
     fn request_defaults_fill_missing_only() {
-        let dep = Deployment::from_litellm_params_with_env(
-            &json!({"model": "fake/m", "temperature": 0.1, "max_tokens": 50}),
-            |_| None,
-        )
-        .unwrap();
-        let req = ChatRequest {
-            model: "m".into(),
-            temperature: Some(0.9),
-            ..ChatRequest::default()
-        };
+        let dep = Deployment::from_litellm_params_with_env(&json!({"model": "fake/m", "temperature": 0.1, "max_tokens": 50}), |_| None).unwrap();
+        let req = ChatRequest { model: "m".into(), temperature: Some(0.9), ..ChatRequest::default() };
         let out = apply_request_defaults(&dep, &req).unwrap();
         assert_eq!(out.temperature, Some(0.9));
         assert_eq!(out.max_tokens, Some(50));
@@ -388,10 +317,7 @@ mod tests {
     fn arguments() {
         assert_eq!(parse_arguments("p", "").unwrap(), json!({}));
         assert_eq!(parse_arguments("p", "{\"a\":1}").unwrap(), json!({"a": 1}));
-        assert_eq!(
-            parse_arguments("p", "{").unwrap_err().kind(),
-            ErrorKind::BadRequest
-        );
+        assert_eq!(parse_arguments("p", "{").unwrap_err().kind(), ErrorKind::BadRequest);
     }
 
     struct Echo {
@@ -417,59 +343,29 @@ mod tests {
         }
     }
 
-    fn events(
-        data: &[&str],
-    ) -> impl Stream<Item = Result<SseEvent, ProviderError>> + Send + 'static {
-        let items: Vec<_> = data
-            .iter()
-            .map(|d| {
-                Ok(SseEvent {
-                    data: (*d).to_owned(),
-                    ..SseEvent::default()
-                })
-            })
-            .collect();
+    fn events(data: &[&str]) -> impl Stream<Item = Result<SseEvent, ProviderError>> + Send + 'static {
+        let items: Vec<_> = data.iter().map(|d| Ok(SseEvent { data: (*d).to_owned(), ..SseEvent::default() })).collect();
         stream::iter(items)
     }
 
     async fn ids(s: ChatStream) -> Vec<Result<String, ErrorKind>> {
-        s.map(|r| r.map(|c| c.id).map_err(|e| e.kind()))
-            .collect()
-            .await
+        s.map(|r| r.map(|c| c.id).map_err(|e| e.kind())).collect().await
     }
 
     #[tokio::test]
     async fn drive_stops_at_done_errors_and_eof() {
         let t = || Echo { done: false };
-        let s = drive(
-            "t",
-            events(&["a", "stop", "never"]),
-            t(),
-            Duration::from_secs(5),
-        );
+        let s = drive("t", events(&["a", "stop", "never"]), t(), Duration::from_secs(5));
         assert_eq!(ids(s).await, vec![Ok("a".into())]);
-        let s = drive(
-            "t",
-            events(&["a", "fail", "never"]),
-            t(),
-            Duration::from_secs(5),
-        );
-        assert_eq!(
-            ids(s).await,
-            vec![Ok("a".into()), Err(ErrorKind::InvalidResponse)]
-        );
+        let s = drive("t", events(&["a", "fail", "never"]), t(), Duration::from_secs(5));
+        assert_eq!(ids(s).await, vec![Ok("a".into()), Err(ErrorKind::InvalidResponse)]);
         let s = drive("t", events(&["a"]), t(), Duration::from_secs(5));
         assert_eq!(ids(s).await, vec![Ok("a".into()), Ok("end".into())]);
     }
 
     #[tokio::test]
     async fn drive_idle_timeout() {
-        let s = drive(
-            "t",
-            stream::pending(),
-            Echo { done: false },
-            Duration::from_millis(20),
-        );
+        let s = drive("t", stream::pending(), Echo { done: false }, Duration::from_millis(20));
         assert_eq!(ids(s).await, vec![Err(ErrorKind::Timeout)]);
     }
 }

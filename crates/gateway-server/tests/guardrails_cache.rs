@@ -34,20 +34,10 @@ struct Upstream {
 
 impl Upstream {
     fn chats(&self) -> usize {
-        self.bodies
-            .lock()
-            .unwrap()
-            .iter()
-            .filter(|b| b.get("messages").is_some())
-            .count()
+        self.bodies.lock().unwrap().iter().filter(|b| b.get("messages").is_some()).count()
     }
     fn embeddings(&self) -> usize {
-        self.bodies
-            .lock()
-            .unwrap()
-            .iter()
-            .filter(|b| b.get("input").is_some())
-            .count()
+        self.bodies.lock().unwrap().iter().filter(|b| b.get("input").is_some()).count()
     }
     fn last(&self) -> Value {
         self.bodies.lock().unwrap().last().cloned().unwrap()
@@ -55,15 +45,7 @@ impl Upstream {
 }
 
 fn last_user_text(b: &Value) -> String {
-    b["messages"]
-        .as_array()
-        .unwrap()
-        .iter()
-        .rev()
-        .find(|m| m["role"] == "user")
-        .and_then(|m| m["content"].as_str())
-        .unwrap_or_default()
-        .to_string()
+    b["messages"].as_array().unwrap().iter().rev().find(|m| m["role"] == "user").and_then(|m| m["content"].as_str()).unwrap_or_default().to_string()
 }
 
 /// An OpenAI-compatible upstream answering `echo: <last user message>`.
@@ -80,22 +62,14 @@ async fn upstream() -> Upstream {
                 // The answer in two pieces, split mid-word.
                 let mid = text.char_indices().nth(text.chars().count() / 2).unwrap().0;
                 let chunk = |delta: Value, finish: Value, usage: Value| {
-                    let choices = if delta.is_null() {
-                        json!([])
-                    } else {
-                        json!([{"index": 0, "delta": delta, "finish_reason": finish}])
-                    };
+                    let choices = if delta.is_null() { json!([]) } else { json!([{"index": 0, "delta": delta, "finish_reason": finish}]) };
                     format!(
                         "data: {}\n\n",
                         json!({"id": "c1", "object": "chat.completion.chunk", "created": 1, "model": "gpt-4o", "choices": choices, "usage": usage})
                     )
                 };
                 let body = [
-                    chunk(
-                        json!({"role": "assistant", "content": &text[..mid]}),
-                        Value::Null,
-                        Value::Null,
-                    ),
+                    chunk(json!({"role": "assistant", "content": &text[..mid]}), Value::Null, Value::Null),
                     chunk(json!({"content": &text[mid..]}), Value::Null, Value::Null),
                     chunk(json!({}), json!("stop"), Value::Null),
                     chunk(Value::Null, Value::Null, usage),
@@ -122,13 +96,8 @@ async fn upstream() -> Upstream {
             )
         }
     };
-    let app = Router::new()
-        .route("/v1/chat/completions", post(chat))
-        .route("/v1/embeddings", post(embed));
-    Upstream {
-        url: serve(app).await,
-        ..up
-    }
+    let app = Router::new().route("/v1/chat/completions", post(chat)).route("/v1/embeddings", post(embed));
+    Upstream { url: serve(app).await, ..up }
 }
 
 use axum::Json;
@@ -174,26 +143,14 @@ async fn gateway(yaml: &str) -> Router {
         }),
         spend: None,
         guardrails: Arc::new(Guardrails::from_config(&config.guardrails, &env).unwrap()),
-        cache: Cache::from_settings(ls.cache, &ls.cache_params, &env)
-            .await
-            .unwrap()
-            .map(Arc::new),
+        cache: Cache::from_settings(ls.cache, &ls.cache_params, &env).await.unwrap().map(Arc::new),
     };
     sync(&state, &config).await.unwrap();
     router(state)
 }
 
-async fn call(
-    app: &Router,
-    method: &str,
-    path: &str,
-    key: &str,
-    body: Option<Value>,
-) -> (StatusCode, HeaderMap, Value) {
-    let mut req = Request::builder()
-        .method(method)
-        .uri(path)
-        .header("authorization", format!("Bearer {key}"));
+async fn call(app: &Router, method: &str, path: &str, key: &str, body: Option<Value>) -> (StatusCode, HeaderMap, Value) {
+    let mut req = Request::builder().method(method).uri(path).header("authorization", format!("Bearer {key}"));
     let body = match body {
         Some(b) => {
             req = req.header("content-type", "application/json");
@@ -205,8 +162,7 @@ async fn call(
     let status = resp.status();
     let headers = resp.headers().clone();
     let bytes = resp.into_body().collect().await.unwrap().to_bytes();
-    let v = serde_json::from_slice(&bytes)
-        .unwrap_or_else(|_| Value::String(String::from_utf8_lossy(&bytes).into()));
+    let v = serde_json::from_slice(&bytes).unwrap_or_else(|_| Value::String(String::from_utf8_lossy(&bytes).into()));
     (status, headers, v)
 }
 
@@ -222,10 +178,7 @@ async fn new_key(app: &Router, body: Value) -> String {
 
 async fn spend(app: &Router, key: &str) -> (f64, f64) {
     let (_, _, info) = call(app, "GET", "/key/info", key, None).await;
-    (
-        info["info"]["spend"].as_f64().unwrap(),
-        info["info"]["reserved_spend"].as_f64().unwrap(),
-    )
+    (info["info"]["spend"].as_f64().unwrap(), info["info"]["reserved_spend"].as_f64().unwrap())
 }
 
 /// Wait for a streamed call to settle.
@@ -272,37 +225,17 @@ async fn a_blocked_request_is_not_admitted_and_costs_nothing() {
     let up = upstream().await;
     let app = gateway(&format!("{}{FILTERS}", models(&up))).await;
     let key = new_key(&app, json!({"max_budget": 1.0, "rpm_limit": 1})).await;
-    let (s, h, v) = call(
-        &app,
-        "POST",
-        "/v1/chat/completions",
-        &key,
-        Some(chat("gpt", "tell me about Project-Zeus")),
-    )
-    .await;
+    let (s, h, v) = call(&app, "POST", "/v1/chat/completions", &key, Some(chat("gpt", "tell me about Project-Zeus"))).await;
     assert_eq!(s, StatusCode::BAD_REQUEST, "{v}");
     assert_eq!(v["error"]["type"], "guardrail_violation");
     assert_eq!(v["error"]["guardrail"], "no-secrets");
     assert_eq!(v["error"]["code"], "400");
-    assert!(
-        v["error"]["message"]
-            .as_str()
-            .unwrap()
-            .contains("project-zeus"),
-        "{v}"
-    );
+    assert!(v["error"]["message"].as_str().unwrap().contains("project-zeus"), "{v}");
     assert_eq!(h["x-litellm-applied-guardrails"], "no-secrets");
     assert_eq!(up.chats(), 0);
     assert_eq!(spend(&app, &key).await, (0.0, 0.0));
     // Not admitted: the key's one request per minute is still there.
-    let (s, h, v) = call(
-        &app,
-        "POST",
-        "/v1/chat/completions",
-        &key,
-        Some(chat("gpt", "hello")),
-    )
-    .await;
+    let (s, h, v) = call(&app, "POST", "/v1/chat/completions", &key, Some(chat("gpt", "hello"))).await;
     assert_eq!(s, StatusCode::OK, "{v}");
     assert_eq!(h["x-litellm-applied-guardrails"], "no-secrets");
     // Asking for an unknown guardrail is an error.
@@ -316,34 +249,17 @@ async fn a_blocked_request_is_not_admitted_and_costs_nothing() {
 async fn masking_reaches_the_provider() {
     let up = upstream().await;
     let app = gateway(&format!("{}{FILTERS}", models(&up))).await;
-    let (s, _, v) = call(
-        &app,
-        "POST",
-        "/v1/chat/completions",
-        MASTER,
-        Some(chat("gpt", "mail me at bob@example.com")),
-    )
-    .await;
+    let (s, _, v) = call(&app, "POST", "/v1/chat/completions", MASTER, Some(chat("gpt", "mail me at bob@example.com"))).await;
     assert_eq!(s, StatusCode::OK, "{v}");
     assert_eq!(last_user_text(&up.last()), "mail me at [EMAIL_REDACTED]");
-    assert_eq!(
-        v["choices"][0]["message"]["content"],
-        "echo: mail me at [EMAIL_REDACTED]"
-    );
+    assert_eq!(v["choices"][0]["message"]["content"], "echo: mail me at [EMAIL_REDACTED]");
     // Gateway-only fields never reach the provider.
     let mut body = chat("gpt", "hi");
     body["guardrails"] = json!(["clean-output"]);
     call(&app, "POST", "/v1/chat/completions", MASTER, Some(body)).await;
     assert!(up.last().get("guardrails").is_none());
     // Embedding inputs are masked too.
-    let (s, h, v) = call(
-        &app,
-        "POST",
-        "/v1/embeddings",
-        MASTER,
-        Some(json!({"model": "embed", "input": ["a@b.io", "plain"]})),
-    )
-    .await;
+    let (s, h, v) = call(&app, "POST", "/v1/embeddings", MASTER, Some(json!({"model": "embed", "input": ["a@b.io", "plain"]}))).await;
     assert_eq!(s, StatusCode::OK, "{v}");
     assert_eq!(up.last()["input"], json!(["[EMAIL_REDACTED]", "plain"]));
     assert_eq!(h["x-litellm-applied-guardrails"], "no-secrets");
@@ -356,14 +272,7 @@ async fn post_call_blocks_the_response_but_the_call_is_charged() {
     let key = new_key(&app, json!({"max_budget": 1.0})).await;
     let mut body = chat("gpt", "say forbidden");
     body["metadata"] = json!({"guardrails": ["clean-output"]});
-    let (s, h, v) = call(
-        &app,
-        "POST",
-        "/v1/chat/completions",
-        &key,
-        Some(body.clone()),
-    )
-    .await;
+    let (s, h, v) = call(&app, "POST", "/v1/chat/completions", &key, Some(body.clone())).await;
     assert_eq!(s, StatusCode::BAD_REQUEST, "{v}");
     assert_eq!(v["error"]["guardrail"], "clean-output");
     assert_eq!(h["x-litellm-applied-guardrails"], "no-secrets,clean-output");
@@ -405,30 +314,13 @@ async fn during_call_runs_alongside_the_provider() {
     );
     let app = gateway(&yaml).await;
     let key = new_key(&app, json!({"max_budget": 1.0})).await;
-    let (s, h, _) = call(
-        &app,
-        "POST",
-        "/v1/chat/completions",
-        &key,
-        Some(chat("gpt", "hello")),
-    )
-    .await;
+    let (s, h, _) = call(&app, "POST", "/v1/chat/completions", &key, Some(chat("gpt", "hello"))).await;
     assert_eq!(s, StatusCode::OK);
     assert_eq!(h["x-litellm-applied-guardrails"], "mod");
-    let (s, _, v) = call(
-        &app,
-        "POST",
-        "/v1/chat/completions",
-        &key,
-        Some(chat("gpt", "plan an attack")),
-    )
-    .await;
+    let (s, _, v) = call(&app, "POST", "/v1/chat/completions", &key, Some(chat("gpt", "plan an attack"))).await;
     assert_eq!(s, StatusCode::BAD_REQUEST, "{v}");
     assert_eq!(v["error"]["guardrail"], "mod");
-    assert_eq!(
-        v["error"]["details"]["violated_categories"],
-        json!(["violence"])
-    );
+    assert_eq!(v["error"]["details"]["violated_categories"], json!(["violence"]));
     // The provider was called both times (concurrently with the check).
     assert_eq!(up.chats(), 2);
     let mut body = chat("gpt", "plan an attack");
@@ -469,20 +361,10 @@ async fn presidio_tokens_are_restored_in_the_response() {
         models(&up)
     );
     let app = gateway(&yaml).await;
-    let (s, _, v) = call(
-        &app,
-        "POST",
-        "/v1/chat/completions",
-        MASTER,
-        Some(chat("gpt", "write to jane@corp.com")),
-    )
-    .await;
+    let (s, _, v) = call(&app, "POST", "/v1/chat/completions", MASTER, Some(chat("gpt", "write to jane@corp.com"))).await;
     assert_eq!(s, StatusCode::OK, "{v}");
     assert_eq!(last_user_text(&up.last()), "write to <EMAIL_ADDRESS_1>");
-    assert_eq!(
-        v["choices"][0]["message"]["content"],
-        "echo: write to jane@corp.com"
-    );
+    assert_eq!(v["choices"][0]["message"]["content"], "echo: write to jane@corp.com");
     // Streamed, with the token split across chunks by the upstream.
     let mut body = chat("gpt", "to jane@corp.com");
     body["stream"] = json!(true);
@@ -500,19 +382,8 @@ litellm_settings:
 async fn cache_hits_skip_the_provider_but_not_the_kernel() {
     let up = upstream().await;
     let app = gateway(&format!("{}{CACHE}", models(&up))).await;
-    let key = new_key(
-        &app,
-        json!({"models": ["gpt"], "max_budget": 1.0, "rpm_limit": 2}),
-    )
-    .await;
-    let (s, h1, v1) = call(
-        &app,
-        "POST",
-        "/v1/chat/completions",
-        &key,
-        Some(chat("gpt", "cache me")),
-    )
-    .await;
+    let key = new_key(&app, json!({"models": ["gpt"], "max_budget": 1.0, "rpm_limit": 2})).await;
+    let (s, h1, v1) = call(&app, "POST", "/v1/chat/completions", &key, Some(chat("gpt", "cache me"))).await;
     assert_eq!(s, StatusCode::OK, "{v1}");
     assert_eq!(h1["x-litellm-cache-hit"], "false");
     let spent = spend(&app, &key).await.0;
@@ -529,53 +400,18 @@ async fn cache_hits_skip_the_provider_but_not_the_kernel() {
     assert_eq!(up.chats(), 1);
     assert_eq!(spend(&app, &key).await, (spent, 0.0));
     // A hit still counts against the key's rate limit…
-    let (s, _, v) = call(
-        &app,
-        "POST",
-        "/v1/chat/completions",
-        &key,
-        Some(chat("gpt", "cache me")),
-    )
-    .await;
+    let (s, _, v) = call(&app, "POST", "/v1/chat/completions", &key, Some(chat("gpt", "cache me"))).await;
     assert_eq!(s, StatusCode::TOO_MANY_REQUESTS, "{v}");
     // …and needs access to the model.
     let other = new_key(&app, json!({"models": ["other"]})).await;
-    let (s, _, _) = call(
-        &app,
-        "POST",
-        "/v1/chat/completions",
-        &other,
-        Some(chat("gpt", "cache me")),
-    )
-    .await;
+    let (s, _, _) = call(&app, "POST", "/v1/chat/completions", &other, Some(chat("gpt", "cache me"))).await;
     assert_eq!(s, StatusCode::UNAUTHORIZED);
     let blocked = new_key(&app, json!({})).await;
-    call(
-        &app,
-        "POST",
-        "/key/block",
-        MASTER,
-        Some(json!({"key": blocked})),
-    )
-    .await;
-    let (s, _, _) = call(
-        &app,
-        "POST",
-        "/v1/chat/completions",
-        &blocked,
-        Some(chat("gpt", "cache me")),
-    )
-    .await;
+    call(&app, "POST", "/key/block", MASTER, Some(json!({"key": blocked}))).await;
+    let (s, _, _) = call(&app, "POST", "/v1/chat/completions", &blocked, Some(chat("gpt", "cache me"))).await;
     assert_eq!(s, StatusCode::UNAUTHORIZED);
     // Another model group, another entry.
-    let (_, h, _) = call(
-        &app,
-        "POST",
-        "/v1/chat/completions",
-        MASTER,
-        Some(chat("other", "cache me")),
-    )
-    .await;
+    let (_, h, _) = call(&app, "POST", "/v1/chat/completions", MASTER, Some(chat("other", "cache me"))).await;
     assert_eq!(h["x-litellm-cache-hit"], "false");
     assert_eq!(up.chats(), 2);
     // Controls: no-cache reads past the cache, no-store does not write.
@@ -586,14 +422,7 @@ async fn cache_hits_skip_the_provider_but_not_the_kernel() {
     assert_eq!(up.chats(), 3);
     let mut body = chat("gpt", "do not keep");
     body["cache"] = json!({"no-store": true});
-    call(
-        &app,
-        "POST",
-        "/v1/chat/completions",
-        MASTER,
-        Some(body.clone()),
-    )
-    .await;
+    call(&app, "POST", "/v1/chat/completions", MASTER, Some(body.clone())).await;
     body["cache"] = json!({});
     let (_, h, _) = call(&app, "POST", "/v1/chat/completions", MASTER, Some(body)).await;
     assert_eq!(h["x-litellm-cache-hit"], "false");
@@ -613,26 +442,12 @@ async fn cached_answers_replay_as_streams() {
     // A streamed miss is stored when the stream ends.
     let mut body = chat("gpt", "stream me");
     body["stream"] = json!(true);
-    let (_, h, v) = call(
-        &app,
-        "POST",
-        "/v1/chat/completions",
-        &key,
-        Some(body.clone()),
-    )
-    .await;
+    let (_, h, v) = call(&app, "POST", "/v1/chat/completions", &key, Some(body.clone())).await;
     assert_eq!(h["x-litellm-cache-hit"], "false");
     assert_eq!(streamed_text(v.as_str().unwrap()), "echo: stream me");
     spend_settled(&app, &key).await;
     // Served whole from the stored stream.
-    let (s, h, v) = call(
-        &app,
-        "POST",
-        "/v1/chat/completions",
-        &key,
-        Some(chat("gpt", "stream me")),
-    )
-    .await;
+    let (s, h, v) = call(&app, "POST", "/v1/chat/completions", &key, Some(chat("gpt", "stream me"))).await;
     assert_eq!(s, StatusCode::OK, "{v}");
     assert_eq!(h["x-litellm-cache-hit"], "true");
     assert_eq!(v["choices"][0]["message"]["content"], "echo: stream me");
@@ -659,23 +474,10 @@ async fn embeddings_are_cached() {
     let body = json!({"model": "embed", "input": "vectorise me"});
     let (_, h1, v1) = call(&app, "POST", "/v1/embeddings", MASTER, Some(body.clone())).await;
     let (_, h2, v2) = call(&app, "POST", "/v1/embeddings", MASTER, Some(body)).await;
-    assert_eq!(
-        (
-            h1["x-litellm-cache-hit"].to_str().unwrap(),
-            h2["x-litellm-cache-hit"].to_str().unwrap()
-        ),
-        ("false", "true")
-    );
+    assert_eq!((h1["x-litellm-cache-hit"].to_str().unwrap(), h2["x-litellm-cache-hit"].to_str().unwrap()), ("false", "true"));
     assert_eq!(v1, v2);
     assert_eq!(up.embeddings(), 1);
-    let (_, h, _) = call(
-        &app,
-        "POST",
-        "/v1/embeddings",
-        MASTER,
-        Some(json!({"model": "embed", "input": "vectorise me", "dimensions": 2})),
-    )
-    .await;
+    let (_, h, _) = call(&app, "POST", "/v1/embeddings", MASTER, Some(json!({"model": "embed", "input": "vectorise me", "dimensions": 2}))).await;
     assert_eq!(h["x-litellm-cache-hit"], "false");
 }
 
@@ -684,38 +486,14 @@ async fn guardrails_apply_to_cache_hits() {
     let up = upstream().await;
     let app = gateway(&format!("{}{CACHE}{FILTERS}", models(&up))).await;
     // Masked before the key is computed: two addresses, one entry.
-    let (_, h1, _) = call(
-        &app,
-        "POST",
-        "/v1/chat/completions",
-        MASTER,
-        Some(chat("gpt", "to a@x.io")),
-    )
-    .await;
-    let (_, h2, v) = call(
-        &app,
-        "POST",
-        "/v1/chat/completions",
-        MASTER,
-        Some(chat("gpt", "to b@y.io")),
-    )
-    .await;
+    let (_, h1, _) = call(&app, "POST", "/v1/chat/completions", MASTER, Some(chat("gpt", "to a@x.io"))).await;
+    let (_, h2, v) = call(&app, "POST", "/v1/chat/completions", MASTER, Some(chat("gpt", "to b@y.io"))).await;
     assert_eq!(h2["x-litellm-cache-hit"], "true");
     assert_eq!(h1["x-litellm-cache-key"], h2["x-litellm-cache-key"]);
-    assert_eq!(
-        v["choices"][0]["message"]["content"],
-        "echo: to [EMAIL_REDACTED]"
-    );
+    assert_eq!(v["choices"][0]["message"]["content"], "echo: to [EMAIL_REDACTED]");
     // A cached answer is still checked by post_call guardrails.
     let mut body = chat("gpt", "say forbidden");
-    call(
-        &app,
-        "POST",
-        "/v1/chat/completions",
-        MASTER,
-        Some(body.clone()),
-    )
-    .await;
+    call(&app, "POST", "/v1/chat/completions", MASTER, Some(body.clone())).await;
     body["guardrails"] = json!(["clean-output"]);
     let (s, h, _) = call(&app, "POST", "/v1/chat/completions", MASTER, Some(body)).await;
     assert_eq!(s, StatusCode::BAD_REQUEST);
@@ -731,74 +509,28 @@ async fn redis_cache() {
     };
     let up = upstream().await;
     let ns = format!("test-{}", std::process::id());
-    let yaml = format!(
-        "{}\nlitellm_settings:\n  cache: true\n  cache_params: {{type: redis, url: '{url}', ttl: 30, namespace: '{ns}'}}\n",
-        models(&up)
-    );
+    let yaml =
+        format!("{}\nlitellm_settings:\n  cache: true\n  cache_params: {{type: redis, url: '{url}', ttl: 30, namespace: '{ns}'}}\n", models(&up));
     let app = gateway(&yaml).await;
     let key = new_key(&app, json!({"rpm_limit": 2})).await;
     let text = format!("redis {}", uuid::Uuid::new_v4());
-    let (_, h1, v1) = call(
-        &app,
-        "POST",
-        "/v1/chat/completions",
-        &key,
-        Some(chat("gpt", &text)),
-    )
-    .await;
+    let (_, h1, v1) = call(&app, "POST", "/v1/chat/completions", &key, Some(chat("gpt", &text))).await;
     assert_eq!(h1["x-litellm-cache-hit"], "false");
-    assert!(
-        h1["x-litellm-cache-key"]
-            .to_str()
-            .unwrap()
-            .starts_with(&format!("{ns}:"))
-    );
-    let (_, h2, v2) = call(
-        &app,
-        "POST",
-        "/v1/chat/completions",
-        &key,
-        Some(chat("gpt", &text)),
-    )
-    .await;
+    assert!(h1["x-litellm-cache-key"].to_str().unwrap().starts_with(&format!("{ns}:")));
+    let (_, h2, v2) = call(&app, "POST", "/v1/chat/completions", &key, Some(chat("gpt", &text))).await;
     assert_eq!(h2["x-litellm-cache-hit"], "true");
     assert_eq!(v1, v2);
     assert_eq!(up.chats(), 1);
     // The kernel still limits hits.
-    assert_eq!(
-        call(
-            &app,
-            "POST",
-            "/v1/chat/completions",
-            &key,
-            Some(chat("gpt", &text))
-        )
-        .await
-        .0,
-        StatusCode::TOO_MANY_REQUESTS
-    );
+    assert_eq!(call(&app, "POST", "/v1/chat/completions", &key, Some(chat("gpt", &text))).await.0, StatusCode::TOO_MANY_REQUESTS);
     // A second gateway sharing the Redis sees the entry.
     let app2 = gateway(&yaml).await;
-    let (_, h3, _) = call(
-        &app2,
-        "POST",
-        "/v1/chat/completions",
-        MASTER,
-        Some(chat("gpt", &text)),
-    )
-    .await;
+    let (_, h3, _) = call(&app2, "POST", "/v1/chat/completions", MASTER, Some(chat("gpt", &text))).await;
     assert_eq!(h3["x-litellm-cache-hit"], "true");
     // The entry expires with its TTL.
     let mut body = chat("gpt", &format!("{text} short"));
     body["cache"] = json!({"ttl": 1});
-    call(
-        &app2,
-        "POST",
-        "/v1/chat/completions",
-        MASTER,
-        Some(body.clone()),
-    )
-    .await;
+    call(&app2, "POST", "/v1/chat/completions", MASTER, Some(body.clone())).await;
     tokio::time::sleep(Duration::from_millis(1200)).await;
     let (_, h, _) = call(&app2, "POST", "/v1/chat/completions", MASTER, Some(body)).await;
     assert_eq!(h["x-litellm-cache-hit"], "false");

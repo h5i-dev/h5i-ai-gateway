@@ -65,11 +65,7 @@ impl Pricing {
     /// `input_cost_per_pixel` times the pixels (LiteLLM's
     /// `default_image_cost_calculator` order).
     pub fn usd_per_image(&self, width: u64, height: u64) -> Option<f64> {
-        self.input_cost_per_image
-            .or(self.output_cost_per_image)
-            .or(self
-                .input_cost_per_pixel
-                .map(|p| p * width.saturating_mul(height) as f64))
+        self.input_cost_per_image.or(self.output_cost_per_image).or(self.input_cost_per_pixel.map(|p| p * width.saturating_mul(height) as f64))
     }
 }
 
@@ -121,23 +117,14 @@ pub fn image_variants(provider: &str, model: &str) -> Vec<ImageVariant> {
         let Some(usd_per_image) = p.usd_per_image(width, height) else {
             continue;
         };
-        let v = ImageVariant {
-            quality: quality.map(str::to_owned),
-            width,
-            height,
-            usd_per_image,
-        };
+        let v = ImageVariant { quality: quality.map(str::to_owned), width, height, usd_per_image };
         if own {
             specific.push(v);
         } else {
             generic.push(v);
         }
     }
-    let mut out = if specific.is_empty() {
-        generic
-    } else {
-        specific
-    };
+    let mut out = if specific.is_empty() { generic } else { specific };
     out.sort_by(|a, b| (&a.quality, a.width, a.height).cmp(&(&b.quality, b.width, b.height)));
     out
 }
@@ -153,20 +140,13 @@ pub fn lookup(model: &str) -> Option<Pricing> {
     if let Some((_, rest)) = model.split_once('/') {
         return table.get(rest).cloned();
     }
-    PROVIDERS
-        .iter()
-        .flat_map(|s| s.names)
-        .find_map(|name| table.get(&format!("{name}/{model}")))
-        .cloned()
+    PROVIDERS.iter().flat_map(|s| s.names).find_map(|name| table.get(&format!("{name}/{model}"))).cloned()
 }
 
 /// Look up `"{provider}/{model}"` first (provider-specific prices win), then
 /// fall back to [`lookup`].
 pub fn lookup_with_provider(provider: &str, model: &str) -> Option<Pricing> {
-    TABLE
-        .get(&format!("{provider}/{model}"))
-        .cloned()
-        .or_else(|| lookup(model))
+    TABLE.get(&format!("{provider}/{model}")).cloned().or_else(|| lookup(model))
 }
 
 /// Convert USD per token to integer nano-dollars (1e-9 USD) per token,
@@ -179,11 +159,7 @@ pub fn to_nano_per_token(usd_per_token: f64) -> u64 {
     }
     let nano = usd_per_token * 1e9;
     let nearest = nano.round();
-    let value = if (nano - nearest).abs() <= nearest.max(1.0) * 1e-9 {
-        nearest
-    } else {
-        nano.ceil()
-    };
+    let value = if (nano - nearest).abs() <= nearest.max(1.0) * 1e-9 { nearest } else { nano.ceil() };
     // `as` saturates for out-of-range floats.
     value as u64
 }
@@ -237,9 +213,7 @@ fn add_legacy_image_prices(table: &mut HashMap<String, Pricing>) {
         ..Pricing::default()
     };
     for (key, price) in LEGACY_IMAGE_PRICES {
-        table
-            .entry((*key).to_owned())
-            .or_insert_with(|| image(Some(*price)));
+        table.entry((*key).to_owned()).or_insert_with(|| image(Some(*price)));
     }
     for model in ["dall-e-2", "dall-e-3"] {
         table.entry(model.to_owned()).or_insert_with(|| image(None));
@@ -273,41 +247,18 @@ mod tests {
         // With a prefix that is not a key: stripped.
         assert_eq!(lookup("openai/gpt-4o"), lookup("gpt-4o"));
         // Bare name only present with a provider prefix.
-        let bare = TABLE
-            .keys()
-            .find_map(|k| {
-                k.strip_prefix("gemini/")
-                    .filter(|b| !TABLE.contains_key(*b))
-            })
-            .expect("some gemini/ key without bare twin");
+        let bare =
+            TABLE.keys().find_map(|k| k.strip_prefix("gemini/").filter(|b| !TABLE.contains_key(*b))).expect("some gemini/ key without bare twin");
         assert_eq!(lookup(bare), TABLE.get(&format!("gemini/{bare}")).cloned());
         // Provider-specific entry preferred.
-        assert_eq!(
-            lookup_with_provider("azure", "gpt-4o")
-                .unwrap()
-                .litellm_provider
-                .as_deref(),
-            Some("azure")
-        );
-        assert_eq!(
-            lookup_with_provider("groq", "gpt-4o")
-                .unwrap()
-                .litellm_provider
-                .as_deref(),
-            Some("openai")
-        );
+        assert_eq!(lookup_with_provider("azure", "gpt-4o").unwrap().litellm_provider.as_deref(), Some("azure"));
+        assert_eq!(lookup_with_provider("groq", "gpt-4o").unwrap().litellm_provider.as_deref(), Some("openai"));
         assert_eq!(lookup("no-such-model-xyz"), None);
     }
 
     #[test]
     fn anthropic_cache_prices() {
-        let p = TABLE
-            .values()
-            .find(|p| {
-                p.litellm_provider.as_deref() == Some("anthropic")
-                    && p.mode.as_deref() == Some("chat")
-            })
-            .unwrap();
+        let p = TABLE.values().find(|p| p.litellm_provider.as_deref() == Some("anthropic") && p.mode.as_deref() == Some("chat")).unwrap();
         assert!(p.cache_read_input_token_cost.is_some());
     }
 
@@ -347,10 +298,7 @@ mod tests {
         let i = lookup("gemini/imagen-3.0-generate-001").unwrap();
         assert_eq!(i.usd_per_image(1024, 1024), Some(0.04));
         // Per-pixel prices scale with the size.
-        let p = Pricing {
-            input_cost_per_pixel: Some(1e-8),
-            ..Pricing::default()
-        };
+        let p = Pricing { input_cost_per_pixel: Some(1e-8), ..Pricing::default() };
         assert_eq!(p.usd_per_image(1000, 1000), Some(0.01));
     }
 
@@ -360,16 +308,10 @@ mod tests {
         let v = image_variants("openai", "dall-e-3");
         assert_eq!(v.len(), 6);
         let find = |v: &[ImageVariant], q: &str, w: u64, h: u64| {
-            v.iter()
-                .find(|v| v.quality.as_deref() == Some(q) && v.width == w && v.height == h)
-                .unwrap()
-                .usd_per_image
+            v.iter().find(|v| v.quality.as_deref() == Some(q) && v.width == w && v.height == h).unwrap().usd_per_image
         };
         assert_eq!(find(&v, "hd", 1024, 1792), 0.12);
-        assert_eq!(
-            lookup("dall-e-3").unwrap().mode.as_deref(),
-            Some("image_generation")
-        );
+        assert_eq!(lookup("dall-e-3").unwrap().mode.as_deref(), Some("image_generation"));
         // Azure's are per pixel, under the provider prefix.
         let a = image_variants("azure", "dall-e-3");
         assert_eq!(a.len(), 6);

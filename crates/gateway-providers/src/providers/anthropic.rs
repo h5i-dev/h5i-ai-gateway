@@ -23,18 +23,14 @@ use std::collections::HashMap;
 
 use serde_json::{Map, Value, json};
 
-use super::{
-    HttpRequest, StreamTranslator, gen_id, map_finish_reason, now_unix, parse_arguments,
-    parse_data_url, parse_json,
-};
+use super::{HttpRequest, StreamTranslator, gen_id, map_finish_reason, now_unix, parse_arguments, parse_data_url, parse_json};
 use crate::deployment::Deployment;
 use crate::error::ProviderError;
 use crate::pricing;
 use crate::sse::SseEvent;
 use crate::types::{
-    ChatChunk, ChatMessage, ChatRequest, ChatResponse, Choice, ContentPart, Delta, FileContent,
-    FunctionCallDelta, ImageUrl, JsonObject, MessageContent, PromptTokensDetails, ResponseFormat,
-    Role, Tool, ToolCall, ToolCallDelta, ToolChoice, Usage, finish_reason, part_type,
+    ChatChunk, ChatMessage, ChatRequest, ChatResponse, Choice, ContentPart, Delta, FileContent, FunctionCallDelta, ImageUrl, JsonObject,
+    MessageContent, PromptTokensDetails, ResponseFormat, Role, Tool, ToolCall, ToolCallDelta, ToolChoice, Usage, finish_reason, part_type,
 };
 
 pub(crate) const ANTHROPIC_VERSION: &str = "2023-06-01";
@@ -49,14 +45,7 @@ const PLACEHOLDER: &str = ".";
 const THINKING_BUDGETS: &[(&str, u64)] = &[("low", 1024), ("medium", 2048), ("high", 4096)];
 const MIN_THINKING_BUDGET: u64 = 1024;
 /// Native Messages API fields forwarded from the request's extra fields.
-const PASSTHROUGH_FIELDS: &[&str] = &[
-    "top_k",
-    "thinking",
-    "service_tier",
-    "container",
-    "mcp_servers",
-    "context_management",
-];
+const PASSTHROUGH_FIELDS: &[&str] = &["top_k", "thinking", "service_tier", "container", "mcp_servers", "context_management"];
 
 fn messages_url(dep: &Deployment) -> String {
     let base = dep.api_base().trim_end_matches('/');
@@ -79,11 +68,7 @@ fn json_schema_of(format: Option<&ResponseFormat>) -> Option<Value> {
     f.json_schema.as_ref()?.schema.clone()
 }
 
-pub(crate) fn chat_request(
-    dep: &Deployment,
-    req: &ChatRequest,
-    stream: bool,
-) -> Result<HttpRequest, ProviderError> {
+pub(crate) fn chat_request(dep: &Deployment, req: &ChatRequest, stream: bool) -> Result<HttpRequest, ProviderError> {
     let provider = dep.provider.name();
     let (system, messages) = translate_messages(provider, &req.messages)?;
 
@@ -101,11 +86,8 @@ pub(crate) fn chat_request(
     }
 
     let explicit_max = req.max_output_tokens();
-    let mut max_tokens = explicit_max.unwrap_or_else(|| {
-        pricing::lookup_with_provider(provider, &dep.model)
-            .and_then(|p| p.max_output_tokens)
-            .unwrap_or(DEFAULT_MAX_TOKENS)
-    });
+    let mut max_tokens = explicit_max
+        .unwrap_or_else(|| pricing::lookup_with_provider(provider, &dep.model).and_then(|p| p.max_output_tokens).unwrap_or(DEFAULT_MAX_TOKENS));
     if !body.contains_key("thinking")
         && let Some(effort) = req.reasoning_effort.as_deref()
         && let Some(&(_, mut budget)) = THINKING_BUDGETS.iter().find(|(e, _)| *e == effort)
@@ -116,24 +98,13 @@ pub(crate) fn chat_request(
             max_tokens = budget + DEFAULT_MAX_TOKENS;
         }
         if budget >= MIN_THINKING_BUDGET {
-            body.insert(
-                "thinking".into(),
-                json!({"type": "enabled", "budget_tokens": budget}),
-            );
+            body.insert("thinking".into(), json!({"type": "enabled", "budget_tokens": budget}));
         }
     }
     body.insert("max_tokens".into(), json!(max_tokens));
-    let thinking = body
-        .get("thinking")
-        .and_then(|t| t.get("type"))
-        .is_some_and(|t| t != "disabled");
+    let thinking = body.get("thinking").and_then(|t| t.get("type")).is_some_and(|t| t != "disabled");
 
-    let mut tools: Vec<Value> = req
-        .tools
-        .iter()
-        .flatten()
-        .map(translate_tool)
-        .collect::<Result<_, _>>()?;
+    let mut tools: Vec<Value> = req.tools.iter().flatten().map(translate_tool).collect::<Result<_, _>>()?;
     let mut tool_choice = translate_tool_choice(req.tool_choice.as_ref(), req.parallel_tool_calls);
     if let Some(schema) = json_schema_of(req.response_format.as_ref()) {
         let mut input_schema = json!({"type": "object"});
@@ -155,11 +126,7 @@ pub(crate) fn chat_request(
 
     if let Some(stop) = &req.stop {
         // Anthropic rejects whitespace-only stop sequences.
-        let stops: Vec<String> = stop
-            .to_vec()
-            .into_iter()
-            .filter(|s| !s.trim().is_empty())
-            .collect();
+        let stops: Vec<String> = stop.to_vec().into_iter().filter(|s| !s.trim().is_empty()).collect();
         if !stops.is_empty() {
             body.insert("stop_sequences".into(), json!(stops));
         }
@@ -171,11 +138,7 @@ pub(crate) fn chat_request(
         body.insert("top_p".into(), json!(p));
     }
     // Anthropic rejects user ids that look like e-mail addresses.
-    if let Some(user) = req
-        .user
-        .as_deref()
-        .filter(|u| !u.is_empty() && !u.contains('@'))
-    {
+    if let Some(user) = req.user.as_deref().filter(|u| !u.is_empty() && !u.contains('@')) {
         body.insert("metadata".into(), json!({"user_id": user}));
     }
     if stream {
@@ -185,8 +148,7 @@ pub(crate) fn chat_request(
         body.insert(k.clone(), v.clone());
     }
 
-    let mut http = HttpRequest::new(messages_url(dep), Value::Object(body))
-        .header("anthropic-version", ANTHROPIC_VERSION);
+    let mut http = HttpRequest::new(messages_url(dep), Value::Object(body)).header("anthropic-version", ANTHROPIC_VERSION);
     if let Some(key) = &dep.api_key {
         http = http.header("x-api-key", key.expose());
     }
@@ -194,10 +156,7 @@ pub(crate) fn chat_request(
 }
 
 /// Returns `(system blocks, messages)`.
-fn translate_messages(
-    provider: &str,
-    msgs: &[ChatMessage],
-) -> Result<(Vec<Value>, Vec<Value>), ProviderError> {
+fn translate_messages(provider: &str, msgs: &[ChatMessage]) -> Result<(Vec<Value>, Vec<Value>), ProviderError> {
     let mut system = Vec::new();
     let mut turns: Vec<(&'static str, Vec<Value>)> = Vec::new();
     let mut push = |role: &'static str, blocks: Vec<Value>| {
@@ -255,8 +214,7 @@ fn translate_messages(
         .map(|(role, mut content)| {
             if role == "user" {
                 // tool_result blocks must precede any other content.
-                content
-                    .sort_by_key(|b| b.get("type").and_then(Value::as_str) != Some("tool_result"));
+                content.sort_by_key(|b| b.get("type").and_then(Value::as_str) != Some("tool_result"));
             }
             json!({"role": role, "content": content})
         })
@@ -298,32 +256,16 @@ fn user_blocks(provider: &str, m: &ChatMessage) -> Result<Vec<Value>, ProviderEr
 /// Translate one OpenAI content part; unknown part types are assumed to be
 /// native Anthropic blocks and pass through unchanged.
 fn content_block(provider: &str, p: &ContentPart) -> Result<Option<Value>, ProviderError> {
-    let missing = |field: &str| {
-        ProviderError::bad_request(provider, format!("{} part without '{field}'", p.kind))
-    };
+    let missing = |field: &str| ProviderError::bad_request(provider, format!("{} part without '{field}'", p.kind));
     Ok(match p.kind.as_str() {
-        part_type::TEXT => p
-            .text
-            .as_deref()
-            .filter(|t| !t.is_empty())
-            .map(|t| text_block(t, None)),
-        part_type::IMAGE_URL => Some(image_block(
-            provider,
-            p.image_url.as_ref().ok_or_else(|| missing("image_url"))?,
-        )?),
-        part_type::FILE => Some(document_block(
-            provider,
-            p.file.as_ref().ok_or_else(|| missing("file"))?,
-        )?),
+        part_type::TEXT => p.text.as_deref().filter(|t| !t.is_empty()).map(|t| text_block(t, None)),
+        part_type::IMAGE_URL => Some(image_block(provider, p.image_url.as_ref().ok_or_else(|| missing("image_url"))?)?),
+        part_type::FILE => Some(document_block(provider, p.file.as_ref().ok_or_else(|| missing("file"))?)?),
         part_type::INPUT_AUDIO => {
-            return Err(ProviderError::bad_request(
-                provider,
-                "Anthropic does not support audio input",
-            ));
+            return Err(ProviderError::bad_request(provider, "Anthropic does not support audio input"));
         }
         _ => {
-            let mut raw = serde_json::to_value(p)
-                .map_err(|e| ProviderError::bad_request(provider, e.to_string()))?;
+            let mut raw = serde_json::to_value(p).map_err(|e| ProviderError::bad_request(provider, e.to_string()))?;
             if let Value::Object(o) = &mut raw {
                 o.remove("cache_control");
             }
@@ -336,39 +278,23 @@ fn image_block(provider: &str, image: &ImageUrl) -> Result<Value, ProviderError>
     let url = image.url.as_str();
     if let Some((mime, data)) = parse_data_url(url) {
         let media_type = image.format.as_deref().unwrap_or(mime);
-        let kind = if media_type.starts_with("image/") {
-            "image"
-        } else {
-            "document"
-        };
-        return Ok(
-            json!({"type": kind, "source": {"type": "base64", "media_type": media_type, "data": data}}),
-        );
+        let kind = if media_type.starts_with("image/") { "image" } else { "document" };
+        return Ok(json!({"type": kind, "source": {"type": "base64", "media_type": media_type, "data": data}}));
     }
     if url.starts_with("https://") || url.starts_with("http://") {
         return Ok(json!({"type": "image", "source": {"type": "url", "url": url}}));
     }
-    Err(ProviderError::bad_request(
-        provider,
-        "image_url must be an http(s) URL or a base64 data URL",
-    ))
+    Err(ProviderError::bad_request(provider, "image_url must be an http(s) URL or a base64 data URL"))
 }
 
 fn document_block(provider: &str, file: &FileContent) -> Result<Value, ProviderError> {
     let mut block = if let Some((mime, data)) = file.file_data.as_deref().and_then(parse_data_url) {
-        let kind = if mime.starts_with("image/") {
-            "image"
-        } else {
-            "document"
-        };
+        let kind = if mime.starts_with("image/") { "image" } else { "document" };
         json!({"type": kind, "source": {"type": "base64", "media_type": mime, "data": data}})
     } else if let Some(id) = &file.file_id {
         json!({"type": "document", "source": {"type": "file", "file_id": id}})
     } else {
-        return Err(ProviderError::bad_request(
-            provider,
-            "file part needs file_data (base64 data URL) or file_id",
-        ));
+        return Err(ProviderError::bad_request(provider, "file part needs file_data (base64 data URL) or file_id"));
     };
     if let (Some(name), Some("document")) = (&file.filename, block["type"].as_str()) {
         block["title"] = Value::String(name.clone());
@@ -378,21 +304,8 @@ fn document_block(provider: &str, file: &FileContent) -> Result<Value, ProviderE
 
 /// Anthropic tool ids must match `^[a-zA-Z0-9_-]+$`.
 fn sanitize_tool_id(id: &str) -> String {
-    let s: String = id
-        .chars()
-        .map(|c| {
-            if c.is_ascii_alphanumeric() || c == '_' || c == '-' {
-                c
-            } else {
-                '_'
-            }
-        })
-        .collect();
-    if s.is_empty() {
-        "tool_use_id".to_owned()
-    } else {
-        s
-    }
+    let s: String = id.chars().map(|c| if c.is_ascii_alphanumeric() || c == '_' || c == '-' { c } else { '_' }).collect();
+    if s.is_empty() { "tool_use_id".to_owned() } else { s }
 }
 
 /// Synthetic id linking a legacy `function_call` to its `role: function`
@@ -406,10 +319,7 @@ fn tool_result(provider: &str, m: &ChatMessage) -> Result<Value, ProviderError> 
         (Some(id), _) => sanitize_tool_id(id),
         (None, Some(name)) if m.role == Role::Function => legacy_function_id(name),
         _ => {
-            return Err(ProviderError::bad_request(
-                provider,
-                "tool message without tool_call_id",
-            ));
+            return Err(ProviderError::bad_request(provider, "tool message without tool_call_id"));
         }
     };
     let content = match &m.content {
@@ -479,10 +389,7 @@ fn translate_tool(tool: &Tool) -> Result<Value, ProviderError> {
         raw.insert("type".into(), Value::String(tool.kind.clone()));
         return Ok(Value::Object(raw));
     };
-    let mut schema = f
-        .parameters
-        .clone()
-        .unwrap_or_else(|| json!({"type": "object", "properties": {}}));
+    let mut schema = f.parameters.clone().unwrap_or_else(|| json!({"type": "object", "properties": {}}));
     if let Value::Object(s) = &mut schema {
         s.entry("type").or_insert_with(|| json!("object"));
     }
@@ -540,27 +447,15 @@ pub(crate) fn usage_from(u: &JsonObject) -> Usage {
 
 fn finish_reason_for(stop_reason: Option<&str>, json_mode: bool) -> Option<String> {
     let reason = map_finish_reason(stop_reason?);
-    Some(
-        if json_mode && reason == finish_reason::TOOL_CALLS {
-            finish_reason::STOP
-        } else {
-            reason
-        }
-        .to_owned(),
-    )
+    Some(if json_mode && reason == finish_reason::TOOL_CALLS { finish_reason::STOP } else { reason }.to_owned())
 }
 
-pub(crate) fn parse_chat(
-    dep: &Deployment,
-    req: &ChatRequest,
-    body: &str,
-) -> Result<ChatResponse, ProviderError> {
+pub(crate) fn parse_chat(dep: &Deployment, req: &ChatRequest, body: &str) -> Result<ChatResponse, ProviderError> {
     let provider = dep.provider.name();
     let json_mode = json_schema_of(req.response_format.as_ref()).is_some();
     let v: Value = parse_json(provider, body)?;
-    let blocks = v.get("content").and_then(Value::as_array).ok_or_else(|| {
-        ProviderError::invalid_response(provider, "Messages response without content")
-    })?;
+    let blocks =
+        v.get("content").and_then(Value::as_array).ok_or_else(|| ProviderError::invalid_response(provider, "Messages response without content"))?;
 
     let mut text = String::new();
     let mut reasoning = String::new();
@@ -575,11 +470,7 @@ pub(crate) fn parse_chat(
                 if json_mode && name == JSON_TOOL_NAME {
                     text.push_str(&input);
                 } else {
-                    tool_calls.push(ToolCall::function(
-                        b["id"].as_str().unwrap_or_default(),
-                        name,
-                        input,
-                    ));
+                    tool_calls.push(ToolCall::function(b["id"].as_str().unwrap_or_default(), name, input));
                 }
             }
             Some("thinking") => {
@@ -602,15 +493,11 @@ pub(crate) fn parse_chat(
         message.reasoning_content = Some(reasoning);
     }
     if !thinking_blocks.is_empty() {
-        message
-            .extra
-            .insert("thinking_blocks".into(), Value::Array(thinking_blocks));
+        message.extra.insert("thinking_blocks".into(), Value::Array(thinking_blocks));
     }
 
     Ok(ChatResponse {
-        id: v["id"]
-            .as_str()
-            .map_or_else(|| gen_id("chatcmpl-"), str::to_owned),
+        id: v["id"].as_str().map_or_else(|| gen_id("chatcmpl-"), str::to_owned),
         object: "chat.completion".into(),
         created: now_unix(),
         model: v["model"].as_str().unwrap_or(&dep.model).to_owned(),
@@ -672,32 +559,17 @@ impl AnthropicStream {
         if text.is_empty() {
             return Vec::new();
         }
-        vec![self.chunk(
-            Delta {
-                content: Some(text.to_owned()),
-                ..Delta::default()
-            },
-            None,
-        )]
+        vec![self.chunk(Delta { content: Some(text.to_owned()), ..Delta::default() }, None)]
     }
 
     fn tool_delta(&self, delta: ToolCallDelta) -> ChatChunk {
-        self.chunk(
-            Delta {
-                tool_calls: Some(vec![delta]),
-                ..Delta::default()
-            },
-            None,
-        )
+        self.chunk(Delta { tool_calls: Some(vec![delta]), ..Delta::default() }, None)
     }
 
     fn args_delta(&self, index: u32, args: &str) -> ChatChunk {
         self.tool_delta(ToolCallDelta {
             index,
-            function: Some(FunctionCallDelta {
-                name: None,
-                arguments: Some(args.to_owned()),
-            }),
+            function: Some(FunctionCallDelta { name: None, arguments: Some(args.to_owned()) }),
             ..ToolCallDelta::default()
         })
     }
@@ -718,140 +590,102 @@ impl StreamTranslator for AnthropicStream {
         let provider = "anthropic";
         let v: Value = parse_json(provider, &event.data)?;
         let index = v.get("index").and_then(Value::as_u64).unwrap_or(0);
-        Ok(
-            match v.get("type").and_then(Value::as_str).unwrap_or_default() {
-                "message_start" => {
-                    let msg = &v["message"];
-                    if let Some(id) = msg["id"].as_str() {
-                        self.id = id.to_owned();
-                    }
-                    if let Some(model) = msg["model"].as_str() {
-                        self.model = model.to_owned();
-                    }
-                    self.merge_usage(msg.get("usage"));
-                    vec![self.chunk(
-                        Delta {
-                            role: Some(Role::Assistant),
-                            content: Some(String::new()),
-                            ..Delta::default()
-                        },
-                        None,
-                    )]
+        Ok(match v.get("type").and_then(Value::as_str).unwrap_or_default() {
+            "message_start" => {
+                let msg = &v["message"];
+                if let Some(id) = msg["id"].as_str() {
+                    self.id = id.to_owned();
                 }
-                "content_block_start" => {
-                    let block = &v["content_block"];
-                    match block["type"].as_str().unwrap_or_default() {
-                        "text" => {
-                            self.blocks.insert(index, Block::Text);
-                            self.content(block["text"].as_str().unwrap_or_default())
-                        }
-                        "tool_use" => {
-                            let name = block["name"].as_str().unwrap_or_default();
-                            if self.json_mode && name == JSON_TOOL_NAME {
-                                self.blocks.insert(index, Block::JsonTool);
-                                return Ok(Vec::new());
-                            }
-                            let tool_index = self.next_tool;
-                            self.next_tool += 1;
-                            self.blocks.insert(
-                                index,
-                                Block::Tool {
-                                    index: tool_index,
-                                    has_args: false,
-                                },
-                            );
-                            vec![self.tool_delta(ToolCallDelta {
-                                index: tool_index,
-                                id: block["id"].as_str().map(str::to_owned),
-                                kind: Some("function".into()),
-                                function: Some(FunctionCallDelta {
-                                    name: Some(name.to_owned()),
-                                    arguments: Some(String::new()),
-                                }),
-                            })]
-                        }
-                        "thinking" => {
-                            self.blocks.insert(index, Block::Thinking);
-                            Vec::new()
-                        }
-                        _ => {
-                            self.blocks.insert(index, Block::Other);
-                            Vec::new()
-                        }
-                    }
+                if let Some(model) = msg["model"].as_str() {
+                    self.model = model.to_owned();
                 }
-                "content_block_delta" => {
-                    let delta = &v["delta"];
-                    match (
-                        delta["type"].as_str().unwrap_or_default(),
-                        self.blocks.get_mut(&index),
-                    ) {
-                        ("text_delta", _) => {
-                            self.content(delta["text"].as_str().unwrap_or_default())
-                        }
-                        ("input_json_delta", Some(Block::Tool { index, has_args })) => {
-                            let partial = delta["partial_json"].as_str().unwrap_or_default();
-                            if partial.is_empty() {
-                                return Ok(Vec::new());
-                            }
-                            *has_args = true;
-                            let index = *index;
-                            vec![self.args_delta(index, partial)]
-                        }
-                        ("input_json_delta", Some(Block::JsonTool)) => {
-                            self.content(delta["partial_json"].as_str().unwrap_or_default())
-                        }
-                        ("thinking_delta", _) => {
-                            let thinking = delta["thinking"].as_str().unwrap_or_default();
-                            if thinking.is_empty() {
-                                return Ok(Vec::new());
-                            }
-                            vec![self.chunk(
-                                Delta {
-                                    reasoning_content: Some(thinking.to_owned()),
-                                    ..Delta::default()
-                                },
-                                None,
-                            )]
-                        }
-                        // signature_delta, citations_delta, deltas of server
-                        // tool blocks: nothing to surface.
-                        _ => Vec::new(),
+                self.merge_usage(msg.get("usage"));
+                vec![self.chunk(Delta { role: Some(Role::Assistant), content: Some(String::new()), ..Delta::default() }, None)]
+            }
+            "content_block_start" => {
+                let block = &v["content_block"];
+                match block["type"].as_str().unwrap_or_default() {
+                    "text" => {
+                        self.blocks.insert(index, Block::Text);
+                        self.content(block["text"].as_str().unwrap_or_default())
                     }
-                }
-                "content_block_stop" => match self.blocks.remove(&index) {
-                    // A tool called without arguments still needs valid JSON.
-                    Some(Block::Tool {
-                        index,
-                        has_args: false,
-                    }) => vec![self.args_delta(index, "{}")],
-                    _ => Vec::new(),
-                },
-                "message_delta" => {
-                    self.merge_usage(v.get("usage"));
-                    let finish =
-                        finish_reason_for(v["delta"]["stop_reason"].as_str(), self.json_mode);
-                    match finish {
-                        Some(f) => vec![self.chunk(Delta::default(), Some(f))],
-                        None => Vec::new(),
+                    "tool_use" => {
+                        let name = block["name"].as_str().unwrap_or_default();
+                        if self.json_mode && name == JSON_TOOL_NAME {
+                            self.blocks.insert(index, Block::JsonTool);
+                            return Ok(Vec::new());
+                        }
+                        let tool_index = self.next_tool;
+                        self.next_tool += 1;
+                        self.blocks.insert(index, Block::Tool { index: tool_index, has_args: false });
+                        vec![self.tool_delta(ToolCallDelta {
+                            index: tool_index,
+                            id: block["id"].as_str().map(str::to_owned),
+                            kind: Some("function".into()),
+                            function: Some(FunctionCallDelta { name: Some(name.to_owned()), arguments: Some(String::new()) }),
+                        })]
                     }
-                }
-                "message_stop" => {
-                    self.done = true;
-                    if self.usage.is_empty() {
+                    "thinking" => {
+                        self.blocks.insert(index, Block::Thinking);
                         Vec::new()
-                    } else {
-                        vec![
-                            ChatChunk::new(self.id.clone(), self.model.clone(), self.created)
-                                .with_usage(usage_from(&self.usage)),
-                        ]
+                    }
+                    _ => {
+                        self.blocks.insert(index, Block::Other);
+                        Vec::new()
                     }
                 }
-                "error" => return Err(ProviderError::from_stream_error(provider, &v["error"])),
-                // ping and future event types
+            }
+            "content_block_delta" => {
+                let delta = &v["delta"];
+                match (delta["type"].as_str().unwrap_or_default(), self.blocks.get_mut(&index)) {
+                    ("text_delta", _) => self.content(delta["text"].as_str().unwrap_or_default()),
+                    ("input_json_delta", Some(Block::Tool { index, has_args })) => {
+                        let partial = delta["partial_json"].as_str().unwrap_or_default();
+                        if partial.is_empty() {
+                            return Ok(Vec::new());
+                        }
+                        *has_args = true;
+                        let index = *index;
+                        vec![self.args_delta(index, partial)]
+                    }
+                    ("input_json_delta", Some(Block::JsonTool)) => self.content(delta["partial_json"].as_str().unwrap_or_default()),
+                    ("thinking_delta", _) => {
+                        let thinking = delta["thinking"].as_str().unwrap_or_default();
+                        if thinking.is_empty() {
+                            return Ok(Vec::new());
+                        }
+                        vec![self.chunk(Delta { reasoning_content: Some(thinking.to_owned()), ..Delta::default() }, None)]
+                    }
+                    // signature_delta, citations_delta, deltas of server
+                    // tool blocks: nothing to surface.
+                    _ => Vec::new(),
+                }
+            }
+            "content_block_stop" => match self.blocks.remove(&index) {
+                // A tool called without arguments still needs valid JSON.
+                Some(Block::Tool { index, has_args: false }) => vec![self.args_delta(index, "{}")],
                 _ => Vec::new(),
             },
-        )
+            "message_delta" => {
+                self.merge_usage(v.get("usage"));
+                let finish = finish_reason_for(v["delta"]["stop_reason"].as_str(), self.json_mode);
+                match finish {
+                    Some(f) => vec![self.chunk(Delta::default(), Some(f))],
+                    None => Vec::new(),
+                }
+            }
+            "message_stop" => {
+                self.done = true;
+                if self.usage.is_empty() {
+                    Vec::new()
+                } else {
+                    vec![ChatChunk::new(self.id.clone(), self.model.clone(), self.created).with_usage(usage_from(&self.usage))]
+                }
+            }
+            "error" => return Err(ProviderError::from_stream_error(provider, &v["error"])),
+            // ping and future event types
+            _ => Vec::new(),
+        })
     }
 
     fn is_done(&self) -> bool {
@@ -859,11 +693,7 @@ impl StreamTranslator for AnthropicStream {
     }
 
     fn finish(&mut self) -> Result<Vec<ChatChunk>, ProviderError> {
-        Err(ProviderError::new(
-            crate::ErrorKind::Connection,
-            "anthropic",
-            "stream ended before message_stop",
-        ))
+        Err(ProviderError::new(crate::ErrorKind::Connection, "anthropic", "stream ended before message_stop"))
     }
 }
 
@@ -873,11 +703,7 @@ mod tests {
     use crate::providers::translate_all;
 
     fn dep() -> Deployment {
-        Deployment::from_litellm_params_with_env(
-            &json!({"model": "anthropic/claude-3-5-sonnet-20241022", "api_key": "sk-ant"}),
-            |_| None,
-        )
-        .unwrap()
+        Deployment::from_litellm_params_with_env(&json!({"model": "anthropic/claude-3-5-sonnet-20241022", "api_key": "sk-ant"}), |_| None).unwrap()
     }
 
     fn req(v: Value) -> ChatRequest {
@@ -899,21 +725,12 @@ mod tests {
         .unwrap();
         assert_eq!(r.url, "https://api.anthropic.com/v1/messages");
         assert!(r.headers.contains(&("x-api-key".into(), "sk-ant".into())));
-        assert!(
-            r.headers
-                .contains(&("anthropic-version".into(), ANTHROPIC_VERSION.into()))
-        );
+        assert!(r.headers.contains(&("anthropic-version".into(), ANTHROPIC_VERSION.into())));
         let b = r.body;
         assert_eq!(b["model"], "claude-3-5-sonnet-20241022");
-        assert_eq!(
-            b["messages"],
-            json!([{"role": "user", "content": [{"type": "text", "text": "hi"}]}])
-        );
+        assert_eq!(b["messages"], json!([{"role": "user", "content": [{"type": "text", "text": "hi"}]}]));
         assert_eq!(b["stop_sequences"], json!(["END"]));
-        assert_eq!(
-            (b["temperature"].clone(), b["top_p"].clone()),
-            (json!(0.3), json!(0.9))
-        );
+        assert_eq!((b["temperature"].clone(), b["top_p"].clone()), (json!(0.3), json!(0.9)));
         assert_eq!(b["metadata"], json!({"user_id": "u-1"}));
         assert_eq!(b["top_k"], 5);
         assert_eq!(b["stream"], true);
@@ -929,23 +746,13 @@ mod tests {
     #[test]
     fn max_tokens_defaults() {
         let m = json!([{"role": "user", "content": "hi"}]);
-        assert_eq!(
-            body(json!({"model": "x", "messages": m, "max_tokens": 77}))["max_tokens"],
-            77
-        );
-        assert_eq!(
-            body(json!({"model": "x", "messages": m, "max_completion_tokens": 88}))["max_tokens"],
-            88
-        );
+        assert_eq!(body(json!({"model": "x", "messages": m, "max_tokens": 77}))["max_tokens"], 77);
+        assert_eq!(body(json!({"model": "x", "messages": m, "max_completion_tokens": 88}))["max_tokens"], 88);
         let mut d = dep();
         d.model = "claude-unknown-model".into();
         let r = chat_request(&d, &req(json!({"model": "x", "messages": m})), false).unwrap();
         assert_eq!(r.body["max_tokens"], DEFAULT_MAX_TOKENS);
-        assert!(
-            body(json!({"model": "x", "messages": m, "user": "a@b.c"}))
-                .get("metadata")
-                .is_none()
-        );
+        assert!(body(json!({"model": "x", "messages": m, "user": "a@b.c"})).get("metadata").is_none());
     }
 
     #[test]
@@ -976,10 +783,7 @@ mod tests {
         );
         // Only a system prompt: a placeholder user turn is added.
         let b = body(json!({"model": "x", "messages": [{"role": "system", "content": "s"}]}));
-        assert_eq!(
-            b["messages"],
-            json!([{"role": "user", "content": [{"type": "text", "text": "."}]}])
-        );
+        assert_eq!(b["messages"], json!([{"role": "user", "content": [{"type": "text", "text": "."}]}]));
     }
 
     #[test]
@@ -1011,10 +815,7 @@ mod tests {
                 {"type": "web_search_20250305", "name": "web_search", "max_uses": 2}
             ])
         );
-        assert_eq!(
-            b["tool_choice"],
-            json!({"type": "any", "disable_parallel_tool_use": true})
-        );
+        assert_eq!(b["tool_choice"], json!({"type": "any", "disable_parallel_tool_use": true}));
         assert_eq!(
             b["messages"][1],
             json!({"role": "assistant", "content": [
@@ -1035,45 +836,30 @@ mod tests {
 
     #[test]
     fn tool_choice_mapping() {
-        let tc = |c: Value, p: Option<bool>| {
-            translate_tool_choice(Some(&serde_json::from_value(c).unwrap()), p)
-        };
+        let tc = |c: Value, p: Option<bool>| translate_tool_choice(Some(&serde_json::from_value(c).unwrap()), p);
         assert_eq!(tc(json!("auto"), None), Some(json!({"type": "auto"})));
+        assert_eq!(tc(json!("none"), Some(false)), Some(json!({"type": "none"})));
         assert_eq!(
-            tc(json!("none"), Some(false)),
-            Some(json!({"type": "none"}))
-        );
-        assert_eq!(
-            tc(
-                json!({"type": "function", "function": {"name": "f"}}),
-                Some(true)
-            ),
+            tc(json!({"type": "function", "function": {"name": "f"}}), Some(true)),
             Some(json!({"type": "tool", "name": "f", "disable_parallel_tool_use": false}))
         );
-        assert_eq!(
-            translate_tool_choice(None, Some(false)),
-            Some(json!({"type": "auto", "disable_parallel_tool_use": true}))
-        );
+        assert_eq!(translate_tool_choice(None, Some(false)), Some(json!({"type": "auto", "disable_parallel_tool_use": true})));
         assert_eq!(translate_tool_choice(None, None), None);
         // tool_choice without tools is dropped.
-        let b = body(
-            json!({"model": "x", "messages": [{"role": "user", "content": "hi"}], "tool_choice": "auto"}),
-        );
+        let b = body(json!({"model": "x", "messages": [{"role": "user", "content": "hi"}], "tool_choice": "auto"}));
         assert!(b.get("tool_choice").is_none());
     }
 
     #[test]
     fn images_and_documents() {
-        let b = body(
-            json!({"model": "x", "messages": [{"role": "user", "content": [
-                {"type": "image_url", "image_url": {"url": "data:image/png;base64,iVBOR"}},
-                {"type": "image_url", "image_url": "https://example.com/cat.jpg", "cache_control": {"type": "ephemeral"}},
-                {"type": "image_url", "image_url": {"url": "data:application/pdf;base64,JVBER"}},
-                {"type": "file", "file": {"file_data": "data:application/pdf;base64,JVBER", "filename": "a.pdf"}},
-                {"type": "file", "file": {"file_id": "file_123"}},
-                {"type": "document", "source": {"type": "text", "media_type": "text/plain", "data": "raw"}}
-            ]}]}),
-        );
+        let b = body(json!({"model": "x", "messages": [{"role": "user", "content": [
+            {"type": "image_url", "image_url": {"url": "data:image/png;base64,iVBOR"}},
+            {"type": "image_url", "image_url": "https://example.com/cat.jpg", "cache_control": {"type": "ephemeral"}},
+            {"type": "image_url", "image_url": {"url": "data:application/pdf;base64,JVBER"}},
+            {"type": "file", "file": {"file_data": "data:application/pdf;base64,JVBER", "filename": "a.pdf"}},
+            {"type": "file", "file": {"file_id": "file_123"}},
+            {"type": "document", "source": {"type": "text", "media_type": "text/plain", "data": "raw"}}
+        ]}]}));
         assert_eq!(
             b["messages"][0]["content"],
             json!([
@@ -1085,18 +871,11 @@ mod tests {
                 {"type": "document", "source": {"type": "text", "media_type": "text/plain", "data": "raw"}}
             ])
         );
-        let bad = req(
-            json!({"model": "x", "messages": [{"role": "user", "content": [
-            {"type": "input_audio", "input_audio": {"data": "x", "format": "wav"}}]}]}),
-        );
-        assert_eq!(
-            chat_request(&dep(), &bad, false).unwrap_err().kind(),
-            crate::ErrorKind::BadRequest
-        );
-        let bad = req(
-            json!({"model": "x", "messages": [{"role": "user", "content": [
-            {"type": "image_url", "image_url": "ftp://x"}]}]}),
-        );
+        let bad = req(json!({"model": "x", "messages": [{"role": "user", "content": [
+            {"type": "input_audio", "input_audio": {"data": "x", "format": "wav"}}]}]}));
+        assert_eq!(chat_request(&dep(), &bad, false).unwrap_err().kind(), crate::ErrorKind::BadRequest);
+        let bad = req(json!({"model": "x", "messages": [{"role": "user", "content": [
+            {"type": "image_url", "image_url": "ftp://x"}]}]}));
         assert!(chat_request(&dep(), &bad, false).is_err());
     }
 
@@ -1104,39 +883,20 @@ mod tests {
     fn thinking_and_json_mode() {
         let m = json!([{"role": "user", "content": "hi"}]);
         let b = body(json!({"model": "x", "messages": m, "reasoning_effort": "high"}));
-        assert_eq!(
-            b["thinking"],
-            json!({"type": "enabled", "budget_tokens": 4096})
-        );
+        assert_eq!(b["thinking"], json!({"type": "enabled", "budget_tokens": 4096}));
         assert!(b["max_tokens"].as_u64().unwrap() > 4096);
-        let b = body(
-            json!({"model": "x", "messages": m, "reasoning_effort": "medium", "max_tokens": 1500}),
-        );
-        assert_eq!(
-            b["thinking"],
-            json!({"type": "enabled", "budget_tokens": 1499})
-        );
-        let b = body(
-            json!({"model": "x", "messages": m, "reasoning_effort": "low", "max_tokens": 500}),
-        );
+        let b = body(json!({"model": "x", "messages": m, "reasoning_effort": "medium", "max_tokens": 1500}));
+        assert_eq!(b["thinking"], json!({"type": "enabled", "budget_tokens": 1499}));
+        let b = body(json!({"model": "x", "messages": m, "reasoning_effort": "low", "max_tokens": 500}));
         assert!(b.get("thinking").is_none(), "budget below minimum");
-        let b = body(
-            json!({"model": "x", "messages": m, "thinking": {"type": "enabled", "budget_tokens": 2000}, "reasoning_effort": "high"}),
-        );
+        let b = body(json!({"model": "x", "messages": m, "thinking": {"type": "enabled", "budget_tokens": 2000}, "reasoning_effort": "high"}));
         assert_eq!(b["thinking"]["budget_tokens"], 2000);
 
         let rf = json!({"type": "json_schema", "json_schema": {"name": "p", "schema": {"properties": {"a": {"type": "integer"}}}}});
         let b = body(json!({"model": "x", "messages": m, "response_format": rf}));
-        assert_eq!(
-            b["tools"],
-            json!([{"name": JSON_TOOL_NAME, "input_schema": {"type": "object", "properties": {"a": {"type": "integer"}}}}])
-        );
-        assert_eq!(
-            b["tool_choice"],
-            json!({"type": "tool", "name": JSON_TOOL_NAME})
-        );
-        let b =
-            body(json!({"model": "x", "messages": m, "response_format": {"type": "json_object"}}));
+        assert_eq!(b["tools"], json!([{"name": JSON_TOOL_NAME, "input_schema": {"type": "object", "properties": {"a": {"type": "integer"}}}}]));
+        assert_eq!(b["tool_choice"], json!({"type": "tool", "name": JSON_TOOL_NAME}));
+        let b = body(json!({"model": "x", "messages": m, "response_format": {"type": "json_object"}}));
         assert!(b.get("tools").is_none());
     }
 
@@ -1149,26 +909,29 @@ mod tests {
              "tool_calls": [{"id": "toolu_1", "type": "function", "function": {"name": "f", "arguments": "{}"}}]},
             {"role": "tool", "tool_call_id": "toolu_1", "content": "ok"}
         ]}));
-        assert_eq!(
-            b["messages"][1]["content"][0],
-            json!({"type": "thinking", "thinking": "hmm", "signature": "sig"})
-        );
+        assert_eq!(b["messages"][1]["content"][0], json!({"type": "thinking", "thinking": "hmm", "signature": "sig"}));
         assert_eq!(b["messages"][1]["content"][1]["type"], "tool_use");
     }
 
     #[test]
     fn response_translation() {
         let r = req(json!({"model": "x", "messages": [{"role": "user", "content": "hi"}]}));
-        let resp = parse_chat(&dep(), &r, &json!({
-            "id": "msg_01", "type": "message", "role": "assistant", "model": "claude-3-5-sonnet-20241022",
-            "content": [
-                {"type": "thinking", "thinking": "Let me think", "signature": "s"},
-                {"type": "text", "text": "Checking."},
-                {"type": "tool_use", "id": "toolu_1", "name": "get_weather", "input": {"city": "Paris"}}
-            ],
-            "stop_reason": "tool_use",
-            "usage": {"input_tokens": 10, "output_tokens": 5, "cache_creation_input_tokens": 3, "cache_read_input_tokens": 2}
-        }).to_string()).unwrap();
+        let resp = parse_chat(
+            &dep(),
+            &r,
+            &json!({
+                "id": "msg_01", "type": "message", "role": "assistant", "model": "claude-3-5-sonnet-20241022",
+                "content": [
+                    {"type": "thinking", "thinking": "Let me think", "signature": "s"},
+                    {"type": "text", "text": "Checking."},
+                    {"type": "tool_use", "id": "toolu_1", "name": "get_weather", "input": {"city": "Paris"}}
+                ],
+                "stop_reason": "tool_use",
+                "usage": {"input_tokens": 10, "output_tokens": 5, "cache_creation_input_tokens": 3, "cache_read_input_tokens": 2}
+            })
+            .to_string(),
+        )
+        .unwrap();
         assert_eq!(resp.id, "msg_01");
         assert_eq!(resp.model, "claude-3-5-sonnet-20241022");
         let c = &resp.choices[0];
@@ -1177,20 +940,11 @@ mod tests {
         assert_eq!(c.message.reasoning_content.as_deref(), Some("Let me think"));
         assert_eq!(c.message.extra["thinking_blocks"][0]["signature"], "s");
         let calls = c.message.tool_calls.as_ref().unwrap();
-        assert_eq!(
-            calls[0],
-            ToolCall::function("toolu_1", "get_weather", "{\"city\":\"Paris\"}")
-        );
+        assert_eq!(calls[0], ToolCall::function("toolu_1", "get_weather", "{\"city\":\"Paris\"}"));
         let u = resp.usage.unwrap();
-        assert_eq!(
-            (u.prompt_tokens, u.completion_tokens, u.total_tokens),
-            (15, 5, 20)
-        );
+        assert_eq!((u.prompt_tokens, u.completion_tokens, u.total_tokens), (15, 5, 20));
         assert_eq!(u.prompt_tokens_details.unwrap().cached_tokens, Some(2));
-        assert_eq!(
-            (u.cache_creation_input_tokens, u.cache_read_input_tokens),
-            (Some(3), Some(2))
-        );
+        assert_eq!((u.cache_creation_input_tokens, u.cache_read_input_tokens), (Some(3), Some(2)));
 
         let only_tool = parse_chat(
             &dep(),
@@ -1201,13 +955,13 @@ mod tests {
         )
         .unwrap();
         assert!(only_tool.choices[0].message.content.is_none());
-        for (reason, expected) in [
-            ("end_turn", "stop"),
-            ("max_tokens", "length"),
-            ("stop_sequence", "stop"),
-            ("refusal", "content_filter"),
-        ] {
-            let resp = parse_chat(&dep(), &r, &json!({"id": "m", "model": "c", "content": [{"type": "text", "text": "x"}], "stop_reason": reason}).to_string()).unwrap();
+        for (reason, expected) in [("end_turn", "stop"), ("max_tokens", "length"), ("stop_sequence", "stop"), ("refusal", "content_filter")] {
+            let resp = parse_chat(
+                &dep(),
+                &r,
+                &json!({"id": "m", "model": "c", "content": [{"type": "text", "text": "x"}], "stop_reason": reason}).to_string(),
+            )
+            .unwrap();
             assert_eq!(resp.choices[0].finish_reason.as_deref(), Some(expected));
         }
         assert!(parse_chat(&dep(), &r, "{}").is_err());
@@ -1215,12 +969,16 @@ mod tests {
 
     #[test]
     fn json_mode_response() {
-        let r = req(
-            json!({"model": "x", "messages": [{"role": "user", "content": "hi"}],
-            "response_format": {"type": "json_schema", "json_schema": {"name": "p", "schema": {"type": "object"}}}}),
-        );
-        let resp = parse_chat(&dep(), &r, &json!({"id": "m", "model": "c", "content": [
-            {"type": "tool_use", "id": "t", "name": JSON_TOOL_NAME, "input": {"a": 1}}], "stop_reason": "tool_use"}).to_string()).unwrap();
+        let r = req(json!({"model": "x", "messages": [{"role": "user", "content": "hi"}],
+            "response_format": {"type": "json_schema", "json_schema": {"name": "p", "schema": {"type": "object"}}}}));
+        let resp = parse_chat(
+            &dep(),
+            &r,
+            &json!({"id": "m", "model": "c", "content": [
+            {"type": "tool_use", "id": "t", "name": JSON_TOOL_NAME, "input": {"a": 1}}], "stop_reason": "tool_use"})
+            .to_string(),
+        )
+        .unwrap();
         assert_eq!(resp.choices[0].message.text(), "{\"a\":1}");
         assert!(resp.choices[0].message.tool_calls.is_none());
         assert_eq!(resp.choices[0].finish_reason.as_deref(), Some("stop"));
@@ -1245,124 +1003,86 @@ mod tests {
         assert_eq!(chunks.len(), 5);
         assert_eq!(chunks[0].choices[0].delta.role, Some(Role::Assistant));
         assert_eq!(chunks[1].choices[0].delta.content.as_deref(), Some("Hello"));
-        assert_eq!(
-            chunks[2].choices[0].delta.content.as_deref(),
-            Some(" world")
-        );
+        assert_eq!(chunks[2].choices[0].delta.content.as_deref(), Some(" world"));
         assert_eq!(chunks[3].choices[0].finish_reason.as_deref(), Some("stop"));
         assert!(chunks[4].is_usage_only());
         let u = chunks[4].usage.as_ref().unwrap();
-        assert_eq!(
-            (u.prompt_tokens, u.completion_tokens, u.total_tokens),
-            (30, 15, 45)
-        );
-        assert!(
-            chunks
-                .iter()
-                .all(|c| c.id == "msg_1" && c.model == "claude-x")
-        );
+        assert_eq!((u.prompt_tokens, u.completion_tokens, u.total_tokens), (30, 15, 45));
+        assert!(chunks.iter().all(|c| c.id == "msg_1" && c.model == "claude-x"));
     }
 
     #[test]
     fn stream_tool_calls() {
-        let chunks = translate_all(AnthropicStream::new(&dep(), &stream_req()), &[
-            ("", r#"{"type":"message_start","message":{"id":"msg_2","model":"c","usage":{"input_tokens":10,"output_tokens":1}}}"#),
-            ("", r#"{"type":"content_block_start","index":0,"content_block":{"type":"thinking","thinking":""}}"#),
-            ("", r#"{"type":"content_block_delta","index":0,"delta":{"type":"thinking_delta","thinking":"hmm"}}"#),
-            ("", r#"{"type":"content_block_delta","index":0,"delta":{"type":"signature_delta","signature":"x"}}"#),
-            ("", r#"{"type":"content_block_stop","index":0}"#),
-            ("", r#"{"type":"content_block_start","index":1,"content_block":{"type":"tool_use","id":"toolu_A","name":"get_weather","input":{}}}"#),
-            ("", r#"{"type":"content_block_delta","index":1,"delta":{"type":"input_json_delta","partial_json":""}}"#),
-            ("", r#"{"type":"content_block_delta","index":1,"delta":{"type":"input_json_delta","partial_json":"{\"city\":"}}"#),
-            ("", r#"{"type":"content_block_delta","index":1,"delta":{"type":"input_json_delta","partial_json":"\"Paris\"}"}}"#),
-            ("", r#"{"type":"content_block_stop","index":1}"#),
-            ("", r#"{"type":"content_block_start","index":2,"content_block":{"type":"tool_use","id":"toolu_B","name":"get_time","input":{}}}"#),
-            ("", r#"{"type":"content_block_stop","index":2}"#),
-            ("", r#"{"type":"message_delta","delta":{"stop_reason":"tool_use"},"usage":{"output_tokens":40}}"#),
-            ("", r#"{"type":"message_stop"}"#),
-        ]).unwrap();
-        let deltas: Vec<&ToolCallDelta> = chunks
-            .iter()
-            .filter_map(|c| c.choices.first()?.delta.tool_calls.as_ref()?.first())
-            .collect();
+        let chunks = translate_all(
+            AnthropicStream::new(&dep(), &stream_req()),
+            &[
+                ("", r#"{"type":"message_start","message":{"id":"msg_2","model":"c","usage":{"input_tokens":10,"output_tokens":1}}}"#),
+                ("", r#"{"type":"content_block_start","index":0,"content_block":{"type":"thinking","thinking":""}}"#),
+                ("", r#"{"type":"content_block_delta","index":0,"delta":{"type":"thinking_delta","thinking":"hmm"}}"#),
+                ("", r#"{"type":"content_block_delta","index":0,"delta":{"type":"signature_delta","signature":"x"}}"#),
+                ("", r#"{"type":"content_block_stop","index":0}"#),
+                (
+                    "",
+                    r#"{"type":"content_block_start","index":1,"content_block":{"type":"tool_use","id":"toolu_A","name":"get_weather","input":{}}}"#,
+                ),
+                ("", r#"{"type":"content_block_delta","index":1,"delta":{"type":"input_json_delta","partial_json":""}}"#),
+                ("", r#"{"type":"content_block_delta","index":1,"delta":{"type":"input_json_delta","partial_json":"{\"city\":"}}"#),
+                ("", r#"{"type":"content_block_delta","index":1,"delta":{"type":"input_json_delta","partial_json":"\"Paris\"}"}}"#),
+                ("", r#"{"type":"content_block_stop","index":1}"#),
+                ("", r#"{"type":"content_block_start","index":2,"content_block":{"type":"tool_use","id":"toolu_B","name":"get_time","input":{}}}"#),
+                ("", r#"{"type":"content_block_stop","index":2}"#),
+                ("", r#"{"type":"message_delta","delta":{"stop_reason":"tool_use"},"usage":{"output_tokens":40}}"#),
+                ("", r#"{"type":"message_stop"}"#),
+            ],
+        )
+        .unwrap();
+        let deltas: Vec<&ToolCallDelta> = chunks.iter().filter_map(|c| c.choices.first()?.delta.tool_calls.as_ref()?.first()).collect();
         assert_eq!(deltas.len(), 5);
-        assert_eq!(
-            (deltas[0].index, deltas[0].id.as_deref()),
-            (0, Some("toolu_A"))
-        );
-        assert_eq!(
-            deltas[0].function.as_ref().unwrap().name.as_deref(),
-            Some("get_weather")
-        );
-        let args: String = deltas[..3]
-            .iter()
-            .filter_map(|d| d.function.as_ref()?.arguments.clone())
-            .collect();
+        assert_eq!((deltas[0].index, deltas[0].id.as_deref()), (0, Some("toolu_A")));
+        assert_eq!(deltas[0].function.as_ref().unwrap().name.as_deref(), Some("get_weather"));
+        let args: String = deltas[..3].iter().filter_map(|d| d.function.as_ref()?.arguments.clone()).collect();
         assert_eq!(args, "{\"city\":\"Paris\"}");
-        assert_eq!(
-            (deltas[3].index, deltas[3].id.as_deref()),
-            (1, Some("toolu_B"))
-        );
-        assert_eq!(
-            deltas[4].function.as_ref().unwrap().arguments.as_deref(),
-            Some("{}")
-        );
-        assert_eq!(
-            chunks[1].choices[0].delta.reasoning_content.as_deref(),
-            Some("hmm")
-        );
-        let finish = chunks
-            .iter()
-            .find_map(|c| c.choices.first()?.finish_reason.clone());
+        assert_eq!((deltas[3].index, deltas[3].id.as_deref()), (1, Some("toolu_B")));
+        assert_eq!(deltas[4].function.as_ref().unwrap().arguments.as_deref(), Some("{}"));
+        assert_eq!(chunks[1].choices[0].delta.reasoning_content.as_deref(), Some("hmm"));
+        let finish = chunks.iter().find_map(|c| c.choices.first()?.finish_reason.clone());
         assert_eq!(finish.as_deref(), Some("tool_calls"));
-        assert_eq!(
-            chunks
-                .last()
-                .unwrap()
-                .usage
-                .as_ref()
-                .unwrap()
-                .completion_tokens,
-            40
-        );
+        assert_eq!(chunks.last().unwrap().usage.as_ref().unwrap().completion_tokens, 40);
     }
 
     #[test]
     fn stream_json_mode_becomes_content() {
-        let r = req(
-            json!({"model": "x", "messages": [{"role": "user", "content": "hi"}],
-            "response_format": {"type": "json_schema", "json_schema": {"name": "p", "schema": {"type": "object"}}}}),
-        );
-        let chunks = translate_all(AnthropicStream::new(&dep(), &r), &[
-            ("", r#"{"type":"content_block_start","index":0,"content_block":{"type":"tool_use","id":"t","name":"json_tool_call","input":{}}}"#),
-            ("", r#"{"type":"content_block_delta","index":0,"delta":{"type":"input_json_delta","partial_json":"{\"a\":1}"}}"#),
-            ("", r#"{"type":"content_block_stop","index":0}"#),
-            ("", r#"{"type":"message_delta","delta":{"stop_reason":"tool_use"},"usage":{"output_tokens":3}}"#),
-            ("", r#"{"type":"message_stop"}"#),
-        ]).unwrap();
-        assert_eq!(
-            chunks[0].choices[0].delta.content.as_deref(),
-            Some("{\"a\":1}")
-        );
+        let r = req(json!({"model": "x", "messages": [{"role": "user", "content": "hi"}],
+            "response_format": {"type": "json_schema", "json_schema": {"name": "p", "schema": {"type": "object"}}}}));
+        let chunks = translate_all(
+            AnthropicStream::new(&dep(), &r),
+            &[
+                ("", r#"{"type":"content_block_start","index":0,"content_block":{"type":"tool_use","id":"t","name":"json_tool_call","input":{}}}"#),
+                ("", r#"{"type":"content_block_delta","index":0,"delta":{"type":"input_json_delta","partial_json":"{\"a\":1}"}}"#),
+                ("", r#"{"type":"content_block_stop","index":0}"#),
+                ("", r#"{"type":"message_delta","delta":{"stop_reason":"tool_use"},"usage":{"output_tokens":3}}"#),
+                ("", r#"{"type":"message_stop"}"#),
+            ],
+        )
+        .unwrap();
+        assert_eq!(chunks[0].choices[0].delta.content.as_deref(), Some("{\"a\":1}"));
         assert_eq!(chunks[1].choices[0].finish_reason.as_deref(), Some("stop"));
     }
 
     #[test]
     fn stream_errors() {
-        let err = translate_all(AnthropicStream::new(&dep(), &stream_req()), &[
-            ("", r#"{"type":"message_start","message":{"id":"m","model":"c","usage":{"input_tokens":1}}}"#),
-            ("error", r#"{"type":"error","error":{"type":"overloaded_error","message":"Overloaded"}}"#),
-        ]).unwrap_err();
-        assert_eq!((err.status_code(), err.message()), (529, "Overloaded"));
-        assert!(err.is_retryable());
         let err = translate_all(
             AnthropicStream::new(&dep(), &stream_req()),
-            &[(
-                "",
-                r#"{"type":"message_start","message":{"id":"m","model":"c"}}"#,
-            )],
+            &[
+                ("", r#"{"type":"message_start","message":{"id":"m","model":"c","usage":{"input_tokens":1}}}"#),
+                ("error", r#"{"type":"error","error":{"type":"overloaded_error","message":"Overloaded"}}"#),
+            ],
         )
         .unwrap_err();
+        assert_eq!((err.status_code(), err.message()), (529, "Overloaded"));
+        assert!(err.is_retryable());
+        let err = translate_all(AnthropicStream::new(&dep(), &stream_req()), &[("", r#"{"type":"message_start","message":{"id":"m","model":"c"}}"#)])
+            .unwrap_err();
         assert_eq!(err.kind(), crate::ErrorKind::Connection);
     }
 }

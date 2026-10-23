@@ -61,8 +61,16 @@ fn fresh_org() -> u64 {
     std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_nanos() as u64 % (1 << 50)
 }
 
-const NONE_PATCH: k::KeyPatch =
-    k::KeyPatch { max_budget: None, rpm: None, tpm: None, max_parallel: None, expires_at: None, budget_duration: None, blocked: None, all_models: None };
+const NONE_PATCH: k::KeyPatch = k::KeyPatch {
+    max_budget: None,
+    rpm: None,
+    tpm: None,
+    max_parallel: None,
+    expires_at: None,
+    budget_duration: None,
+    blocked: None,
+    all_models: None,
+};
 
 fn random_command(s: &mut u64, master: bool, open: &[u64]) -> k::Command {
     let reservation = |s: &mut u64| if !open.is_empty() && rng(s, 4) != 0 { open[rng(s, open.len() as u64) as usize] } else { rng(s, 40) };
@@ -70,7 +78,12 @@ fn random_command(s: &mut u64, master: bool, open: &[u64]) -> k::Command {
     let name = |s: &mut u64| names[rng(s, 3) as usize].clone();
     let small = |s: &mut u64| if rng(s, 10) == 0 { k::UNLIMITED } else { rng(s, 400_000) };
     match rng(s, if master { 14 } else { 6 }) {
-        0 | 1 => k::Command::Admit { model: name(s), prompt_tokens: rng(s, 50), max_tokens: rng(s, 50), exclude: if rng(s, 4) == 0 { vec![100] } else { vec![] } },
+        0 | 1 => k::Command::Admit {
+            model: name(s),
+            prompt_tokens: rng(s, 50),
+            max_tokens: rng(s, 50),
+            exclude: if rng(s, 4) == 0 { vec![100] } else { vec![] },
+        },
         2 | 3 => k::Command::Settle {
             reservation: reservation(s),
             prompt_tokens: rng(s, 60),

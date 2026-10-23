@@ -66,14 +66,9 @@ fn main() {
         "key's",
         "budget",
     ];
-    let words: Vec<&str> = (0..completion_tokens as usize)
-        .map(|i| WORDS[i % WORDS.len()])
-        .collect();
+    let words: Vec<&str> = (0..completion_tokens as usize).map(|i| WORDS[i % WORDS.len()]).collect();
     let per = words.len().div_ceil(chunks).max(1);
-    let mut pieces: Vec<String> = words
-        .chunks(per)
-        .map(|c| format!("{} ", c.join(" ")))
-        .collect();
+    let mut pieces: Vec<String> = words.chunks(per).map(|c| format!("{} ", c.join(" "))).collect();
     while pieces.len() < chunks {
         pieces.push(" ".into());
     }
@@ -112,9 +107,7 @@ fn main() {
         .with_state(mock);
 
     runtime(a.get("threads", 0)).block_on(async move {
-        let listener = tokio::net::TcpListener::bind((host.as_str(), port))
-            .await
-            .expect("bind");
+        let listener = tokio::net::TcpListener::bind((host.as_str(), port)).await.expect("bind");
         eprintln!("mock-upstream listening on {host}:{port}");
         let listener = listener.tap_io(|tcp| {
             let _ = tcp.set_nodelay(true);
@@ -129,10 +122,7 @@ fn main() {
 }
 
 fn now() -> u64 {
-    SystemTime::now()
-        .duration_since(UNIX_EPOCH)
-        .map(|d| d.as_secs())
-        .unwrap_or(0)
+    SystemTime::now().duration_since(UNIX_EPOCH).map(|d| d.as_secs()).unwrap_or(0)
 }
 
 fn bad_request(msg: &str) -> Response {
@@ -142,10 +132,7 @@ fn bad_request(msg: &str) -> Response {
 
 fn json_response(body: String) -> Response {
     let mut r = Response::new(Body::from(body));
-    r.headers_mut().insert(
-        header::CONTENT_TYPE,
-        HeaderValue::from_static("application/json"),
-    );
+    r.headers_mut().insert(header::CONTENT_TYPE, HeaderValue::from_static("application/json"));
     r
 }
 
@@ -155,19 +142,11 @@ fn prompt_tokens(v: &Value) -> u64 {
         match v {
             Value::String(s) => s.len(),
             Value::Array(a) => a.iter().map(chars).sum(),
-            Value::Object(o) => o
-                .get("content")
-                .or_else(|| o.get("text"))
-                .map(chars)
-                .unwrap_or(0),
+            Value::Object(o) => o.get("content").or_else(|| o.get("text")).map(chars).unwrap_or(0),
             _ => 0,
         }
     }
-    let n = v
-        .get("messages")
-        .or_else(|| v.get("input"))
-        .map(chars)
-        .unwrap_or(0);
+    let n = v.get("messages").or_else(|| v.get("input")).map(chars).unwrap_or(0);
     (n as u64).div_ceil(4).max(1)
 }
 
@@ -175,21 +154,11 @@ async fn chat(State(m): State<Arc<Mock>>, body: Bytes) -> Response {
     let Ok(req) = serde_json::from_slice::<Value>(&body) else {
         return bad_request("invalid JSON body");
     };
-    let model = req
-        .get("model")
-        .and_then(Value::as_str)
-        .unwrap_or("gpt-4o-mini")
-        .to_string();
+    let model = req.get("model").and_then(Value::as_str).unwrap_or("gpt-4o-mini").to_string();
     let stream = req.get("stream").and_then(Value::as_bool).unwrap_or(false);
-    let include_usage = req
-        .pointer("/stream_options/include_usage")
-        .and_then(Value::as_bool)
-        .unwrap_or(false);
+    let include_usage = req.pointer("/stream_options/include_usage").and_then(Value::as_bool).unwrap_or(false);
     let prompt = prompt_tokens(&req);
-    let id = format!(
-        "chatcmpl-mock{:016x}",
-        m.counter.fetch_add(1, Ordering::Relaxed)
-    );
+    let id = format!("chatcmpl-mock{:016x}", m.counter.fetch_add(1, Ordering::Relaxed));
     let created = now();
     let usage = json!({
         "prompt_tokens": prompt,
@@ -244,11 +213,7 @@ async fn chat(State(m): State<Arc<Mock>>, body: Bytes) -> Response {
         if !m.latency.is_zero() {
             tokio::time::sleep(m.latency).await;
         }
-        let first = chunk(
-            json!({"role": "assistant", "content": "", "refusal": null}),
-            Value::Null,
-            None,
-        );
+        let first = chunk(json!({"role": "assistant", "content": "", "refusal": null}), Value::Null, None);
         if tx.send(Ok(first)).await.is_err() {
             return;
         }
@@ -256,30 +221,20 @@ async fn chat(State(m): State<Arc<Mock>>, body: Bytes) -> Response {
             if !m.chunk_delay.is_zero() {
                 tokio::time::sleep(m.chunk_delay).await;
             }
-            if tx
-                .send(Ok(chunk(json!({"content": piece}), Value::Null, None)))
-                .await
-                .is_err()
-            {
+            if tx.send(Ok(chunk(json!({"content": piece}), Value::Null, None))).await.is_err() {
                 return;
             }
         }
         let _ = tx.send(Ok(chunk(json!({}), json!("stop"), None))).await;
         if include_usage {
-            let _ = tx
-                .send(Ok(chunk(Value::Null, Value::Null, Some(&usage))))
-                .await;
+            let _ = tx.send(Ok(chunk(Value::Null, Value::Null, Some(&usage)))).await;
         }
         let _ = tx.send(Ok(Bytes::from_static(b"data: [DONE]\n\n"))).await;
     });
-    let stream =
-        futures::stream::unfold(rx, |mut rx| async move { rx.recv().await.map(|x| (x, rx)) });
+    let stream = futures::stream::unfold(rx, |mut rx| async move { rx.recv().await.map(|x| (x, rx)) });
     let mut r = Response::new(Body::from_stream(stream));
     let h = r.headers_mut();
-    h.insert(
-        header::CONTENT_TYPE,
-        HeaderValue::from_static("text/event-stream; charset=utf-8"),
-    );
+    h.insert(header::CONTENT_TYPE, HeaderValue::from_static("text/event-stream; charset=utf-8"));
     h.insert(header::CACHE_CONTROL, HeaderValue::from_static("no-cache"));
     r
 }
@@ -288,10 +243,7 @@ async fn embeddings(State(m): State<Arc<Mock>>, body: Bytes) -> Response {
     let Ok(req) = serde_json::from_slice::<Value>(&body) else {
         return bad_request("invalid JSON body");
     };
-    let model = req
-        .get("model")
-        .and_then(Value::as_str)
-        .unwrap_or("text-embedding-3-small");
+    let model = req.get("model").and_then(Value::as_str).unwrap_or("text-embedding-3-small");
     let n = match req.get("input") {
         Some(Value::Array(a)) if a.first().is_some_and(|x| !x.is_number()) => a.len(),
         Some(_) => 1,
@@ -313,10 +265,7 @@ async fn embeddings(State(m): State<Arc<Mock>>, body: Bytes) -> Response {
         out.push_str(&m.embedding);
         out.push('}');
     }
-    out.push_str(&format!(
-        r#"],"model":{},"usage":{{"prompt_tokens":{prompt},"total_tokens":{prompt}}}}}"#,
-        Value::from(model)
-    ));
+    out.push_str(&format!(r#"],"model":{},"usage":{{"prompt_tokens":{prompt},"total_tokens":{prompt}}}}}"#, Value::from(model)));
     json_response(out)
 }
 

@@ -200,17 +200,12 @@ impl ChatMessage {
 
     /// A `role: "tool"` result for the given tool call.
     pub fn tool(tool_call_id: impl Into<String>, text: impl Into<String>) -> Self {
-        Self {
-            tool_call_id: Some(tool_call_id.into()),
-            ..Self::with_text(Role::Tool, text)
-        }
+        Self { tool_call_id: Some(tool_call_id.into()), ..Self::with_text(Role::Tool, text) }
     }
 
     /// Concatenated text of the message content (empty if none).
     pub fn text(&self) -> Cow<'_, str> {
-        self.content
-            .as_ref()
-            .map_or(Cow::Borrowed(""), MessageContent::text)
+        self.content.as_ref().map_or(Cow::Borrowed(""), MessageContent::text)
     }
 }
 
@@ -278,32 +273,15 @@ pub struct ContentPart {
 
 impl ContentPart {
     fn empty(kind: &str) -> Self {
-        Self {
-            kind: kind.to_owned(),
-            text: None,
-            image_url: None,
-            input_audio: None,
-            file: None,
-            extra: JsonObject::new(),
-        }
+        Self { kind: kind.to_owned(), text: None, image_url: None, input_audio: None, file: None, extra: JsonObject::new() }
     }
 
     pub fn text(text: impl Into<String>) -> Self {
-        Self {
-            text: Some(text.into()),
-            ..Self::empty(part_type::TEXT)
-        }
+        Self { text: Some(text.into()), ..Self::empty(part_type::TEXT) }
     }
 
     pub fn image_url(url: impl Into<String>) -> Self {
-        Self {
-            image_url: Some(ImageUrl {
-                url: url.into(),
-                detail: None,
-                format: None,
-            }),
-            ..Self::empty(part_type::IMAGE_URL)
-        }
+        Self { image_url: Some(ImageUrl { url: url.into(), detail: None, format: None }), ..Self::empty(part_type::IMAGE_URL) }
     }
 }
 
@@ -336,16 +314,8 @@ impl<'de> Deserialize<'de> for ImageUrl {
             Obj(Obj),
         }
         Ok(match Repr::deserialize(d)? {
-            Repr::Url(url) => ImageUrl {
-                url,
-                detail: None,
-                format: None,
-            },
-            Repr::Obj(o) => ImageUrl {
-                url: o.url,
-                detail: o.detail,
-                format: o.format,
-            },
+            Repr::Url(url) => ImageUrl { url, detail: None, format: None },
+            Repr::Obj(o) => ImageUrl { url: o.url, detail: o.detail, format: o.format },
         })
     }
 }
@@ -393,20 +363,10 @@ fn function_type() -> String {
 
 impl Tool {
     /// A function tool.
-    pub fn function(
-        name: impl Into<String>,
-        description: Option<String>,
-        parameters: Option<Value>,
-    ) -> Self {
+    pub fn function(name: impl Into<String>, description: Option<String>, parameters: Option<Value>) -> Self {
         Self {
             kind: function_type(),
-            function: Some(FunctionDefinition {
-                name: name.into(),
-                description,
-                parameters,
-                strict: None,
-                extra: JsonObject::new(),
-            }),
+            function: Some(FunctionDefinition { name: name.into(), description, parameters, strict: None, extra: JsonObject::new() }),
             extra: JsonObject::new(),
         }
     }
@@ -473,18 +433,11 @@ pub struct ToolCall {
 }
 
 impl ToolCall {
-    pub fn function(
-        id: impl Into<String>,
-        name: impl Into<String>,
-        arguments: impl Into<String>,
-    ) -> Self {
+    pub fn function(id: impl Into<String>, name: impl Into<String>, arguments: impl Into<String>) -> Self {
         Self {
             id: id.into(),
             kind: function_type(),
-            function: FunctionCall {
-                name: name.into(),
-                arguments: arguments.into(),
-            },
+            function: FunctionCall { name: name.into(), arguments: arguments.into() },
             extra: JsonObject::new(),
         }
     }
@@ -588,12 +541,7 @@ pub struct Usage {
 impl Usage {
     /// Usage with only the three totals set.
     pub fn new(prompt_tokens: u64, completion_tokens: u64) -> Self {
-        Self {
-            prompt_tokens,
-            completion_tokens,
-            total_tokens: prompt_tokens + completion_tokens,
-            ..Self::default()
-        }
+        Self { prompt_tokens, completion_tokens, total_tokens: prompt_tokens + completion_tokens, ..Self::default() }
     }
 }
 
@@ -673,13 +621,7 @@ impl ChatChunk {
 
     /// Builder: set a single choice at index 0.
     pub fn with_delta(mut self, delta: Delta, finish_reason: Option<String>) -> Self {
-        self.choices = vec![ChunkChoice {
-            index: 0,
-            delta,
-            finish_reason,
-            logprobs: None,
-            extra: JsonObject::new(),
-        }];
+        self.choices = vec![ChunkChoice { index: 0, delta, finish_reason, logprobs: None, extra: JsonObject::new() }];
         self
     }
 
@@ -905,17 +847,9 @@ mod tests {
             {"type": "future_part", "payload": 1}
         ]});
         let msg: ChatMessage = serde_json::from_value(raw).unwrap();
-        let MessageContent::Parts(parts) = msg.content.as_ref().unwrap() else {
-            panic!("expected parts")
-        };
-        assert_eq!(
-            parts[1].image_url.as_ref().unwrap().detail.as_deref(),
-            Some("low")
-        );
-        assert_eq!(
-            parts[2].image_url.as_ref().unwrap().url,
-            "data:image/png;base64,AAAA"
-        );
+        let MessageContent::Parts(parts) = msg.content.as_ref().unwrap() else { panic!("expected parts") };
+        assert_eq!(parts[1].image_url.as_ref().unwrap().detail.as_deref(), Some("low"));
+        assert_eq!(parts[2].image_url.as_ref().unwrap().url, "data:image/png;base64,AAAA");
         assert_eq!(parts[3].input_audio.as_ref().unwrap().format, "wav");
         assert_eq!(parts[4].kind, "future_part");
         assert_eq!(parts[4].extra["payload"], 1);
@@ -938,12 +872,7 @@ mod tests {
         }))
         .unwrap();
         assert_eq!(req.tool_choice, Some(ToolChoice::named("f")));
-        assert_eq!(
-            req.messages[0].tool_calls.as_ref().unwrap()[0]
-                .function
-                .name,
-            "f"
-        );
+        assert_eq!(req.messages[0].tool_calls.as_ref().unwrap()[0].function.name, "f");
         assert!(req.messages[0].content.is_none());
         assert_eq!(req.response_format.unwrap().json_schema.unwrap().name, "x");
         let mode: ToolChoice = serde_json::from_value(json!("required")).unwrap();
@@ -960,41 +889,20 @@ mod tests {
             "service_tier": "default"
         }))
         .unwrap();
-        assert_eq!(
-            resp.usage
-                .as_ref()
-                .unwrap()
-                .prompt_tokens_details
-                .as_ref()
-                .unwrap()
-                .cached_tokens,
-            Some(2)
-        );
+        assert_eq!(resp.usage.as_ref().unwrap().prompt_tokens_details.as_ref().unwrap().cached_tokens, Some(2));
         assert_eq!(resp.extra["service_tier"], "default");
 
-        let chunk = ChatChunk::new("c", "m", 1).with_delta(
-            Delta {
-                content: Some("he".into()),
-                ..Delta::default()
-            },
-            None,
-        );
+        let chunk = ChatChunk::new("c", "m", 1).with_delta(Delta { content: Some("he".into()), ..Delta::default() }, None);
         let v = serde_json::to_value(&chunk).unwrap();
         assert_eq!(v["object"], "chat.completion.chunk");
         assert_eq!(v["choices"][0]["finish_reason"], Value::Null);
         assert!(v.get("usage").is_none());
-        assert!(
-            ChatChunk::new("c", "m", 1)
-                .with_usage(Usage::new(1, 2))
-                .is_usage_only()
-        );
+        assert!(ChatChunk::new("c", "m", 1).with_usage(Usage::new(1, 2)).is_usage_only());
     }
 
     #[test]
     fn embeddings_shapes() {
-        let req: EmbeddingRequest =
-            serde_json::from_value(json!({"model": "e", "input": ["a", "b"], "dimensions": 8}))
-                .unwrap();
+        let req: EmbeddingRequest = serde_json::from_value(json!({"model": "e", "input": ["a", "b"], "dimensions": 8})).unwrap();
         assert_eq!(req.input.len(), 2);
         assert_eq!(req.input.texts().unwrap(), vec!["a", "b"]);
         let tokens: EmbeddingInput = serde_json::from_value(json!([1, 2, 3])).unwrap();
@@ -1006,22 +914,14 @@ mod tests {
             "usage": {"prompt_tokens": 2, "total_tokens": 2}
         }))
         .unwrap();
-        assert_eq!(
-            resp.data[0].embedding,
-            EmbeddingVector::Float(vec![0.5, -1.0])
-        );
-        assert_eq!(
-            resp.data[1].embedding,
-            EmbeddingVector::Base64("AAAA".into())
-        );
+        assert_eq!(resp.data[0].embedding, EmbeddingVector::Float(vec![0.5, -1.0]));
+        assert_eq!(resp.data[1].embedding, EmbeddingVector::Base64("AAAA".into()));
         assert_eq!(resp.usage.total_tokens, 2);
     }
 
     #[test]
     fn error_body_accepts_numeric_code() {
-        let e: ErrorBody =
-            serde_json::from_value(json!({"error": {"message": "m", "type": "t", "code": 429}}))
-                .unwrap();
+        let e: ErrorBody = serde_json::from_value(json!({"error": {"message": "m", "type": "t", "code": 429}})).unwrap();
         assert_eq!(e.error.code.as_deref(), Some("429"));
         assert_eq!(e.error.param, None);
     }

@@ -47,9 +47,7 @@ impl ErrorKind {
     /// Default HTTP status for errors of this kind.
     fn default_status(self) -> u16 {
         match self {
-            ErrorKind::BadRequest | ErrorKind::ContextWindowExceeded | ErrorKind::ContentPolicy => {
-                400
-            }
+            ErrorKind::BadRequest | ErrorKind::ContextWindowExceeded | ErrorKind::ContentPolicy => 400,
             ErrorKind::NotFound => 404,
             ErrorKind::Authentication => 401,
             ErrorKind::PermissionDenied => 403,
@@ -63,18 +61,12 @@ impl ErrorKind {
     /// OpenAI-style `error.type` used when the upstream supplied none.
     fn openai_type(self) -> &'static str {
         match self {
-            ErrorKind::BadRequest
-            | ErrorKind::ContextWindowExceeded
-            | ErrorKind::ContentPolicy
-            | ErrorKind::NotFound => "invalid_request_error",
+            ErrorKind::BadRequest | ErrorKind::ContextWindowExceeded | ErrorKind::ContentPolicy | ErrorKind::NotFound => "invalid_request_error",
             ErrorKind::Authentication => "authentication_error",
             ErrorKind::PermissionDenied => "permission_error",
             ErrorKind::RateLimited => "rate_limit_error",
             ErrorKind::Timeout => "timeout_error",
-            ErrorKind::ServiceUnavailable
-            | ErrorKind::Connection
-            | ErrorKind::InvalidResponse
-            | ErrorKind::Config => "api_error",
+            ErrorKind::ServiceUnavailable | ErrorKind::Connection | ErrorKind::InvalidResponse | ErrorKind::Config => "api_error",
         }
     }
 }
@@ -99,11 +91,7 @@ struct Inner {
 
 impl std::fmt::Display for Inner {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(
-            f,
-            "{}: {:?} ({}): {}",
-            self.provider, self.kind, self.status, self.message
-        )
+        write!(f, "{}: {:?} ({}): {}", self.provider, self.kind, self.status, self.message)
     }
 }
 
@@ -130,10 +118,7 @@ impl ProviderError {
         Self::new(ErrorKind::Config, provider, message)
     }
 
-    pub(crate) fn invalid_response(
-        provider: impl Into<String>,
-        message: impl Into<String>,
-    ) -> Self {
+    pub(crate) fn invalid_response(provider: impl Into<String>, message: impl Into<String>) -> Self {
         Self::new(ErrorKind::InvalidResponse, provider, message)
     }
 
@@ -142,17 +127,9 @@ impl ProviderError {
     /// `body` is parsed leniently: OpenAI/Anthropic `{"error": {...}}`,
     /// Gemini `{"error": {"code", "message", "status"}}`, a JSON array wrapping
     /// either (Gemini streaming), or plain text.
-    pub fn from_upstream(
-        provider: impl Into<String>,
-        status: u16,
-        body: &str,
-        retry_after: Option<Duration>,
-    ) -> Self {
+    pub fn from_upstream(provider: impl Into<String>, status: u16, body: &str, retry_after: Option<Duration>) -> Self {
         let parsed = ParsedBody::parse(body);
-        let message = parsed
-            .message
-            .clone()
-            .unwrap_or_else(|| default_message(status, body));
+        let message = parsed.message.clone().unwrap_or_else(|| default_message(status, body));
         let kind = classify(status, &parsed, &message);
         // Keep the upstream status unless the classification overrides its
         // meaning (e.g. Gemini's 400 for an invalid API key).
@@ -263,19 +240,9 @@ impl ProviderError {
         ErrorBody {
             error: ErrorDetail {
                 message: self.0.message.clone(),
-                kind: Some(
-                    self.0
-                        .upstream_type
-                        .clone()
-                        .unwrap_or_else(|| self.0.kind.openai_type().to_owned()),
-                ),
+                kind: Some(self.0.upstream_type.clone().unwrap_or_else(|| self.0.kind.openai_type().to_owned())),
                 param: self.0.param.clone(),
-                code: Some(
-                    self.0
-                        .code
-                        .clone()
-                        .unwrap_or_else(|| self.0.status.to_string()),
-                ),
+                code: Some(self.0.code.clone().unwrap_or_else(|| self.0.status.to_string())),
             },
         }
     }
@@ -302,10 +269,7 @@ impl ParsedBody {
         };
         let err = match value.get("error") {
             Some(Value::String(s)) => {
-                return Self {
-                    message: Some(s.clone()),
-                    ..Self::default()
-                };
+                return Self { message: Some(s.clone()), ..Self::default() };
             }
             Some(e @ Value::Object(_)) => e,
             _ => &value,
@@ -344,20 +308,12 @@ fn default_message(status: u16, body: &str) -> String {
 fn classify(status: u16, parsed: &ParsedBody, message: &str) -> ErrorKind {
     let lower = message.to_ascii_lowercase();
     let kind_or_code = |needle: &str| {
-        parsed
-            .kind
-            .as_deref()
-            .is_some_and(|k| k.eq_ignore_ascii_case(needle))
-            || parsed
-                .code
-                .as_deref()
-                .is_some_and(|c| c.eq_ignore_ascii_case(needle))
+        parsed.kind.as_deref().is_some_and(|k| k.eq_ignore_ascii_case(needle))
+            || parsed.code.as_deref().is_some_and(|c| c.eq_ignore_ascii_case(needle))
     };
     match status {
         400 | 413 | 422 => {
-            if kind_or_code("context_length_exceeded")
-                || CONTEXT_WINDOW_PHRASES.iter().any(|p| lower.contains(p))
-            {
+            if kind_or_code("context_length_exceeded") || CONTEXT_WINDOW_PHRASES.iter().any(|p| lower.contains(p)) {
                 ErrorKind::ContextWindowExceeded
             } else if kind_or_code("content_filter")
                 || kind_or_code("content_policy_violation")
@@ -392,14 +348,8 @@ const CONTEXT_WINDOW_PHRASES: &[&str] = &[
     "input token count",
 ];
 
-const CONTENT_POLICY_PHRASES: &[&str] = &[
-    "content management policy",
-    "content_policy_violation",
-    "content filter",
-    "content_filter",
-    "safety system",
-    "responsibleaipolicyviolation",
-];
+const CONTENT_POLICY_PHRASES: &[&str] =
+    &["content management policy", "content_policy_violation", "content filter", "content_filter", "safety system", "responsibleaipolicyviolation"];
 
 /// `Display` of an error and its sources, which carry the useful detail for
 /// reqwest errors (e.g. "connection refused").
@@ -447,10 +397,7 @@ mod tests {
 
     #[test]
     fn openai_error_body_is_preserved() {
-        let e = upstream(
-            400,
-            r#"{"error":{"message":"bad temp","type":"invalid_request_error","param":"temperature","code":null}}"#,
-        );
+        let e = upstream(400, r#"{"error":{"message":"bad temp","type":"invalid_request_error","param":"temperature","code":null}}"#);
         let body = e.to_openai_body();
         assert_eq!(body.error.message, "bad temp");
         assert_eq!(body.error.kind.as_deref(), Some("invalid_request_error"));
@@ -460,20 +407,11 @@ mod tests {
 
     #[test]
     fn anthropic_and_gemini_bodies() {
-        let e = upstream(
-            529,
-            r#"{"type":"error","error":{"type":"overloaded_error","message":"Overloaded"}}"#,
-        );
+        let e = upstream(529, r#"{"type":"error","error":{"type":"overloaded_error","message":"Overloaded"}}"#);
         assert_eq!(e.message(), "Overloaded");
-        assert_eq!(
-            e.to_openai_body().error.kind.as_deref(),
-            Some("overloaded_error")
-        );
+        assert_eq!(e.to_openai_body().error.kind.as_deref(), Some("overloaded_error"));
 
-        let e = upstream(
-            400,
-            r#"[{"error":{"code":400,"message":"API key not valid. Please pass a valid API key.","status":"INVALID_ARGUMENT"}}]"#,
-        );
+        let e = upstream(400, r#"[{"error":{"code":400,"message":"API key not valid. Please pass a valid API key.","status":"INVALID_ARGUMENT"}}]"#);
         assert_eq!(e.kind(), ErrorKind::Authentication);
         assert_eq!(e.status_code(), 401);
         assert!(e.is_retryable());
@@ -481,15 +419,9 @@ mod tests {
 
     #[test]
     fn refines_bad_requests() {
-        let e = upstream(
-            400,
-            r#"{"error":{"message":"x","code":"context_length_exceeded"}}"#,
-        );
+        let e = upstream(400, r#"{"error":{"message":"x","code":"context_length_exceeded"}}"#);
         assert_eq!(e.kind(), ErrorKind::ContextWindowExceeded);
-        let e = upstream(
-            400,
-            r#"{"error":{"type":"invalid_request_error","message":"prompt is too long: 210000 tokens > 200000 maximum"}}"#,
-        );
+        let e = upstream(400, r#"{"error":{"type":"invalid_request_error","message":"prompt is too long: 210000 tokens > 200000 maximum"}}"#);
         assert_eq!(e.kind(), ErrorKind::ContextWindowExceeded);
         let e = upstream(
             400,
@@ -501,10 +433,7 @@ mod tests {
 
     #[test]
     fn plain_text_and_empty_bodies() {
-        assert_eq!(
-            upstream(502, "<html>bad gateway</html>").message(),
-            "<html>bad gateway</html>"
-        );
+        assert_eq!(upstream(502, "<html>bad gateway</html>").message(), "<html>bad gateway</html>");
         assert_eq!(upstream(503, "").message(), "upstream returned HTTP 503");
         let long = "é".repeat(2000);
         assert!(upstream(500, &long).message().len() <= 1000);
@@ -512,16 +441,10 @@ mod tests {
 
     #[test]
     fn stream_errors_are_classified_by_type() {
-        let e = ProviderError::from_stream_error(
-            "anthropic",
-            &serde_json::json!({"type": "overloaded_error", "message": "Overloaded"}),
-        );
+        let e = ProviderError::from_stream_error("anthropic", &serde_json::json!({"type": "overloaded_error", "message": "Overloaded"}));
         assert_eq!(e.status_code(), 529);
         assert!(e.is_retryable());
-        let e = ProviderError::from_stream_error(
-            "anthropic",
-            &serde_json::json!({"type": "api_error", "message": "x"}),
-        );
+        let e = ProviderError::from_stream_error("anthropic", &serde_json::json!({"type": "api_error", "message": "x"}));
         assert_eq!(e.status_code(), 500);
     }
 
@@ -529,10 +452,7 @@ mod tests {
     fn local_kinds_have_default_statuses() {
         let e = ProviderError::new(ErrorKind::Timeout, "p", "slow");
         assert_eq!(e.status_code(), 408);
-        assert_eq!(
-            e.to_openai_body().error.kind.as_deref(),
-            Some("timeout_error")
-        );
+        assert_eq!(e.to_openai_body().error.kind.as_deref(), Some("timeout_error"));
         assert_eq!(ProviderError::config("p", "x").status_code(), 500);
         assert!(ProviderError::new(ErrorKind::Connection, "p", "refused").is_retryable());
     }

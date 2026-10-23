@@ -185,13 +185,7 @@ impl SpendReader {
         match &self.source {
             Source::Memory { logs, .. } => {
                 let logs = logs.lock().unwrap_or_else(|e| e.into_inner());
-                Ok(logs
-                    .iter()
-                    .rev()
-                    .filter(|(t, v)| *t == tenant && filter.matches(v))
-                    .take(limit as usize)
-                    .map(|(_, v)| v.clone())
-                    .collect())
+                Ok(logs.iter().rev().filter(|(t, v)| *t == tenant && filter.matches(v)).take(limit as usize).map(|(_, v)| v.clone()).collect())
             }
             Source::Postgres(client) => {
                 let text = |v: Option<u64>| v.map(|v| v.to_string());

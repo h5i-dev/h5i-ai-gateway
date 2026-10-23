@@ -163,11 +163,7 @@ pub struct MediaForm {
 impl MediaForm {
     /// The last value of a text field.
     pub fn field(&self, name: &str) -> Option<&str> {
-        self.fields
-            .iter()
-            .rev()
-            .find(|(k, _)| k == name)
-            .map(|(_, v)| v.as_str())
+        self.fields.iter().rev().find(|(k, _)| k == name).map(|(_, v)| v.as_str())
     }
 
     /// The first file uploaded under `name`.
@@ -206,14 +202,10 @@ impl TranscriptionResponse {
     /// last cue (a lower bound).
     pub fn duration(&self) -> Option<f64> {
         match self {
-            TranscriptionResponse::Json(v) => {
-                v.get("duration").and_then(Value::as_f64).or_else(|| {
-                    let u = v.get("usage")?;
-                    (u.get("type").and_then(Value::as_str) == Some("duration"))
-                        .then(|| u.get("seconds").and_then(Value::as_f64))
-                        .flatten()
-                })
-            }
+            TranscriptionResponse::Json(v) => v.get("duration").and_then(Value::as_f64).or_else(|| {
+                let u = v.get("usage")?;
+                (u.get("type").and_then(Value::as_str) == Some("duration")).then(|| u.get("seconds").and_then(Value::as_f64)).flatten()
+            }),
             TranscriptionResponse::Text { .. } => None,
         }
     }
@@ -238,21 +230,12 @@ impl TranscriptionResponse {
         let get = |o: &Value, k: &str| o.get(k).and_then(Value::as_u64);
         let input = get(u, "input_tokens")?;
         let output = get(u, "output_tokens").unwrap_or(0);
-        let details = u
-            .get("input_token_details")
-            .or(u.get("input_tokens_details"));
+        let details = u.get("input_token_details").or(u.get("input_tokens_details"));
         let (audio, text) = match details {
-            Some(d) => (
-                get(d, "audio_tokens").unwrap_or(0),
-                get(d, "text_tokens").unwrap_or(0),
-            ),
+            Some(d) => (get(d, "audio_tokens").unwrap_or(0), get(d, "text_tokens").unwrap_or(0)),
             None => (input, 0),
         };
-        Some(TranscriptionTokens {
-            audio_tokens: audio,
-            text_tokens: text.max(input.saturating_sub(audio)),
-            output_tokens: output,
-        })
+        Some(TranscriptionTokens { audio_tokens: audio, text_tokens: text.max(input.saturating_sub(audio)), output_tokens: output })
     }
 }
 
@@ -293,9 +276,7 @@ pub struct SpeechResponse {
 
 impl std::fmt::Debug for SpeechResponse {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.debug_struct("SpeechResponse")
-            .field("content_type", &self.content_type)
-            .finish_non_exhaustive()
+        f.debug_struct("SpeechResponse").field("content_type", &self.content_type).finish_non_exhaustive()
     }
 }
 
@@ -315,31 +296,18 @@ impl SpeechResponse {
 // Calls
 
 /// The canned answer, if this call should be mocked.
-fn mock_text<'a>(
-    dep: &'a Deployment,
-    requested: Option<&'a str>,
-    default: &'static str,
-) -> Option<&'a str> {
-    requested
-        .or(dep.mock_response.as_deref())
-        .or_else(|| (dep.provider.protocol() == Protocol::Mock).then_some(default))
+fn mock_text<'a>(dep: &'a Deployment, requested: Option<&'a str>, default: &'static str) -> Option<&'a str> {
+    requested.or(dep.mock_response.as_deref()).or_else(|| (dep.provider.protocol() == Protocol::Mock).then_some(default))
 }
 
 fn unsupported(dep: &Deployment, what: &str) -> ProviderError {
-    ProviderError::bad_request(
-        dep.provider.name(),
-        format!("{what} is not supported for provider '{}'", dep.provider),
-    )
+    ProviderError::bad_request(dep.provider.name(), format!("{what} is not supported for provider '{}'", dep.provider))
 }
 
 impl Client {
     /// Generate images. Supported for OpenAI-compatible providers, Azure,
     /// Gemini and mock deployments.
-    pub async fn image_generation(
-        &self,
-        dep: &Deployment,
-        req: &ImageRequest,
-    ) -> Result<ImageResponse, ProviderError> {
+    pub async fn image_generation(&self, dep: &Deployment, req: &ImageRequest) -> Result<ImageResponse, ProviderError> {
         if let Some(text) = mock_text(dep, req.mock_response.as_deref(), DEFAULT_MOCK_IMAGE_URL) {
             return images::mock(dep, req.n, text);
         }
@@ -358,11 +326,7 @@ impl Client {
 
     /// Edit images (multipart `image`/`image[]`, `mask`, `prompt`, …).
     /// Supported for OpenAI-compatible providers, Azure and mock deployments.
-    pub async fn image_edit(
-        &self,
-        dep: &Deployment,
-        form: &MediaForm,
-    ) -> Result<ImageResponse, ProviderError> {
+    pub async fn image_edit(&self, dep: &Deployment, form: &MediaForm) -> Result<ImageResponse, ProviderError> {
         if let Some(text) = mock_text(dep, form.mock_response(), DEFAULT_MOCK_IMAGE_URL) {
             let n = form.field("n").and_then(|n| n.parse().ok());
             return images::mock(dep, n, text);
@@ -377,12 +341,7 @@ impl Client {
     /// Transcribe (or, with `translate`, translate to English) an audio
     /// file. Supported for OpenAI-compatible providers, Azure and mock
     /// deployments.
-    pub async fn transcription(
-        &self,
-        dep: &Deployment,
-        form: &MediaForm,
-        translate: bool,
-    ) -> Result<TranscriptionResponse, ProviderError> {
+    pub async fn transcription(&self, dep: &Deployment, form: &MediaForm, translate: bool) -> Result<TranscriptionResponse, ProviderError> {
         if let Some(text) = mock_text(dep, form.mock_response(), mock::DEFAULT_MOCK_RESPONSE) {
             mock::check_error_trigger(dep, text)?;
             return Ok(audio::mock_transcription(form, text));
@@ -390,33 +349,18 @@ impl Client {
         if !matches!(dep.provider.protocol(), Protocol::OpenAi | Protocol::Azure) {
             return Err(unsupported(dep, "audio transcription"));
         }
-        let path = if translate {
-            "audio/translations"
-        } else {
-            "audio/transcriptions"
-        };
+        let path = if translate { "audio/translations" } else { "audio/transcriptions" };
         let (content_type, body) = self.send_form(dep, path, form).await?;
         audio::parse_transcription(dep, form, content_type.as_deref(), body)
     }
 
     /// Text to speech, streamed. Supported for OpenAI-compatible providers,
     /// Azure and mock deployments.
-    pub async fn speech(
-        &self,
-        dep: &Deployment,
-        req: &SpeechRequest,
-    ) -> Result<SpeechResponse, ProviderError> {
-        if let Some(text) = mock_text(
-            dep,
-            req.mock_response.as_deref(),
-            mock::DEFAULT_MOCK_RESPONSE,
-        ) {
+    pub async fn speech(&self, dep: &Deployment, req: &SpeechRequest) -> Result<SpeechResponse, ProviderError> {
+        if let Some(text) = mock_text(dep, req.mock_response.as_deref(), mock::DEFAULT_MOCK_RESPONSE) {
             mock::check_error_trigger(dep, text)?;
             let body: ByteStream = Box::pin(stream::once(async { Ok(audio::silent_wav()) }));
-            return Ok(SpeechResponse {
-                content_type: "audio/wav".into(),
-                body,
-            });
+            return Ok(SpeechResponse { content_type: "audio/wav".into(), body });
         }
         if !matches!(dep.provider.protocol(), Protocol::OpenAi | Protocol::Azure) {
             return Err(unsupported(dep, "text to speech"));
@@ -426,59 +370,31 @@ impl Client {
         let timeout = self.stream_timeout(dep);
         // No whole-request timeout: long audio streams for a while. Time to
         // headers and gaps between chunks are bounded instead.
-        let response = tokio::time::timeout(timeout, self.send(dep, http, None))
-            .await
-            .map_err(|_| headers_timeout(provider, timeout))??;
-        let content_type = content_type(&response).unwrap_or_else(|| {
-            audio::speech_content_type(req.response_format.as_deref()).to_owned()
-        });
-        Ok(SpeechResponse {
-            content_type,
-            body: idle_timeout(provider, response.bytes_stream(), timeout),
-        })
+        let response = tokio::time::timeout(timeout, self.send(dep, http, None)).await.map_err(|_| headers_timeout(provider, timeout))??;
+        let content_type = content_type(&response).unwrap_or_else(|| audio::speech_content_type(req.response_format.as_deref()).to_owned());
+        Ok(SpeechResponse { content_type, body: idle_timeout(provider, response.bytes_stream(), timeout) })
     }
 
     /// POST `form` as multipart to the OpenAI-shaped `path`; the response's
     /// content type and body.
-    async fn send_form(
-        &self,
-        dep: &Deployment,
-        path: &str,
-        form: &MediaForm,
-    ) -> Result<(Option<String>, String), ProviderError> {
+    async fn send_form(&self, dep: &Deployment, path: &str, form: &MediaForm) -> Result<(Option<String>, String), ProviderError> {
         let provider = dep.provider.name();
         let (url, headers, multipart) = audio::form_request(dep, path, form);
         let (form_type, body) = multipart.finish();
-        let builder = self
-            .post(&url)
-            .header(reqwest::header::CONTENT_TYPE, form_type)
-            .body(body);
-        let response = self
-            .execute(dep, builder, &headers, self.timeout(dep))
-            .await?;
+        let builder = self.post(&url).header(reqwest::header::CONTENT_TYPE, form_type).body(body);
+        let response = self.execute(dep, builder, &headers, self.timeout(dep)).await?;
         let content_type = content_type(&response);
-        let body = response
-            .text()
-            .await
-            .map_err(|e| ProviderError::from_reqwest(provider, e))?;
+        let body = response.text().await.map_err(|e| ProviderError::from_reqwest(provider, e))?;
         Ok((content_type, body))
     }
 }
 
 fn content_type(response: &reqwest::Response) -> Option<String> {
-    response
-        .headers()
-        .get(reqwest::header::CONTENT_TYPE)
-        .and_then(|v| v.to_str().ok())
-        .map(str::to_owned)
+    response.headers().get(reqwest::header::CONTENT_TYPE).and_then(|v| v.to_str().ok()).map(str::to_owned)
 }
 
 fn headers_timeout(provider: &str, timeout: Duration) -> ProviderError {
-    ProviderError::new(
-        ErrorKind::Timeout,
-        provider,
-        format!("no response headers within {}s", timeout.as_secs_f64()),
-    )
+    ProviderError::new(ErrorKind::Timeout, provider, format!("no response headers within {}s", timeout.as_secs_f64()))
 }
 
 /// Map a body stream's errors and bound the gaps between chunks.
@@ -486,27 +402,18 @@ fn idle_timeout<S>(provider: &'static str, body: S, timeout: Duration) -> ByteSt
 where
     S: Stream<Item = Result<Bytes, reqwest::Error>> + Send + 'static,
 {
-    Box::pin(stream::unfold(
-        (Box::pin(body), false),
-        move |(mut body, done)| async move {
-            if done {
-                return None;
-            }
-            match tokio::time::timeout(timeout, body.next()).await {
-                Ok(Some(Ok(b))) => Some((Ok(b), (body, false))),
-                Ok(Some(Err(e))) => {
-                    Some((Err(ProviderError::from_reqwest(provider, e)), (body, true)))
-                }
-                Ok(None) => None,
-                Err(_) => Some((
-                    Err(ProviderError::new(
-                        ErrorKind::Timeout,
-                        provider,
-                        format!("no data from upstream for {}s", timeout.as_secs_f64()),
-                    )),
-                    (body, true),
-                )),
-            }
-        },
-    ))
+    Box::pin(stream::unfold((Box::pin(body), false), move |(mut body, done)| async move {
+        if done {
+            return None;
+        }
+        match tokio::time::timeout(timeout, body.next()).await {
+            Ok(Some(Ok(b))) => Some((Ok(b), (body, false))),
+            Ok(Some(Err(e))) => Some((Err(ProviderError::from_reqwest(provider, e)), (body, true))),
+            Ok(None) => None,
+            Err(_) => Some((
+                Err(ProviderError::new(ErrorKind::Timeout, provider, format!("no data from upstream for {}s", timeout.as_secs_f64()))),
+                (body, true),
+            )),
+        }
+    }))
 }

@@ -41,21 +41,11 @@ pub struct Canned {
 
 impl Canned {
     pub fn json(status: u16, body: Value) -> Self {
-        Self {
-            status,
-            headers: vec![("content-type", "application/json".into())],
-            chunks: vec![body.to_string()],
-            delay: Duration::ZERO,
-        }
+        Self { status, headers: vec![("content-type", "application/json".into())], chunks: vec![body.to_string()], delay: Duration::ZERO }
     }
 
     pub fn text(status: u16, body: &str) -> Self {
-        Self {
-            status,
-            headers: vec![("content-type", "text/plain".into())],
-            chunks: vec![body.to_owned()],
-            delay: Duration::ZERO,
-        }
+        Self { status, headers: vec![("content-type", "text/plain".into())], chunks: vec![body.to_owned()], delay: Duration::ZERO }
     }
 
     /// An SSE body split into the given raw pieces.
@@ -115,35 +105,18 @@ impl Upstream {
 }
 
 async fn handle(State(shared): State<Shared>, req: Request) -> Response {
-    let uri = req
-        .uri()
-        .path_and_query()
-        .map(|p| p.as_str().to_owned())
-        .unwrap_or_default();
+    let uri = req.uri().path_and_query().map(|p| p.as_str().to_owned()).unwrap_or_default();
     let headers = req.headers().clone();
-    let bytes = axum::body::to_bytes(req.into_body(), usize::MAX)
-        .await
-        .unwrap();
+    let bytes = axum::body::to_bytes(req.into_body(), usize::MAX).await.unwrap();
     let body = serde_json::from_slice(&bytes).unwrap_or(Value::Null);
-    shared
-        .requests
-        .lock()
-        .unwrap()
-        .push(Recorded { uri, headers, body });
+    shared.requests.lock().unwrap().push(Recorded { uri, headers, body });
 
-    let canned = shared
-        .responses
-        .lock()
-        .unwrap()
-        .pop_front()
-        .unwrap_or_else(|| Canned::text(500, "no canned response left"));
+    let canned = shared.responses.lock().unwrap().pop_front().unwrap_or_else(|| Canned::text(500, "no canned response left"));
     let delay = canned.delay;
-    let body = Body::from_stream(
-        futures::stream::iter(canned.chunks).then(move |c| async move {
-            tokio::time::sleep(delay).await;
-            Ok::<_, std::convert::Infallible>(Bytes::from(c))
-        }),
-    );
+    let body = Body::from_stream(futures::stream::iter(canned.chunks).then(move |c| async move {
+        tokio::time::sleep(delay).await;
+        Ok::<_, std::convert::Infallible>(Bytes::from(c))
+    }));
     let mut resp = Response::new(body);
     *resp.status_mut() = StatusCode::from_u16(canned.status).unwrap();
     for (k, v) in canned.headers {

@@ -67,9 +67,7 @@ pub fn credential(headers: &HeaderMap) -> Option<&str> {
             return Some(v.strip_prefix("Bearer ").or_else(|| v.strip_prefix("bearer ")).unwrap_or(v).trim());
         }
     }
-    ["x-api-key", "api-key", "x-goog-api-key"]
-        .iter()
-        .find_map(|name| headers.get(*name).and_then(|v| v.to_str().ok()).map(str::trim))
+    ["x-api-key", "api-key", "x-goog-api-key"].iter().find_map(|name| headers.get(*name).and_then(|v| v.to_str().ok()).map(str::trim))
 }
 
 impl Authenticator<Gateway> for GatewayAuth {

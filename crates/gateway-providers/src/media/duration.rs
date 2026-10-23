@@ -49,17 +49,9 @@ pub fn audio_duration(data: &[u8]) -> AudioDuration {
     };
     match found {
         Some((format, estimate, bound)) if estimate.is_finite() && estimate >= 0.0 => {
-            AudioDuration {
-                format: Some(format),
-                estimate: Some(estimate),
-                bound: bound.max(estimate),
-            }
+            AudioDuration { format: Some(format), estimate: Some(estimate), bound: bound.max(estimate) }
         }
-        _ => AudioDuration {
-            format: None,
-            estimate: None,
-            bound: fallback,
-        },
+        _ => AudioDuration { format: None, estimate: None, bound: fallback },
     }
 }
 
@@ -88,9 +80,7 @@ fn skip_id3(d: &[u8]) -> &[u8] {
     if d.len() < 10 || &d[..3] != b"ID3" {
         return d;
     }
-    let size = d[6..10]
-        .iter()
-        .fold(0usize, |acc, b| (acc << 7) | usize::from(b & 0x7f));
+    let size = d[6..10].iter().fold(0usize, |acc, b| (acc << 7) | usize::from(b & 0x7f));
     let footer = if d[5] & 0x10 != 0 { 10 } else { 0 };
     d.get(10 + size + footer..).unwrap_or(&[])
 }
@@ -109,11 +99,7 @@ fn wav(d: &[u8]) -> Option<f64> {
         if id == b"data" {
             let available = (d.len() - body) as u64;
             // Streamed WAVs declare 0 or 0xFFFFFFFF.
-            let len = if size == 0 || size == u64::from(u32::MAX) {
-                available
-            } else {
-                size.min(available)
-            };
+            let len = if size == 0 || size == u64::from(u32::MAX) { available } else { size.min(available) };
             return Some(len as f64 / byte_rate? as f64);
         }
         pos = body.checked_add(usize::try_from(size + (size & 1)).ok()?)?;
@@ -144,9 +130,7 @@ fn find_box<'a>(d: &'a [u8], kind: &[u8; 4]) -> Option<&'a [u8]> {
         if size < header {
             return None;
         }
-        let end = pos
-            .saturating_add(usize::try_from(size).unwrap_or(usize::MAX))
-            .min(d.len());
+        let end = pos.saturating_add(usize::try_from(size).unwrap_or(usize::MAX)).min(d.len());
         if &d[pos + 4..pos + 8] == kind {
             return d.get(pos + header as usize..end);
         }
@@ -161,14 +145,8 @@ fn mp4(d: &[u8]) -> Option<f64> {
     }
     let mvhd = find_box(find_box(d, b"moov")?, b"mvhd")?;
     let (timescale, duration) = match mvhd.first()? {
-        0 => (
-            u32be(mvhd, 12)?,
-            u32be(mvhd, 16).filter(|d| *d != u64::from(u32::MAX))?,
-        ),
-        1 => (
-            u32be(mvhd, 20)?,
-            u64be(mvhd, 24).filter(|d| *d != u64::MAX)?,
-        ),
+        0 => (u32be(mvhd, 12)?, u32be(mvhd, 16).filter(|d| *d != u64::from(u32::MAX))?),
+        1 => (u32be(mvhd, 20)?, u64be(mvhd, 24).filter(|d| *d != u64::MAX)?),
         _ => return None,
     };
     // Fragmented MP4s leave the duration at 0.
@@ -192,9 +170,7 @@ fn ogg(d: &[u8]) -> Option<f64> {
     (rate > 0).then(|| granule.saturating_sub(pre_skip) as f64 / rate as f64)
 }
 
-const MPEG1_L3_KBPS: [u64; 15] = [
-    0, 32, 40, 48, 56, 64, 80, 96, 112, 128, 160, 192, 224, 256, 320,
-];
+const MPEG1_L3_KBPS: [u64; 15] = [0, 32, 40, 48, 56, 64, 80, 96, 112, 128, 160, 192, 224, 256, 320];
 const MPEG2_L3_KBPS: [u64; 15] = [0, 8, 16, 24, 32, 40, 48, 56, 64, 80, 96, 112, 128, 144, 160];
 
 /// An MPEG layer III frame header.
@@ -227,13 +203,7 @@ fn frame_at(d: &[u8], i: usize) -> Option<Frame> {
     let rate: u64 = rates[rate_index];
     let padding = u64::from((h[2] >> 1) & 1);
     let len = usize::try_from(coefficient * kbps * 1000 / rate + padding).ok()?;
-    Some(Frame {
-        version,
-        kbps,
-        rate,
-        mono: h[3] >> 6 == 3,
-        len,
-    })
+    Some(Frame { version, kbps, rate, mono: h[3] >> 6 == 3, len })
 }
 
 /// `(estimate, bound)` for an MPEG layer III stream.
@@ -244,17 +214,10 @@ fn mp3(d: &[u8]) -> Option<(f64, f64)> {
     let (pos, frame) = (0..limit).find_map(|i| {
         let f = frame_at(d, i)?;
         let next = i + f.len;
-        let ok = next == d.len()
-            || frame_at(d, next).is_some_and(|g| g.version == f.version && g.rate == f.rate);
+        let ok = next == d.len() || frame_at(d, next).is_some_and(|g| g.version == f.version && g.rate == f.rate);
         ok.then_some((i, f))
     })?;
-    let Frame {
-        version,
-        kbps,
-        rate,
-        mono,
-        ..
-    } = frame;
+    let Frame { version, kbps, rate, mono, .. } = frame;
     let mpeg1 = version == 3;
     let samples_per_frame = if mpeg1 { 1152 } else { 576 };
     let side_info = match (mpeg1, mono) {
@@ -417,13 +380,7 @@ mod tests {
         assert_eq!(d.bound, 15.0 * 8.0 / MIN_BITRATE_BPS);
         assert_eq!(audio_duration(&[]).bound, 0.0);
         // Garbage that looks like a header does not panic.
-        for junk in [
-            &b"RIFF\xff\xff\xff\xffWAVEdata\xff\xff\xff\xff"[..],
-            b"fLaC\0",
-            b"\0\0\0\x01ftyp",
-            b"OggS",
-            b"\xff\xfb",
-        ] {
+        for junk in [&b"RIFF\xff\xff\xff\xffWAVEdata\xff\xff\xff\xff"[..], b"fLaC\0", b"\0\0\0\x01ftyp", b"OggS", b"\xff\xfb"] {
             let _ = audio_duration(junk);
         }
     }
