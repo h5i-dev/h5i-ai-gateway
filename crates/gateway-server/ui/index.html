@@ -1,0 +1,25 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="color-scheme" content="light dark">
+  <meta name="referrer" content="no-referrer">
+  <title>h5i gateway admin</title>
+  <link rel="icon" type="image/svg+xml" href="{{ASSETS}}/favicon.svg">
+  <link rel="stylesheet" href="{{ASSETS}}/app.css">
+  <script src="{{ASSETS}}/js/boot.js"></script>
+  <script type="module" src="{{ASSETS}}/js/main.js"></script>
+</head>
+<body>
+  <a class="skip-link" href="#main">Skip to content</a>
+  <div id="app" aria-busy="true">
+    <p class="boot">Loading the admin console…</p>
+  </div>
+  <div id="toasts" class="toasts" role="status" aria-live="polite"></div>
+  <div id="tooltip" class="tooltip" role="tooltip" hidden></div>
+  <noscript>
+    <p class="boot">The admin console needs JavaScript. The management API is available at <code>/key/*</code>, <code>/team/*</code>, <code>/model/info</code> and <code>/spend/logs</code>.</p>
+  </noscript>
+</body>
+</html>

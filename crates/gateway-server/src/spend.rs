@@ -7,6 +7,8 @@ use gateway_kernel::{CallStatus, SpendLog};
 use h5i_app_core::TenantId;
 use h5i_app_pg::outbox::{Deliver, Delivery};
 use serde_json::{Value, json};
+use std::collections::VecDeque;
+use std::sync::Mutex;
 use std::time::Duration;
 
 /// Nano-dollars per US dollar.
@@ -101,10 +103,49 @@ impl Deliver<Sink> for Deliverer {
     }
 }
 
-/// Reads delivered and pending spend logs back from the outbox, newest first.
-/// A read path for `/spend/logs`, outside the kernel: it changes nothing.
+/// Which spend logs `/spend/logs` returns; every set field must match.
+#[derive(Debug, Clone, Default, PartialEq)]
+pub struct SpendFilter {
+    /// The key id (`api_key`).
+    pub key: Option<u64>,
+    pub team: Option<u64>,
+    /// The kernel's model group id (`model_group_id`).
+    pub model_group: Option<u64>,
+    /// `success`, `failure` or `expired`.
+    pub status: Option<String>,
+    /// `endTime` at or after this Unix second.
+    pub since: Option<u64>,
+    /// `endTime` before this Unix second.
+    pub until: Option<u64>,
+}
+
+impl SpendFilter {
+    /// Whether a spend log (as [`json`] writes it) passes.
+    pub fn matches(&self, log: &Value) -> bool {
+        let id = |field: &str| log[field].as_str().and_then(|s| s.parse::<u64>().ok());
+        let at = log["endTime"].as_u64().unwrap_or(0);
+        self.key.is_none_or(|k| id("api_key") == Some(k))
+            && self.team.is_none_or(|t| id("team_id") == Some(t))
+            && self.model_group.is_none_or(|m| log["model_group_id"].as_u64() == Some(m))
+            && self.status.as_deref().is_none_or(|s| log["status"].as_str() == Some(s))
+            && self.since.is_none_or(|t| at >= t)
+            && self.until.is_none_or(|t| at < t)
+    }
+}
+
+/// Reads spend logs back, newest first. A read path for `/spend/logs`,
+/// outside the kernel: it changes nothing.
+///
+/// With PostgreSQL it reads the outbox (delivered and pending logs). The
+/// in-memory executor has no outbox, so its sink also hands each committed
+/// log to a bounded buffer here, for development.
 pub struct SpendReader {
-    client: tokio_postgres::Client,
+    source: Source,
+}
+
+enum Source {
+    Postgres(tokio_postgres::Client),
+    Memory { logs: Mutex<VecDeque<(TenantId, Value)>>, capacity: usize },
 }
 
 impl SpendReader {
@@ -115,18 +156,73 @@ impl SpendReader {
                 tracing::warn!(error = %e, "spend log reader connection closed");
             }
         });
-        Ok(SpendReader { client })
+        Ok(SpendReader { source: Source::Postgres(client) })
+    }
+
+    /// A reader that keeps the last `capacity` logs handed to [`SpendReader::record`].
+    pub fn memory(capacity: usize) -> Self {
+        SpendReader { source: Source::Memory { logs: Mutex::new(VecDeque::new()), capacity: capacity.max(1) } }
+    }
+
+    /// Keep a committed spend log (in-memory readers only; PostgreSQL has the outbox).
+    pub fn record(&self, tenant: TenantId, log: &SpendLog) {
+        if let Source::Memory { logs, capacity } = &self.source {
+            let mut logs = logs.lock().unwrap_or_else(|e| e.into_inner());
+            if logs.len() >= *capacity {
+                logs.pop_front();
+            }
+            logs.push_back((tenant, json(tenant, log)));
+        }
     }
 
     pub async fn recent(&self, tenant: TenantId, limit: i64) -> Result<Vec<Value>, tokio_postgres::Error> {
-        let rows = self
-            .client
-            .query(
-                "SELECT payload FROM h5i_outbox WHERE tenant_id = $1 AND dest = $2 ORDER BY id DESC LIMIT $3",
-                &[&(tenant.0 as i64), &(crate::kernel::SPEND_LOGS as i64), &limit],
-            )
-            .await?;
-        Ok(rows.iter().filter_map(|r| serde_json::from_slice(r.get::<_, &[u8]>(0)).ok()).collect())
+        self.search(tenant, &SpendFilter::default(), limit).await
+    }
+
+    /// The newest `limit` logs of a tenant that pass `filter`.
+    pub async fn search(&self, tenant: TenantId, filter: &SpendFilter, limit: i64) -> Result<Vec<Value>, tokio_postgres::Error> {
+        let limit = limit.max(0);
+        match &self.source {
+            Source::Memory { logs, .. } => {
+                let logs = logs.lock().unwrap_or_else(|e| e.into_inner());
+                Ok(logs
+                    .iter()
+                    .rev()
+                    .filter(|(t, v)| *t == tenant && filter.matches(v))
+                    .take(limit as usize)
+                    .map(|(_, v)| v.clone())
+                    .collect())
+            }
+            Source::Postgres(client) => {
+                let text = |v: Option<u64>| v.map(|v| v.to_string());
+                let int = |v: Option<u64>| v.map(|v| v.min(i64::MAX as u64) as i64);
+                let rows = client
+                    .query(
+                        "SELECT o.payload FROM h5i_outbox o, LATERAL (SELECT convert_from(o.payload, 'UTF8')::jsonb AS j) p
+                         WHERE o.tenant_id = $1 AND o.dest = $2
+                           AND ($4::text IS NULL OR p.j->>'api_key' = $4)
+                           AND ($5::text IS NULL OR p.j->>'team_id' = $5)
+                           AND ($6::text IS NULL OR p.j->>'model_group_id' = $6)
+                           AND ($7::text IS NULL OR p.j->>'status' = $7)
+                           AND ($8::bigint IS NULL OR (p.j->>'endTime')::bigint >= $8)
+                           AND ($9::bigint IS NULL OR (p.j->>'endTime')::bigint < $9)
+                         ORDER BY o.id DESC LIMIT $3",
+                        &[
+                            &(tenant.0 as i64),
+                            &(crate::kernel::SPEND_LOGS as i64),
+                            &limit,
+                            &text(filter.key),
+                            &text(filter.team),
+                            &text(filter.model_group),
+                            &filter.status,
+                            &int(filter.since),
+                            &int(filter.until),
+                        ],
+                    )
+                    .await?;
+                Ok(rows.iter().filter_map(|r| serde_json::from_slice(r.get::<_, &[u8]>(0)).ok()).collect())
+            }
+        }
     }
 }
 

@@ -5,8 +5,8 @@
 use crate::auth::unix_now;
 use crate::config::parse_duration;
 use crate::error::ApiError;
-use crate::kernel::Gateway;
-use crate::spend::{nano, usd};
+use crate::kernel::{Backend, Gateway};
+use crate::spend::{SpendFilter, nano, usd};
 use crate::AppState;
 use axum::extract::{Query, State};
 use axum::Json;
@@ -502,20 +502,85 @@ pub async fn model_info(State(st): State<AppState>, actor: Actor<Gateway>) -> Re
 // ---------------------------------------------------------------------------
 // Spend and health
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Default, Deserialize)]
 pub struct SpendQuery {
     pub limit: Option<i64>,
+    /// A virtual key or key id (`token_id`).
+    pub api_key: Option<String>,
+    pub team_id: Option<String>,
+    /// A model group name.
+    pub model: Option<String>,
+    /// `success`, `failure` or `expired`.
+    pub status: Option<String>,
+    /// `YYYY-MM-DD` (UTC) or Unix seconds; logs at or after it.
+    pub start_date: Option<String>,
+    /// `YYYY-MM-DD` (UTC, inclusive) or Unix seconds (exclusive); logs before it.
+    pub end_date: Option<String>,
 }
 
-/// `/spend/logs`: recent spend logs (PostgreSQL only). Admins only.
+/// Unix seconds at the start of a `YYYY-MM-DD` day (UTC).
+fn day_start(s: &str) -> Option<u64> {
+    let mut it = s.splitn(3, '-');
+    let (y, m, d): (i64, i64, i64) = (it.next()?.parse().ok()?, it.next()?.parse().ok()?, it.next()?.parse().ok()?);
+    if !(1..=12).contains(&m) || !(1..=31).contains(&d) {
+        return None;
+    }
+    // Days from the civil date (Howard Hinnant's algorithm).
+    let y = if m <= 2 { y - 1 } else { y };
+    let era = y.div_euclid(400);
+    let yoe = y - era * 400;
+    let doy = (153 * ((m + 9) % 12) + 2) / 5 + d - 1;
+    let days = era * 146_097 + yoe * 365 + yoe / 4 - yoe / 100 + doy - 719_468;
+    u64::try_from(days).ok().map(|d| d * 86_400)
+}
+
+/// A `start_date`/`end_date` bound; a date ending the range includes its whole day.
+fn time_bound(v: &Option<String>, field: &str, end: bool) -> Result<Option<u64>> {
+    let Some(s) = v.as_deref().map(str::trim).filter(|s| !s.is_empty()) else {
+        return Ok(None);
+    };
+    if let Ok(secs) = s.parse::<u64>() {
+        return Ok(Some(secs));
+    }
+    let day = day_start(s).ok_or_else(|| ApiError::bad_request(format!("invalid {field} {s:?}: use YYYY-MM-DD or Unix seconds")))?;
+    Ok(Some(if end { day + 86_400 } else { day }))
+}
+
+fn non_empty(v: &Option<String>) -> Option<&str> {
+    v.as_deref().map(str::trim).filter(|s| !s.is_empty())
+}
+
+/// `/spend/logs`: the newest spend logs, filtered by key, team, model group,
+/// status and time, each with its model group's name. Admins only.
 pub async fn spend_logs(State(st): State<AppState>, actor: Actor<Gateway>, Query(q): Query<SpendQuery>) -> Result<Json<Value>> {
     // The kernel decides who is an admin; a Dump is refused otherwise.
     st.dump(&actor).await?;
     let reader = st.spend.as_ref().ok_or_else(|| ApiError::not_found("spend logs need a database (general_settings.database_url)"))?;
-    let logs = reader
-        .recent(TenantId(actor.principal().org), q.limit.unwrap_or(100).clamp(1, 10_000))
+    let filter = SpendFilter {
+        key: non_empty(&q.api_key).map(|k| st.key_id(&actor, k)).transpose()?,
+        team: non_empty(&q.team_id).map(|t| Id::Str(t.to_string()).get()).transpose()?,
+        model_group: match non_empty(&q.model) {
+            None => None,
+            Some(name) => match st.registry.model_id(name) {
+                Some(id) => Some(id),
+                // No such model group, so no logs.
+                None => return Ok(Json(json!([]))),
+            },
+        },
+        status: non_empty(&q.status).map(str::to_string),
+        since: time_bound(&q.start_date, "start_date", false)?,
+        until: time_bound(&q.end_date, "end_date", true)?,
+    };
+    let mut logs = reader
+        .search(TenantId(actor.principal().org), &filter, q.limit.unwrap_or(100).clamp(1, 10_000))
         .await
         .map_err(|e| ApiError::unavailable(e.to_string()))?;
+    for log in &mut logs {
+        let group = log["model_group_id"].as_u64().and_then(|id| st.registry.model_name(id));
+        let deployment = log["model_id"].as_str().and_then(|id| id.parse().ok()).and_then(|id| st.registry.get(id));
+        log["model_group"] = group.into();
+        log["model"] = deployment.map(|d| d.deployment.litellm_model.clone()).into();
+    }
     Ok(Json(Value::Array(logs)))
 }
 
@@ -534,7 +599,25 @@ pub async fn liveliness() -> Json<Value> {
 pub async fn readiness(State(st): State<AppState>) -> Json<Value> {
     Json(json!({
         "status": "healthy",
-        "db": if st.spend.is_some() { "connected" } else { "Not connected" },
+        "db": if matches!(*st.backend, Backend::Postgres(_)) { "connected" } else { "Not connected" },
         "litellm_version": concat!("h5i-ai-gateway ", env!("CARGO_PKG_VERSION")),
     }))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn dates_are_utc_day_starts() {
+        assert_eq!(day_start("1970-01-01"), Some(0));
+        assert_eq!(day_start("2000-03-01"), Some(951_868_800));
+        assert_eq!(day_start("2024-02-29"), Some(1_709_164_800));
+        assert_eq!(day_start("2024-13-01"), None);
+        assert_eq!(day_start("1969-12-31"), None);
+        assert_eq!(day_start("today"), None);
+        assert_eq!(time_bound(&Some("2024-02-29".into()), "end_date", true).unwrap(), Some(1_709_251_200));
+        assert_eq!(time_bound(&Some("1700000000".into()), "end_date", true).unwrap(), Some(1_700_000_000));
+        assert_eq!(time_bound(&Some(" ".into()), "start_date", false).unwrap(), None);
+    }
 }

@@ -101,10 +101,14 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         }
         None => {
             tracing::warn!("no database_url: keys, budgets and spend live in memory and are lost on restart");
-            let exec = MemoryExecutor::new(Box::new(|t, log| {
+            // `/spend/logs` (and the admin UI) read the most recent logs back from memory.
+            let reader = Arc::new(SpendReader::memory(10_000));
+            let recorder = reader.clone();
+            let exec = MemoryExecutor::new(Box::new(move |t, log| {
                 tracing::info!(target: "spend", payload = %spend::json(t, log), "spend log");
+                recorder.record(t, log);
             }));
-            (Backend::Memory(exec), None, None)
+            (Backend::Memory(exec), Some(reader), None)
         }
     };
 

@@ -5,6 +5,7 @@
 
 use gateway_kernel as k;
 use gateway_server::kernel::{Gateway, GatewayStore, MemoryExecutor};
+use gateway_server::spend::{self, SpendFilter, SpendReader};
 use h5i_app_core::{TenantId, Timestamp};
 use h5i_app_pg::{Clock, Engine, EngineConfig, ManualClock, pool, with_schema};
 use std::sync::{Arc, Mutex};
@@ -174,7 +175,7 @@ async fn store_agrees_with_apply_and_the_outbox_holds_the_spend_logs() {
     let (client, conn) = tokio_postgres::connect(&schema_url, tokio_postgres::NoTls).await.unwrap();
     tokio::spawn(conn);
     let rows = client.query("SELECT payload FROM h5i_outbox WHERE tenant_id = $1 ORDER BY id", &[&(org as i64)]).await.unwrap();
-    let logs = logs.lock().unwrap();
+    let logs = logs.lock().unwrap().clone();
     assert_eq!(rows.len(), logs.len());
     for (row, log) in rows.iter().zip(logs.iter()) {
         let v: serde_json::Value = serde_json::from_slice(row.get::<_, &[u8]>(0)).unwrap();
@@ -182,6 +183,29 @@ async fn store_agrees_with_apply_and_the_outbox_holds_the_spend_logs() {
         assert_eq!(v["spend_nano_usd"], log.cost);
     }
     assert!(!logs.is_empty());
+
+    // `/spend/logs` filters in SQL exactly as `SpendFilter::matches` does.
+    let reader = SpendReader::connect(&schema_url).await.unwrap();
+    let all: Vec<serde_json::Value> = logs.iter().rev().map(|l| spend::json(TenantId(org), l)).collect();
+    let first = logs[0];
+    let mid_time = logs[logs.len() / 2].at;
+    let filters = [
+        SpendFilter::default(),
+        SpendFilter { key: Some(first.key), ..Default::default() },
+        SpendFilter { team: Some(first.team), ..Default::default() },
+        SpendFilter { model_group: Some(first.model), ..Default::default() },
+        SpendFilter { status: Some("failure".into()), ..Default::default() },
+        SpendFilter { status: Some("success".into()), key: Some(first.key), ..Default::default() },
+        SpendFilter { since: Some(mid_time), ..Default::default() },
+        SpendFilter { until: Some(mid_time), model_group: Some(first.model), ..Default::default() },
+        SpendFilter { key: Some(u64::MAX >> 1), ..Default::default() },
+    ];
+    for f in &filters {
+        let got: Vec<String> =
+            reader.search(TenantId(org), f, 25).await.unwrap().iter().map(|v| v["request_id"].as_str().unwrap().to_string()).collect();
+        let want: Vec<String> = all.iter().filter(|v| f.matches(v)).take(25).map(|v| v["request_id"].as_str().unwrap().to_string()).collect();
+        assert_eq!(got, want, "{f:?}");
+    }
 }
 
 #[tokio::test]

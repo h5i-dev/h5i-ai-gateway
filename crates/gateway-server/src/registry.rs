@@ -83,6 +83,11 @@ impl Registry {
         self.model_names.read().unwrap_or_else(|e| e.into_inner()).get(&id).cloned()
     }
 
+    /// The kernel id of a model group, by name.
+    pub fn model_id(&self, name: &str) -> Option<u64> {
+        self.model_names.read().unwrap_or_else(|e| e.into_inner()).iter().find(|(_, n)| n.as_str() == name).map(|(id, _)| *id)
+    }
+
     /// The largest known output limit among a model group's deployments.
     pub fn max_output_tokens(&self, model_name: &str) -> Option<u64> {
         self.by_id.values().filter(|d| d.model_name == model_name).filter_map(|d| d.max_output_tokens).max()

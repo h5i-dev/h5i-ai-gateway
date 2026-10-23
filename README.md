@@ -22,6 +22,7 @@ client ──HTTP──▶ gateway-server (shell, trusted)
 | `proofs/` | Lean 4: `Spec.lean` (the specification to review) and the proofs about the extracted kernel |
 | `crates/gateway-providers/` | provider adapters: OpenAI-compatible types, translation to each provider, streaming, pricing |
 | `crates/gateway-server/` | `h5i-gateway`: the axum server, LiteLLM config, management API, PostgreSQL store, spend logs |
+| `crates/gateway-server/ui/` | the admin console served at `/ui` (HTML, CSS, JavaScript modules; embedded in the binary) |
 | `examples/config.yaml` | a LiteLLM-style configuration |
 | `h5i-app.toml` | what `h5i app extract/check/prove/mutate` work on |
 
@@ -141,7 +142,41 @@ With `general_settings.database_url` (or `DATABASE_URL`) state lives in
 PostgreSQL (schema `h5i_gateway`) and survives restarts; spend logs are
 queued in h5i's outbox and delivered to `general_settings.spend_logs`
 (`log`, or a webhook URL), and `/spend/logs` reads them back. Without a
-database the gateway keeps its state in memory.
+database the gateway keeps its state in memory, and `/spend/logs` reads the
+last 10,000 spend logs from memory.
+
+## Admin UI
+
+Open `http://localhost:4000/ui` and sign in with the master key or a virtual
+key. The console is plain HTML, CSS and JavaScript modules in
+`crates/gateway-server/ui/`, embedded in the binary: no build step, and
+nothing is loaded from anywhere but the gateway, so it works offline. It
+has no privileges of its own: the key you sign in with (kept in the tab's
+`sessionStorage`) goes in `Authorization` on every management call, and the
+kernel decides what it may see and do.
+
+- **Dashboard**: global spend, reserved spend and in-flight calls; every
+  deployment with its prices, limits, order and health (cooling down or not);
+  the latest calls.
+- **Keys**: list with spend against budget, create (the new key is shown
+  once, with a copy button), edit models, budget, budget period, RPM/TPM,
+  parallel limit and validity, block and unblock, reset spend, delete.
+- **Teams**: the same for teams, with their key counts.
+- **Spend**: `/spend/logs` filtered by time range, key, team, model group
+  and status, with totals and spend per day, per key and per model group
+  (each chart has a table view; selecting a bar filters by it).
+- **Playground**: chat with any model the key may call, streaming or not,
+  with latency, time to first token, tokens, the deployment and
+  `x-litellm-response-cost`.
+
+A key that is not an admin sees only its own limits and spend, the models it
+may call, and the playground. Light and dark themes follow the system or a
+toggle. `/ui/assets/{version}/…` URLs carry a hash of the assets and are cached
+for a year; `/ui` and the console's own routes (`/ui/keys`, …) are never cached.
+
+| Dashboard | Spend (dark) | Playground |
+|---|---|---|
+| ![Dashboard](docs/ui/dashboard.png) | ![Spend](docs/ui/spend-dark.png) | ![Playground](docs/ui/playground.png) |
 
 ## Compatibility with LiteLLM
 
@@ -158,8 +193,10 @@ and OpenAI's Responses API, bridged to chat completions for every provider
 `models`, `max_budget`, `budget_duration`, `rpm_limit`, `tpm_limit`,
 `max_parallel_requests`, `duration`, `team_id`, `user_role: proxy_admin`;
 teams (`/team/new|update|delete|block|unblock|info|list`) with shared budgets,
-limits and model lists; `/model/info`, `/spend/logs`, `/global/spend`,
-`/health/liveliness|readiness`; the `x-litellm-*` response headers; keys in
+limits and model lists; `/model/info`, `/spend/logs` (filters `api_key`,
+`team_id`, `model`, `status`, `start_date`, `end_date`, `limit`),
+`/global/spend`, `/health/liveliness|readiness`; an admin UI at `/ui`; the
+`x-litellm-*` response headers; keys in
 `Authorization`, `x-api-key`, `api-key` or `x-goog-api-key`; `mock_response`.
 Guardrails (the `guardrails:` list, `mode: pre_call|during_call|post_call`,
 `default_on`, per-request `guardrails` / `metadata.guardrails`, the
@@ -248,9 +285,8 @@ providers; `/v1/completions`, images, audio, files and batches; the other
 guardrail integrations (Bedrock, Aporia, Azure, …), content filter
 `categories` and `blocked_words_file`, LiteLLM's older
 `litellm_settings.guardrails` format, and semantic, S3, disk and
-Redis-cluster caches; callbacks other than the spend log webhook, SSO and
-the admin UI; users, organizations and budgets per
-customer or per model.
+Redis-cluster caches; callbacks other than the spend log webhook, and SSO;
+users, organizations and budgets per customer or per model.
 
 ## Tests
 
