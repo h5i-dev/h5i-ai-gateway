@@ -97,10 +97,10 @@ fn main() {
         counter: AtomicU64::new(0),
     });
     let app = Router::new()
-        .route("/v1/chat/completions", post(chat))
-        .route("/chat/completions", post(chat))
-        .route("/v1/embeddings", post(embeddings))
-        .route("/embeddings", post(embeddings))
+        .route("/v1/chat/completions", post(chat)) // h5i-allow: no-actor (the mock upstream of the benchmark)
+        .route("/chat/completions", post(chat)) // h5i-allow: no-actor (the mock upstream of the benchmark)
+        .route("/v1/embeddings", post(embeddings)) // h5i-allow: no-actor (the mock upstream of the benchmark)
+        .route("/embeddings", post(embeddings)) // h5i-allow: no-actor (the mock upstream of the benchmark)
         .route("/v1/models", get(models))
         .route("/models", get(models))
         .route("/health", get(|| async { "ok" }))
