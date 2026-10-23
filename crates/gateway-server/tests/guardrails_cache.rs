@@ -96,7 +96,7 @@ async fn upstream() -> Upstream {
             )
         }
     };
-    let app = Router::new().route("/v1/chat/completions", post(chat)).route("/v1/embeddings", post(embed));
+    let app = Router::new().route("/v1/chat/completions", post(chat)).route("/v1/embeddings", post(embed)); // h5i-allow: no-actor (a test's mock upstream)
     Upstream { url: serve(app).await, ..up }
 }
 

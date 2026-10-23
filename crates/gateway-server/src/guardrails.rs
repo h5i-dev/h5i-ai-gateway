@@ -656,7 +656,7 @@ enum HttpFail {
 }
 
 async fn post_json(http: &reqwest::Client, url: &str, headers: &[(String, String)], body: &Value, timeout: Duration) -> Result<Value, HttpFail> {
-    let mut rb = http.post(url).timeout(timeout).json(body);
+    let mut rb = http.post(url).timeout(timeout).json(body); // h5i-allow: no-actor (an outgoing guardrail request, not a route)
     for (k, v) in headers {
         rb = rb.header(k, v);
     }

@@ -105,12 +105,12 @@ async fn speech(State(log): State<Log>, path: OriginalUri, h: HeaderMap, body: B
 async fn upstream() -> (String, Log) {
     let log: Log = Arc::default();
     let app = Router::new()
-        .route("/v1/images/generations", post(images))
-        .route("/v1/images/edits", post(edits))
+        .route("/v1/images/generations", post(images)) // h5i-allow: no-actor (a test's mock upstream)
+        .route("/v1/images/edits", post(edits)) // h5i-allow: no-actor (a test's mock upstream)
         .route("/v1/audio/transcriptions", post(transcriptions))
         .route("/v1/audio/translations", post(transcriptions))
         .route("/v1/audio/speech", post(speech))
-        .route("/openai/deployments/{d}/images/generations", post(images))
+        .route("/openai/deployments/{d}/images/generations", post(images)) // h5i-allow: no-actor (a test's mock upstream)
         .route("/openai/deployments/{d}/audio/transcriptions", post(transcriptions))
         .route("/openai/deployments/{d}/audio/speech", post(speech))
         .with_state(log.clone());

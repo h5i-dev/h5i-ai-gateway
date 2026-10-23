@@ -764,7 +764,7 @@ impl Tail {
             && let Some(resp) = self.acc.response()
             && let Ok(v) = serde_json::to_value(&resp)
         {
-            cache.put(key, &v, controls).await;
+            cache.put(key, &v, controls).await; // h5i-allow: no-actor (a cache write, not a route)
         }
         if self.guard.has(Mode::PostCall) {
             let mut out = self.acc.texts();

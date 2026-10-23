@@ -208,7 +208,7 @@ impl Client {
     /// A POST to `url`, to be completed with a body and sent with
     /// [`Client::execute`].
     pub(crate) fn post(&self, url: &str) -> reqwest::RequestBuilder {
-        self.http.post(url)
+        self.http.post(url) // h5i-allow: no-actor (an outgoing request, not a route)
     }
 
     /// POST the request; non-2xx responses become classified errors.

@@ -32,10 +32,10 @@ use serde_json::json;
 /// The routes of this module.
 pub fn routes() -> Router<AppState> {
     Router::new()
-        .route("/v1/messages", post(messages))
-        .route("/anthropic/v1/messages", post(messages))
-        .route("/v1/messages/count_tokens", post(count_tokens))
-        .route("/anthropic/v1/messages/count_tokens", post(count_tokens))
+        .route("/v1/messages", post(messages)) // h5i-allow: no-actor (authenticates with GatewayAuth itself, to answer in Anthropic's error shape)
+        .route("/anthropic/v1/messages", post(messages)) // h5i-allow: no-actor (authenticates with GatewayAuth itself, to answer in Anthropic's error shape)
+        .route("/v1/messages/count_tokens", post(count_tokens)) // h5i-allow: no-actor (authenticates with GatewayAuth itself, to answer in Anthropic's error shape)
+        .route("/anthropic/v1/messages/count_tokens", post(count_tokens)) // h5i-allow: no-actor (authenticates with GatewayAuth itself, to answer in Anthropic's error shape)
 }
 
 /// An error in Anthropic's shape.
