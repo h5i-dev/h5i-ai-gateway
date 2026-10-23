@@ -10,8 +10,10 @@
 
 pub mod anthropic_api;
 pub mod auth;
+pub mod cache;
 pub mod config;
 pub mod error;
+pub mod guardrails;
 pub mod kernel;
 pub mod management;
 pub mod media;
@@ -62,6 +64,10 @@ pub struct AppState {
     pub client: gateway_providers::Client,
     pub settings: Arc<ProxySettings>,
     pub spend: Option<Arc<SpendReader>>,
+    /// The configured guardrails (`guardrails:`); empty when none.
+    pub guardrails: Arc<guardrails::Guardrails>,
+    /// The response cache (`litellm_settings.cache`), if enabled.
+    pub cache: Option<Arc<cache::Cache>>,
 }
 
 impl FromRef<AppState> for Auth<Gateway> {

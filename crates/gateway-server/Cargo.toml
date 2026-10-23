@@ -31,6 +31,9 @@ thiserror = "2"
 tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 uuid = { version = "1", features = ["v4"] }
+regex = "1"
+sha2 = "0.11"
+redis = { version = "1", default-features = false, features = ["tokio-comp", "connection-manager"] }
 
 [dev-dependencies]
 tower = { version = "0.5", features = ["util"] }

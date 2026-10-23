@@ -4,7 +4,9 @@
 //! `DATABASE_URL`) the kernel's state lives in PostgreSQL and every request
 //! runs in a SERIALIZABLE transaction; without one it lives in memory.
 
+use gateway_server::cache::Cache;
 use gateway_server::config::{Config, process_env, resolve};
+use gateway_server::guardrails::Guardrails;
 use gateway_server::kernel::{Backend, Gateway, GatewayStore, MemoryExecutor, SPEND_LOGS};
 use gateway_server::registry::Registry;
 use gateway_server::spend::{self, Deliverer, Sink, SpendReader};
@@ -107,6 +109,15 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     };
 
     let registry = Registry::from_config(&config, &process_env)?;
+    let guardrails = Guardrails::from_config(&config.guardrails, &process_env)?;
+    if !guardrails.is_empty() {
+        tracing::info!(guardrails = ?guardrails.names(), "guardrails configured");
+    }
+    let ls = &config.litellm_settings;
+    let cache = Cache::from_settings(ls.cache, &ls.cache_params, &process_env).await?;
+    if let Some(c) = &cache {
+        tracing::info!(backend = c.backend(), "response cache enabled");
+    }
     let settings = ProxySettings {
         org,
         num_retries: config.num_retries(),
@@ -122,6 +133,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         client: gateway_providers::Client::new(Default::default())?,
         settings: Arc::new(settings),
         spend: reader,
+        guardrails: Arc::new(guardrails),
+        cache: cache.map(Arc::new),
     };
     sync(&state, &config).await?;
     tracing::info!(deployments = state.registry.all().len(), "deployments synced");

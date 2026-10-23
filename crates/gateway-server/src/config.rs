@@ -1,5 +1,6 @@
 //! LiteLLM's `config.yaml`: `model_list`, `router_settings`,
-//! `litellm_settings`, `general_settings` and `environment_variables`.
+//! `litellm_settings` (including `cache`/`cache_params`), `guardrails`,
+//! `general_settings` and `environment_variables`.
 //!
 //! The parts the gateway implements are typed; the rest is accepted and
 //! ignored (with a warning) so existing LiteLLM configs load.
@@ -19,6 +20,9 @@ pub struct Config {
     pub litellm_settings: LitellmSettings,
     #[serde(default)]
     pub general_settings: GeneralSettings,
+    /// LiteLLM's `guardrails:` list (see `guardrails.rs`).
+    #[serde(default)]
+    pub guardrails: Vec<crate::guardrails::GuardrailEntry>,
     /// Set in this process's environment before anything else is read.
     #[serde(default)]
     pub environment_variables: BTreeMap<String, Value>,
@@ -59,6 +63,11 @@ pub struct LitellmSettings {
     #[serde(default)]
     pub fallbacks: Vec<HashMap<String, Vec<String>>>,
     pub drop_params: Option<bool>,
+    /// Response caching on or off (see `cache.rs`).
+    #[serde(default)]
+    pub cache: bool,
+    #[serde(default)]
+    pub cache_params: serde_json::Map<String, Value>,
     #[serde(flatten)]
     pub other: BTreeMap<String, Value>,
 }
@@ -90,6 +99,8 @@ pub enum ConfigError {
     Parse(#[from] serde_yaml::Error),
     #[error("environment variable {0} is not set")]
     MissingEnv(String),
+    #[error("invalid config: {0}")]
+    Invalid(String),
 }
 
 impl Config {
@@ -205,6 +216,11 @@ general_settings:
 litellm_settings:
   drop_params: true
   success_callback: ["langfuse"]
+  cache: true
+  cache_params: {type: redis, host: localhost, port: 6379, ttl: 60}
+guardrails:
+  - guardrail_name: pii
+    litellm_params: {guardrail: litellm_content_filter, mode: [pre_call, post_call], default_on: true}
 "#;
 
     #[test]
@@ -216,6 +232,10 @@ litellm_settings:
         assert_eq!(c.fallbacks()["gpt-4o"], vec!["claude".to_string()]);
         assert_eq!(c.general_settings.master_key.as_deref(), Some("sk-1234"));
         assert!(c.litellm_settings.other.contains_key("success_callback"));
+        assert!(c.litellm_settings.cache);
+        assert_eq!(c.litellm_settings.cache_params["type"], "redis");
+        assert_eq!(c.guardrails[0].guardrail_name, "pii");
+        assert_eq!(c.guardrails[0].litellm_params["mode"], serde_json::json!(["pre_call", "post_call"]));
         let a = deployment_id(&c.model_list[0]);
         assert_eq!(a, deployment_id(&c.model_list[0]));
         assert_ne!(a, deployment_id(&c.model_list[1]));
