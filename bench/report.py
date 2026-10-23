@@ -37,12 +37,17 @@ VAR = {
     "litellm": "--series-2",
     "litellm-rust": "--series-3",
 }
-SCENARIOS = ["chat", "stream", "embeddings", "db"]
+SCENARIOS = ["chat", "stream", "embeddings", "db", "dbhost", "dbbig", "dbtenants"]
+# Database scenarios: compared against the direct upstream's plain chat.
+DB = {"db", "dbhost", "dbbig", "dbtenants"}
 SCENARIO_TITLE = {
     "chat": "Chat, non-streaming (master key)",
     "stream": "Chat, streaming (master key)",
     "embeddings": "Embeddings (master key)",
-    "db": "Chat with PostgreSQL + virtual key",
+    "db": "Chat with PostgreSQL + virtual key (Docker port forwarding)",
+    "dbhost": "Chat with PostgreSQL + virtual key (host network)",
+    "dbbig": "Chat with PostgreSQL, tenant holding 10,000 keys (host network)",
+    "dbtenants": "Chat with PostgreSQL, 4 tenants on one database (host network)",
 }
 PROFILE_TITLE = {
     "lat0": "upstream latency 0 ms (pure gateway overhead)",
@@ -148,7 +153,7 @@ def tables(pts):
             out.append("|" + "---|" * len(head))
             for k in rows:
                 r = pts[k]
-                base_sc = "chat" if sc == "db" else sc
+                base_sc = "chat" if sc in DB else sc
                 base = pts.get((profile, "direct", base_sc, k[3]))
                 l = r.get("latency_ms") or {}
                 cells = [SHORT[k[1]], str(k[3]), fmt_num(r["throughput_rps"]),
@@ -268,9 +273,9 @@ def line_panels(pts, profile, metric, title, subtitle, unit):
         o.append(f'<text class="label" x="{px + pw / 2}" y="{py + ph + 32}" text-anchor="middle">'
                  f'concurrent connections</text>')
         ends = []
-        base_sc = "chat" if sc == "db" else sc
+        base_sc = "chat" if sc in DB else sc
         for s in systems_present:
-            if s == "direct" and sc == "db":
+            if s == "direct" and sc in DB:
                 continue  # the baseline has no database; see the chat panel
             key_sc = base_sc if s == "direct" else sc
             series = [(c, pts.get((profile, s, key_sc, c))) for c in concs]

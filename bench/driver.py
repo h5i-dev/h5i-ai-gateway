@@ -53,7 +53,14 @@ SCENARIO_PATH = {
     "embeddings": "/v1/embeddings",
     "db": "/v1/chat/completions",
     "dbhost": "/v1/chat/completions",
+    "dbbig": "/v1/chat/completions",
+    "dbtenants": "/v1/chat/completions",
 }
+# Keys created in the tenant before measuring `dbbig`.
+BIG_KEYS = int(os.environ.get("BENCH_BIG_KEYS", "10000"))
+# Tenants sharing one database in `dbtenants` (one h5i-gateway process each,
+# all on the gateway's CPUs; the load is split evenly between them).
+TENANTS = int(os.environ.get("BENCH_TENANTS", "4"))
 
 
 def log(msg):
@@ -135,7 +142,7 @@ def upstream_base():
     return f"http://127.0.0.1:{UPSTREAM_PORT}/v1"
 
 
-def litellm_style_config(db_url=None, production=True, provider="openai"):
+def litellm_style_config(db_url=None, production=True, provider="openai", org=None):
     """A LiteLLM config.yaml, understood by all three gateways."""
     lines = [
         "model_list:",
@@ -169,18 +176,21 @@ def litellm_style_config(db_url=None, production=True, provider="openai"):
         ]
     if db_url:
         lines.append(f"  database_url: {db_url}")
+    if org is not None:
+        lines.append(f"  org_id: {org}")
     return "\n".join(lines) + "\n"
 
 
-def start_system(system, args, db_url=None):
+def start_system(system, args, db_url=None, port=GATEWAY_PORT, org=None):
     """Returns the Proc of the gateway under test (None for direct)."""
     if system == "direct":
         return None
-    cfg = os.path.join(args.scratch, f"config-{system}.yaml")
-    port = str(GATEWAY_PORT)
+    suffix = "" if org is None else f"-org{org}"
+    cfg = os.path.join(args.scratch, f"config-{system}{suffix}.yaml")
+    port = str(port)
     if system == "h5i":
         with open(cfg, "w") as f:
-            f.write(litellm_style_config(db_url, production=False))
+            f.write(litellm_style_config(db_url, production=False, org=org))
         env = {"RUST_LOG": "warn"}
         argv = [args.h5i_bin, "--config", cfg, "--host", "127.0.0.1", "--port", port]
     elif system == "litellm":
@@ -213,7 +223,7 @@ def start_system(system, args, db_url=None):
         argv = [args.litellm_rust_bin]
     else:
         raise ValueError(system)
-    proc = Proc(system, argv, CORES["gateway"], args.logdir, env)
+    proc = Proc(system + suffix, argv, CORES["gateway"], args.logdir, env)
     body = {"model": CHAT_MODEL, "messages": [{"role": "user", "content": "ping"}], "max_tokens": 8}
     try:
         wait_ready(proc, f"http://127.0.0.1:{port}/v1/chat/completions", MASTER_KEY, body)
@@ -223,7 +233,7 @@ def start_system(system, args, db_url=None):
     return proc
 
 
-def make_virtual_key(system):
+def make_virtual_key(system, port=GATEWAY_PORT):
     """A key with a budget and rate limits far above what the run uses."""
     body = {
         "models": [CHAT_MODEL],
@@ -232,10 +242,29 @@ def make_virtual_key(system):
         "tpm_limit": 1000000000000,
         "duration": "30d",
     }
-    status, data = http("POST", f"http://127.0.0.1:{GATEWAY_PORT}/key/generate", body, MASTER_KEY, 60)
+    status, data = http("POST", f"http://127.0.0.1:{port}/key/generate", body, MASTER_KEY, 60)
     if status != 200:
         raise RuntimeError(f"{system} /key/generate: {status} {data[:500]!r}")
     return json.loads(data)["key"]
+
+
+def fill_keys(args, system, n):
+    """Create `n` more keys in the tenant (a large tenant for `dbbig`)."""
+    body = os.path.join(args.scratch, "keygen.json")
+    with open(body, "w") as f:
+        f.write("{}")
+    made, t0 = 0, time.time()
+    while made < n:
+        out = os.path.join(args.scratch, "keygen-result.json")
+        subprocess.run([
+            "taskset", "-c", CORES["loadgen"], args.loadgen_bin,
+            "--url", f"http://127.0.0.1:{GATEWAY_PORT}/key/generate", "--body-file", body,
+            "--key", MASTER_KEY, "--concurrency", "32", "--duration", "5", "--warmup", "0", "--out", out,
+        ], capture_output=True, text=True, check=True)
+        with open(out) as f:
+            made += json.load(f)["requests_ok"]
+    log(f"  {system}: created {made} keys in {time.time() - t0:.0f}s")
+    return made
 
 
 # ---------------------------------------------------------------- postgres
@@ -251,7 +280,7 @@ def docker(*a, check=True, capture=False):
 # Database scenarios and how the gateway reaches PostgreSQL: through Docker's
 # port forwarding (docker-proxy, a userspace hop per round trip) or on the
 # host network (loopback, as with a database on the same host or LAN).
-DB_SCENARIOS = {"db": "forward", "dbhost": "host"}
+DB_SCENARIOS = {"db": "forward", "dbhost": "host", "dbbig": "host", "dbtenants": "host"}
 
 
 def start_postgres(network="forward"):
@@ -396,11 +425,73 @@ def run_point(args, profile, system, scenario, conc, key, watch):
         json.dump(res, f, indent=2)
 
 
+def run_tenants(args, profile, system, url, concs, mock_pid, procs):
+    """`dbtenants`: TENANTS gateways (one tenant each) on one database; each
+    load generator drives one of them with an even share of the concurrency.
+    Throughput is the sum; latency percentiles are the worst tenant's."""
+    gws, keys = [], []
+    try:
+        for i in range(TENANTS):
+            gw = start_system(system, args, db_url=url, port=GATEWAY_PORT + 1 + i, org=i + 1)
+            procs.append(gw)
+            gws.append(gw)
+            keys.append(make_virtual_key(system, GATEWAY_PORT + 1 + i))
+        out_dir = os.path.join(args.out, "raw", profile)
+        os.makedirs(out_dir, exist_ok=True)
+        for conc in concs:
+            out = os.path.join(out_dir, f"{system}-dbtenants-c{conc}.json")
+            if args.resume and os.path.exists(out):
+                continue
+            load_before = wait_quiet(args.max_load)
+            share = max(1, conc // TENANTS)
+            runs = []
+            for i, key in enumerate(keys):
+                part = os.path.join(args.scratch, f"tenant-{i}.json")
+                argv = [
+                    "taskset", "-c", CORES["loadgen"], args.loadgen_bin,
+                    "--url", f"http://127.0.0.1:{GATEWAY_PORT + 1 + i}/v1/chat/completions",
+                    "--scenario", "chat", "--key", key, "--concurrency", str(share),
+                    "--duration", str(args.duration), "--warmup", str(args.warmup),
+                    "--label", f"{profile}/{system}/dbtenants/{i}", "--out", part,
+                    "--watch", f"gateway={gws[i].pid}", "--watch", f"db={postgres_pid()}",
+                ]
+                runs.append((part, subprocess.Popen(argv, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)))
+            parts = []
+            for part, p in runs:
+                _, err = p.communicate()
+                if p.returncode != 0:
+                    raise RuntimeError(f"loadgen failed: {err}")
+                with open(part) as f:
+                    parts.append(json.load(f))
+            res = dict(parts[0])
+            res["concurrency"] = share * TENANTS
+            res["throughput_rps"] = sum(r["throughput_rps"] for r in parts)
+            res["requests_ok"] = sum(r["requests_ok"] for r in parts)
+            res["errors_total"] = sum(r.get("errors_total", 0) for r in parts)
+            res["latency_ms"] = {q: max(r["latency_ms"][q] for r in parts) for q in parts[0]["latency_ms"]}
+            res["processes"] = {"tenants": [r.get("processes") for r in parts]}
+            res.update({
+                "system": system, "profile": profile, "profile_settings": PROFILES[profile],
+                "bench_scenario": "dbtenants", "tenants": TENANTS,
+                "per_tenant_rps": [r["throughput_rps"] for r in parts],
+                "loadavg_before": round(load_before, 2), "loadavg_after": round(os.getloadavg()[0], 2),
+                "cores": CORES,
+            })
+            with open(out, "w") as f:
+                json.dump(res, f, indent=2)
+            log(f"  {profile}/{system}/dbtenants c={res['concurrency']} rps={res['throughput_rps']:.0f} "
+                f"p50={res['latency_ms'].get('p50')}ms per-tenant={[round(x) for x in res['per_tenant_rps']]}")
+    finally:
+        for gw in gws:
+            gw.stop()
+            procs.remove(gw)
+
+
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--systems", default="direct,h5i,litellm,litellm-rust")
     ap.add_argument("--profiles", default="lat0,real")
-    ap.add_argument("--scenarios", default="chat,stream,embeddings,db,dbhost")
+    ap.add_argument("--scenarios", default="chat,stream,embeddings,db,dbhost,dbbig,dbtenants")
     ap.add_argument("--concurrency", default="1,16,64,256")
     ap.add_argument("--db-concurrency", default="1,16,64,256")
     ap.add_argument("--duration", type=float, default=10)
@@ -435,8 +526,10 @@ def main():
     # What each system supports (see bench/README.md).
     supports = {
         "direct": {"chat", "stream", "embeddings"},
-        "h5i": {"chat", "stream", "embeddings", "db", "dbhost"},
-        "litellm": {"chat", "stream", "embeddings", "db", "dbhost"},
+        "h5i": {"chat", "stream", "embeddings", "db", "dbhost", "dbbig", "dbtenants"},
+        # LiteLLM has no tenants of this kind: its organizations share one
+        # database without per-tenant transactions.
+        "litellm": {"chat", "stream", "embeddings", "db", "dbhost", "dbbig"},
         # Chat only: streaming and /v1/embeddings return 501, and no database support.
         "litellm-rust": {"chat"},
     }
@@ -492,6 +585,9 @@ def main():
                 for system in db_systems:
                     name = f"bench_{system.replace('-', '_')}_{profile}_{db_scenario}"
                     url = fresh_database(name)
+                    if db_scenario == "dbtenants":
+                        run_tenants(args, profile, system, url, db_concs, mock.pid, procs)
+                        continue
                     log(f"{profile}/{system}: starting with PostgreSQL ({name})")
                     gw = start_system(system, args, db_url=url)
                     procs.append(gw)
@@ -503,6 +599,8 @@ def main():
                                         body, key, 30)
                     if status != 200:
                         raise RuntimeError(f"{system} virtual key call: {status} {data[:300]!r}")
+                    if db_scenario == "dbbig":
+                        fill_keys(args, system, BIG_KEYS)
                     watch = {"gateway": gw.pid, "upstream": mock.pid, "db": postgres_pid()}
                     for c in db_concs:
                         run_point(args, profile, system, db_scenario, c, key, watch)
