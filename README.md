@@ -103,7 +103,11 @@ Aeneas, Lean, rustc) and PostgreSQL. Beyond that, the shell in
   exactly that reported usage does not exceed the reservation. A provider
   that reports more (an underestimated prompt) is still charged in full, so
   spend can then pass the budget (this case is not covered by a theorem);
-  the next admission sees the overrun and is refused.
+  the next admission sees the overrun and is refused. Media deployments
+  are priced per image, second of audio or character instead of per token
+  (see *Images and audio* below); their reservations are upper bounds
+  except where a provider reports more image tokens, or a longer duration,
+  than the header or estimate allowed for.
 - **Provider translation** (`gateway-providers`), the configuration loader,
   and the JSON decoding of requests. Every theorem holds for all commands,
   so a wrong decoding can only produce a command the caller could have sent.
@@ -142,7 +146,8 @@ and `model_info`, `os.environ/` secrets, `router_settings.num_retries`,
 `model_group_alias`, `general_settings.master_key`/`database_url`,
 `environment_variables`); `/v1/chat/completions` (streaming included),
 `/v1/embeddings`, `/v1/models`, Azure-style
-`/openai/deployments/{model}/chat/completions`; virtual keys
+`/openai/deployments/{model}/chat/completions`; images and audio (below);
+virtual keys
 (`/key/generate|update|delete|block|unblock|info|list|reset_spend`) with
 `models`, `max_budget`, `budget_duration`, `rpm_limit`, `tpm_limit`,
 `max_parallel_requests`, `duration`, `team_id`, `user_role: proxy_admin`;
@@ -164,10 +169,78 @@ but not used); deployments come from the configuration file (no
 are not discounted.
 
 **Not implemented:** Bedrock, Vertex AI and the other non-OpenAI-compatible
-providers; `/v1/completions`, `/v1/messages`, images, audio, files, batches
-and the Responses API; guardrails, caching, callbacks other than the spend
-log webhook, SSO and the admin UI; users, organizations and budgets per
+providers; `/v1/completions`, `/v1/messages`, files, batches and the
+Responses API; guardrails, caching, callbacks other than the spend log
+webhook, SSO and the admin UI; users, organizations and budgets per
 customer or per model.
+
+### Images and audio
+
+| Endpoint | Providers |
+|---|---|
+| `POST /v1/images/generations` (`prompt, n, size, quality, style, response_format, background, output_format, user`, other fields passed through) | OpenAI (dall-e-2/3, gpt-image-*), Azure OpenAI, OpenAI-compatible providers that serve the endpoint (xAI, Together, …), Gemini AI Studio (Imagen via `:predict`; `gemini-*-image` via `:generateContent`) |
+| `POST /v1/images/edits` (multipart `image`/`image[]`, `mask`, `prompt`, `n`, `size`, …) | OpenAI, Azure OpenAI, OpenAI-compatible |
+| `POST /v1/audio/transcriptions`, `/v1/audio/translations` (multipart `file, model, language, prompt, response_format, temperature, timestamp_granularities[]`, …) | OpenAI (whisper-1, gpt-4o-transcribe, …), Azure OpenAI, Groq and other OpenAI-compatible servers; `text`/`srt`/`vtt` pass through with the upstream's content type |
+| `POST /v1/audio/speech` (`model, input, voice, response_format, speed, instructions`) | OpenAI, Azure OpenAI, OpenAI-compatible; the audio is streamed back with its content type |
+
+Each is also served without `/v1` and as Azure's
+`/openai/deployments/{model}/...`; uploads are limited to 64 MiB;
+`mock_response` (request field, form field or `litellm_params`) answers
+offline (`n` copies of the given image URL, the given transcript, or a
+short silent WAV) and honours LiteLLM's error triggers. A deployment serves
+a media endpoint when its mode (`model_info.mode`, else LiteLLM's table,
+else implied by its own media prices) matches; a chat deployment is
+refused.
+
+**Units and prices.** The kernel charges `prompt_units * input_cost +
+completion_units * output_cost`, so a media deployment's prices are per
+media unit, taken from LiteLLM's table or the deployment's own
+`litellm_params`/`model_info` (`output_cost_per_image`,
+`input_cost_per_image`, `input_cost_per_pixel`,
+`output_cost_per_image_token`, `input_cost_per_image_token`,
+`input_cost_per_second`, `output_cost_per_second`,
+`input_cost_per_character`, `input_cost_per_audio_token`,
+`input_cost_per_token`, `output_cost_per_token`); the module docs of
+`crates/gateway-server/src/media/pricing.rs` give the details.
+
+- *Per-image models* (DALL-E, Imagen): a completion unit is a thousandth
+  of the deployment's most expensive size/quality variant
+  (`hd/1024-x-1792/dall-e-3`, Azure's per-pixel prices, or a flat
+  `output_cost_per_image`); an image costing `p` is `ceil(p / unit)` units.
+  Admission reserves `n` images at the dearest variant the request's `size`
+  and `quality` allow (every variant for `auto`; DALL-E 3 defaults to
+  standard 1024x1024); settlement counts the images returned at the variant
+  generated. Rounding overcharges by under 0.1% of the top price per image.
+  OpenAI's DALL-E prices, no longer in the vendored table, are built in.
+- *Token-priced image models* (gpt-image, Gemini image models): completion
+  units are output image tokens, prompt units text tokens. The reported
+  usage is charged (input image tokens and output text/thinking tokens
+  converted at their price ratios); without usage, the table's per-image
+  variant price. The reservation is the prompt's UTF-8 length, 8,000 image
+  tokens per uploaded image, and per output image the larger of the
+  variant price in tokens and OpenAI's token counts for the size and
+  quality (Gemini: 1,400, or 2,600 above 2K, plus 2,048 text tokens).
+- *Transcription*: a prompt unit is a second of audio at the per-second
+  price (`output_cost_per_second` if set, else `input_cost_per_second`, as
+  LiteLLM). The reservation is the upload's duration read from its
+  container (WAV, FLAC, MP4/M4A, Ogg, MP3 Xing/VBRI headers; for other MP3s
+  the format's lowest bitrate, and for unknown formats 6 kbps, as bounds);
+  settlement uses the provider's reported duration (`duration`,
+  `usage.seconds`), else the container's, else the last subtitle cue,
+  rounded up to whole seconds. Models reporting token usage
+  (gpt-4o-transcribe) are charged it, converted to seconds-units, with
+  output tokens as completion units.
+- *Speech*: a prompt unit is an input character at
+  `input_cost_per_character`; the cost is known before the call, so the
+  reservation is exact. Token-priced TTS (gpt-4o-mini-tts) is charged its
+  estimated input tokens (characters / 4), like LiteLLM.
+
+Media units also count towards TPM limits. A model group should hold one
+kind of deployment; a mixed group reserves the largest of each
+deployment's own reservation. Not implemented: streamed transcriptions
+(`stream: true`), Gemini image edits, Gemini/Vertex speech and
+transcription, image variations, and pricing of the audio output of
+token-priced TTS models.
 
 ## Tests
 

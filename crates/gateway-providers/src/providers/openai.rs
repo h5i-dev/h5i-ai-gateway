@@ -36,7 +36,7 @@ pub const GATEWAY_ONLY_FIELDS: &[&str] = &[
     "api_version",
 ];
 
-fn endpoint(dep: &Deployment, path: &str) -> String {
+pub(crate) fn endpoint(dep: &Deployment, path: &str) -> String {
     let base = dep.api_base().trim_end_matches('/');
     match dep.provider.protocol() {
         Protocol::Azure => format!(
@@ -48,7 +48,7 @@ fn endpoint(dep: &Deployment, path: &str) -> String {
     }
 }
 
-fn with_auth(dep: &Deployment, req: HttpRequest) -> HttpRequest {
+pub(crate) fn with_auth(dep: &Deployment, req: HttpRequest) -> HttpRequest {
     let Some(key) = &dep.api_key else { return req };
     let req = match dep.provider.protocol() {
         Protocol::Azure => req.header("api-key", key.expose()),
@@ -62,7 +62,7 @@ fn with_auth(dep: &Deployment, req: HttpRequest) -> HttpRequest {
 
 /// Serialize `body`, drop gateway-only fields, set the upstream model and
 /// merge `extra_body`.
-fn upstream_body<T: serde::Serialize>(
+pub(crate) fn upstream_body<T: serde::Serialize>(
     dep: &Deployment,
     body: &T,
 ) -> Result<serde_json::Map<String, Value>, ProviderError> {
@@ -128,7 +128,7 @@ pub(crate) fn embeddings_request(
 }
 
 /// Some OpenAI-compatible servers report failures as `200 {"error": ...}`.
-fn embedded_error(provider: &str, body: &str) -> Option<ProviderError> {
+pub(crate) fn embedded_error(provider: &str, body: &str) -> Option<ProviderError> {
     let v: Value = serde_json::from_str(body).ok()?;
     let err = v.get("error").filter(|e| !e.is_null())?;
     if v.get("choices").is_some() || v.get("data").is_some() {

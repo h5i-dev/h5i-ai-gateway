@@ -37,6 +37,9 @@
 //! * [`ProviderError::is_retryable`], [`ProviderError::status_code`],
 //!   [`ProviderError::to_openai_body`], [`ProviderError::kind`]
 //! * [`estimate_prompt_tokens`]
+//! * images and audio ([`media`]): [`Client::image_generation`],
+//!   [`Client::image_edit`], [`Client::transcription`], [`Client::speech`],
+//!   and [`media::audio_duration`] for uploaded audio files
 //! * [`pricing::lookup`], [`pricing::lookup_with_provider`],
 //!   [`pricing::to_nano_per_token`], [`Deployment::pricing`]
 //!
@@ -76,6 +79,7 @@
 mod client;
 mod deployment;
 mod error;
+pub mod media;
 pub mod pricing;
 mod providers;
 pub mod sse;

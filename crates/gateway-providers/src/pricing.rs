@@ -29,6 +29,117 @@ pub struct Pricing {
     pub litellm_provider: Option<String>,
     /// `chat`, `embedding`, `completion`, `image_generation`, ...
     pub mode: Option<String>,
+    /// USD per image (LiteLLM's flat per-image price; size/quality variants
+    /// carry it under `input_cost_per_image`).
+    pub input_cost_per_image: Option<f64>,
+    pub output_cost_per_image: Option<f64>,
+    /// USD per pixel of a generated image (Azure DALL-E variants).
+    pub input_cost_per_pixel: Option<f64>,
+    /// USD per image token (gpt-image, Gemini image models).
+    pub input_cost_per_image_token: Option<f64>,
+    pub output_cost_per_image_token: Option<f64>,
+    /// USD per second of audio (transcription).
+    pub input_cost_per_second: Option<f64>,
+    pub output_cost_per_second: Option<f64>,
+    /// USD per input character (text-to-speech).
+    pub input_cost_per_character: Option<f64>,
+    /// USD per input audio token (token-priced transcription).
+    pub input_cost_per_audio_token: Option<f64>,
+}
+
+/// One size/quality-specific image price, from a table key such as
+/// `hd/1024-x-1792/dall-e-3` or `azure/standard/1024-x-1024/dall-e-3`.
+#[derive(Debug, Clone, PartialEq)]
+pub struct ImageVariant {
+    /// `standard`, `hd`, `low`, `medium`, `high`; `None` for any quality.
+    pub quality: Option<String>,
+    pub width: u64,
+    pub height: u64,
+    /// USD per image of this size and quality.
+    pub usd_per_image: f64,
+}
+
+impl Pricing {
+    /// The flat price of one image this entry implies for `width` x
+    /// `height` pixels: `input_cost_per_image`, `output_cost_per_image`, or
+    /// `input_cost_per_pixel` times the pixels (LiteLLM's
+    /// `default_image_cost_calculator` order).
+    pub fn usd_per_image(&self, width: u64, height: u64) -> Option<f64> {
+        self.input_cost_per_image
+            .or(self.output_cost_per_image)
+            .or(self
+                .input_cost_per_pixel
+                .map(|p| p * width.saturating_mul(height) as f64))
+    }
+}
+
+/// OpenAI's published DALL-E prices, which the vendored table no longer
+/// lists (they remain under `azure/`): `(key, USD per image)`.
+const LEGACY_IMAGE_PRICES: &[(&str, f64)] = &[
+    ("256-x-256/dall-e-2", 0.016),
+    ("512-x-512/dall-e-2", 0.018),
+    ("1024-x-1024/dall-e-2", 0.02),
+    ("standard/1024-x-1024/dall-e-3", 0.04),
+    ("standard/1024-x-1792/dall-e-3", 0.08),
+    ("standard/1792-x-1024/dall-e-3", 0.08),
+    ("hd/1024-x-1024/dall-e-3", 0.08),
+    ("hd/1024-x-1792/dall-e-3", 0.12),
+    ("hd/1792-x-1024/dall-e-3", 0.12),
+];
+
+/// Every size/quality variant of `model`'s image price: the
+/// provider-specific keys (`{provider}/{quality}/{W}-x-{H}/{model}`) if
+/// there are any, else the generic ones (`{quality}/{W}-x-{H}/{model}`).
+/// Empty when the model has none.
+pub fn image_variants(provider: &str, model: &str) -> Vec<ImageVariant> {
+    let own_prefix = format!("{provider}/");
+    let model = model.strip_prefix(&own_prefix).unwrap_or(model);
+    let mut specific = Vec::new();
+    let mut generic = Vec::new();
+    for (key, p) in TABLE.iter() {
+        let Some(prefix) = key.strip_suffix(model).and_then(|k| k.strip_suffix('/')) else {
+            continue;
+        };
+        let (own, rest) = match prefix.strip_prefix(&own_prefix) {
+            Some(rest) => (true, rest),
+            None => (false, prefix),
+        };
+        let (quality, size) = match rest.rsplit_once('/') {
+            Some((q, s)) => (Some(q), s),
+            None => (None, rest),
+        };
+        // A quality is one path segment, and a size is `{W}-x-{H}`.
+        if quality.is_some_and(|q| q.contains('/') || q.is_empty()) {
+            continue;
+        }
+        let Some((w, h)) = size.split_once("-x-") else {
+            continue;
+        };
+        let (Ok(width), Ok(height)) = (w.parse::<u64>(), h.parse::<u64>()) else {
+            continue;
+        };
+        let Some(usd_per_image) = p.usd_per_image(width, height) else {
+            continue;
+        };
+        let v = ImageVariant {
+            quality: quality.map(str::to_owned),
+            width,
+            height,
+            usd_per_image,
+        };
+        if own {
+            specific.push(v);
+        } else {
+            generic.push(v);
+        }
+    }
+    let mut out = if specific.is_empty() {
+        generic
+    } else {
+        specific
+    };
+    out.sort_by(|a, b| (&a.quality, a.width, a.height).cmp(&(&b.quality, b.width, b.height)));
+    out
 }
 
 /// Look a model up: the exact key, then without its provider prefix
@@ -83,7 +194,7 @@ fn parse(raw: &str) -> HashMap<String, Pricing> {
         // degrades to "no pricing known" rather than a panic.
         return HashMap::new();
     };
-    entries
+    let mut table: HashMap<String, Pricing> = entries
         .into_iter()
         .filter(|(k, v)| k != "sample_spec" && v.is_object())
         .map(|(k, v)| {
@@ -99,10 +210,40 @@ fn parse(raw: &str) -> HashMap<String, Pricing> {
                 max_output_tokens: u("max_output_tokens").or_else(|| u("max_tokens")),
                 litellm_provider: s("litellm_provider"),
                 mode: s("mode"),
+                input_cost_per_image: f("input_cost_per_image"),
+                output_cost_per_image: f("output_cost_per_image"),
+                input_cost_per_pixel: f("input_cost_per_pixel"),
+                input_cost_per_image_token: f("input_cost_per_image_token"),
+                output_cost_per_image_token: f("output_cost_per_image_token"),
+                input_cost_per_second: f("input_cost_per_second"),
+                output_cost_per_second: f("output_cost_per_second"),
+                input_cost_per_character: f("input_cost_per_character"),
+                input_cost_per_audio_token: f("input_cost_per_audio_token"),
             };
             (k, pricing)
         })
-        .collect()
+        .collect();
+    add_legacy_image_prices(&mut table);
+    table
+}
+
+/// Fill in [`LEGACY_IMAGE_PRICES`] (and bare `dall-e-2`/`dall-e-3` entries,
+/// so that their mode is known) where the table lacks them.
+fn add_legacy_image_prices(table: &mut HashMap<String, Pricing>) {
+    let image = |price: Option<f64>| Pricing {
+        litellm_provider: Some("openai".into()),
+        mode: Some("image_generation".into()),
+        input_cost_per_image: price,
+        ..Pricing::default()
+    };
+    for (key, price) in LEGACY_IMAGE_PRICES {
+        table
+            .entry((*key).to_owned())
+            .or_insert_with(|| image(Some(*price)));
+    }
+    for model in ["dall-e-2", "dall-e-3"] {
+        table.entry(model.to_owned()).or_insert_with(|| image(None));
+    }
 }
 
 #[cfg(test)]
@@ -191,5 +332,55 @@ mod tests {
     fn malformed_table_is_empty() {
         assert!(parse("not json").is_empty());
         assert!(parse("[]").is_empty());
+    }
+
+    #[test]
+    fn media_prices() {
+        let w = lookup("whisper-1").unwrap();
+        assert_eq!(w.mode.as_deref(), Some("audio_transcription"));
+        assert_eq!(w.input_cost_per_second, Some(0.0001));
+        let t = lookup("tts-1").unwrap();
+        assert_eq!(t.input_cost_per_character, Some(1.5e-5));
+        let g = lookup("gpt-image-1").unwrap();
+        assert_eq!(g.output_cost_per_image_token, Some(4e-5));
+        assert_eq!(g.input_cost_per_image_token, Some(1e-5));
+        let i = lookup("gemini/imagen-3.0-generate-001").unwrap();
+        assert_eq!(i.usd_per_image(1024, 1024), Some(0.04));
+        // Per-pixel prices scale with the size.
+        let p = Pricing {
+            input_cost_per_pixel: Some(1e-8),
+            ..Pricing::default()
+        };
+        assert_eq!(p.usd_per_image(1000, 1000), Some(0.01));
+    }
+
+    #[test]
+    fn image_variant_lookup() {
+        // DALL-E 3 at OpenAI comes from the legacy prices.
+        let v = image_variants("openai", "dall-e-3");
+        assert_eq!(v.len(), 6);
+        let find = |v: &[ImageVariant], q: &str, w: u64, h: u64| {
+            v.iter()
+                .find(|v| v.quality.as_deref() == Some(q) && v.width == w && v.height == h)
+                .unwrap()
+                .usd_per_image
+        };
+        assert_eq!(find(&v, "hd", 1024, 1792), 0.12);
+        assert_eq!(
+            lookup("dall-e-3").unwrap().mode.as_deref(),
+            Some("image_generation")
+        );
+        // Azure's are per pixel, under the provider prefix.
+        let a = image_variants("azure", "dall-e-3");
+        assert_eq!(a.len(), 6);
+        assert!((find(&a, "standard", 1024, 1024) - 0.044).abs() < 1e-3);
+        // gpt-image-1 has low/medium/high variants.
+        let g = image_variants("openai", "gpt-image-1");
+        assert_eq!(find(&g, "high", 1536, 1024), 0.25);
+        assert!(image_variants("openai", "no-such-image-model").is_empty());
+        // A provider prefix on the model is ignored; no quality is `None`.
+        let d2 = image_variants("openai", "openai/dall-e-2");
+        assert_eq!(d2.len(), 3);
+        assert!(d2.iter().all(|v| v.quality.is_none()));
     }
 }

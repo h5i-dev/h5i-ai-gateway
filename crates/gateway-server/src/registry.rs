@@ -1,8 +1,18 @@
 //! The configured deployments: for each kernel deployment id, how to reach
 //! the provider (credentials stay here, never in the kernel's rows) and the
 //! prices and limits the kernel decides with.
+//!
+//! Prices are per unit of the deployment's mode (`model_info.mode`, else
+//! LiteLLM's table, else implied by its own media prices): tokens for chat
+//! and embeddings; images, seconds of audio or characters for media
+//! deployments ([`crate::media::pricing`] documents the units). They come
+//! from the deployment's `litellm_params` and `model_info` (e.g.
+//! `input_cost_per_token`, `output_cost_per_image`, `input_cost_per_second`,
+//! `input_cost_per_character`), else from LiteLLM's table (for Azure, under
+//! `model_info.base_model`).
 
 use crate::config::{Config, ModelEntry, deployment_id};
+use crate::media::pricing::{MediaPricing, Prices};
 use gateway_kernel::{DeploymentSpec, UNLIMITED};
 use gateway_providers::{Deployment, pricing};
 use serde_json::{Value, json};
@@ -17,10 +27,14 @@ pub struct Deployed {
     /// The deployment's id in the config (`model_info.id`, or the kernel id).
     pub config_id: String,
     pub deployment: Deployment,
-    /// What the kernel knows: prices in nano-dollars per token, limits, order.
+    /// What the kernel knows: prices in nano-dollars per unit, limits, order.
     pub spec: DeploymentSpec,
     /// The output limit of the model, if known, to reserve for.
     pub max_output_tokens: Option<u64>,
+    /// `chat`, `embedding`, `image_generation`, `audio_transcription`, …
+    pub mode: Option<String>,
+    /// How a media deployment counts its units; `None` for token-priced modes.
+    pub media: Option<MediaPricing>,
 }
 
 impl Deployed {
@@ -98,14 +112,21 @@ fn deployed(entry: &ModelEntry, id: u64, env: &dyn Fn(&str) -> Option<String>) -
     let table = base.and_then(pricing::lookup).or_else(|| deployment.pricing());
     let input = deployment.input_cost_per_token.or(table.as_ref().map(|p| p.input_cost_per_token));
     let output = deployment.output_cost_per_token.or(table.as_ref().map(|p| p.output_cost_per_token));
-    if input.is_none() && output.is_none() {
+    // Media deployments are priced per image, second or character.
+    let prices = Prices::resolve(table.as_ref(), &deployment, &[&deployment.extra, &entry.model_info]);
+    let media = MediaPricing::new(&prices, &deployment, base.unwrap_or(&deployment.model));
+    let (input_cost, output_cost) = match &media {
+        Some(m) => m.unit_prices(),
+        None => (input.map(pricing::to_nano_per_token).unwrap_or(0), output.map(pricing::to_nano_per_token).unwrap_or(0)),
+    };
+    if input_cost == 0 && output_cost == 0 && (media.is_some() || (input.is_none() && output.is_none())) {
         tracing::warn!(model = %deployment.litellm_model, "no price known; calls to it cost nothing");
     }
     let enabled = !matches!(entry.model_info.get("disabled"), Some(Value::Bool(true)));
     let spec = DeploymentSpec {
         id,
-        input_cost: input.map(pricing::to_nano_per_token).unwrap_or(0),
-        output_cost: output.map(pricing::to_nano_per_token).unwrap_or(0),
+        input_cost,
+        output_cost,
         rpm: deployment.rpm.unwrap_or(UNLIMITED),
         tpm: deployment.tpm.unwrap_or(UNLIMITED),
         // LiteLLM tries `order: 1` first; deployments without an order come last.
@@ -122,5 +143,7 @@ fn deployed(entry: &ModelEntry, id: u64, env: &dyn Fn(&str) -> Option<String>) -
         max_output_tokens: table.and_then(|p| p.max_output_tokens),
         deployment,
         spec,
+        mode: prices.mode,
+        media,
     })
 }

@@ -37,7 +37,7 @@ pub(crate) fn mock_text<'a>(dep: &'a Deployment, req: &'a ChatRequest) -> Option
         })
 }
 
-fn check_error_trigger(dep: &Deployment, text: &str) -> Result<(), ProviderError> {
+pub(crate) fn check_error_trigger(dep: &Deployment, text: &str) -> Result<(), ProviderError> {
     let provider = dep.provider.name();
     let (kind, message) = match text {
         "litellm.RateLimitError" => (ErrorKind::RateLimited, "this is a mock rate limit error"),

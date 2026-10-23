@@ -165,20 +165,46 @@ impl Client {
         }
     }
 
-    fn timeout(&self, dep: &Deployment) -> Option<Duration> {
+    pub(crate) fn timeout(&self, dep: &Deployment) -> Option<Duration> {
         Some(dep.timeout.unwrap_or(self.settings.default_timeout))
     }
 
+    /// Time to response headers (and between chunks) for streamed bodies.
+    pub(crate) fn stream_timeout(&self, dep: &Deployment) -> Duration {
+        dep.stream_timeout
+            .or(dep.timeout)
+            .unwrap_or(self.settings.default_timeout)
+    }
+
+    /// A POST to `url`, to be completed with a body and sent with
+    /// [`Client::execute`].
+    pub(crate) fn post(&self, url: &str) -> reqwest::RequestBuilder {
+        self.http.post(url)
+    }
+
     /// POST the request; non-2xx responses become classified errors.
-    async fn send(
+    pub(crate) async fn send(
         &self,
         dep: &Deployment,
         req: HttpRequest,
         timeout: Option<Duration>,
     ) -> Result<reqwest::Response, ProviderError> {
+        let builder = self.http.post(&req.url).json(&req.body);
+        self.execute(dep, builder, &req.headers, timeout).await
+    }
+
+    /// Add the adapter's headers and then the deployment's `extra_headers`,
+    /// set the timeout and send; non-2xx responses become classified errors.
+    pub(crate) async fn execute(
+        &self,
+        dep: &Deployment,
+        builder: reqwest::RequestBuilder,
+        req_headers: &[(String, String)],
+        timeout: Option<Duration>,
+    ) -> Result<reqwest::Response, ProviderError> {
         let provider = dep.provider.name();
         let mut headers = HeaderMap::new();
-        for (name, value) in req.headers.iter().chain(&dep.extra_headers) {
+        for (name, value) in req_headers.iter().chain(&dep.extra_headers) {
             let name = HeaderName::from_bytes(name.as_bytes()).map_err(|_| {
                 ProviderError::config(provider, format!("invalid header name '{name}'"))
             })?;
@@ -191,7 +217,7 @@ impl Client {
             // Deployment `extra_headers` come last and override.
             headers.insert(name, value);
         }
-        let mut builder = self.http.post(&req.url).headers(headers).json(&req.body);
+        let mut builder = builder.headers(headers);
         if let Some(t) = timeout {
             builder = builder.timeout(t);
         }

@@ -18,7 +18,7 @@ h5i-app-http.workspace = true
 h5i-app-pg.workspace = true
 h5i-app-json.workspace = true
 h5i-app-sql.workspace = true
-axum = "0.8"
+axum = { version = "0.8", features = ["multipart"] }
 tokio = { version = "1", features = ["macros", "rt-multi-thread", "time", "signal", "net", "sync"] }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
