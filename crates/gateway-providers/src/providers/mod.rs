@@ -6,9 +6,11 @@
 //! [`crate::client`], which keeps every translation unit-testable.
 
 pub(crate) mod anthropic;
+pub(crate) mod bedrock;
 pub(crate) mod gemini;
 pub(crate) mod mock;
 pub(crate) mod openai;
+pub(crate) mod vertex;
 
 use std::collections::VecDeque;
 use std::sync::atomic::{AtomicU64, Ordering};

@@ -10,7 +10,7 @@ against a specification.
 ```
 client ──HTTP──▶ gateway-server (shell, trusted)
                    │  Admit ─────────▶ gateway-kernel (extracted to Lean, proven)
-                   │  call provider ─▶ gateway-providers (OpenAI, Azure, Anthropic, Gemini, …)
+                   │  call provider ─▶ gateway-providers (OpenAI, Azure, Anthropic, Gemini, Bedrock, Vertex AI, …)
                    │  Settle ────────▶ gateway-kernel ──▶ PostgreSQL rows + spend log (outbox)
 ```
 
@@ -223,8 +223,19 @@ chat replayed as a stream when `stream: true`, and the `x-litellm-cache-key`
 and `x-litellm-cache-hit` headers.
 Providers: OpenAI and OpenAI-compatible (Azure, Groq, DeepSeek, Mistral,
 Together, Fireworks, OpenRouter, xAI, Perplexity, DeepInfra, Cerebras, NVIDIA
-NIM, SambaNova, vLLM, Ollama, LM Studio), Anthropic and Gemini (AI Studio),
-with LiteLLM's price table vendored.
+NIM, SambaNova, vLLM, Ollama, LM Studio), Anthropic, Gemini (AI Studio),
+Amazon Bedrock (`bedrock/`: Converse and ConverseStream for every chat model,
+including `bedrock/converse/`, region paths, cross-region inference profiles
+such as `us.anthropic...` and ARNs; Titan and Cohere embeddings; SigV4 with
+`aws_access_key_id`/`aws_secret_access_key`/`aws_session_token`/
+`aws_region_name` or the `AWS_*` variables, or Bedrock API keys via
+`api_key`/`AWS_BEARER_TOKEN_BEDROCK`; `aws_bedrock_runtime_endpoint`) and
+Google Vertex AI (`vertex_ai/`: Gemini, Claude via `rawPredict` /
+`streamRawPredict`, text embeddings; service-account or authorized-user
+`vertex_credentials` / `GOOGLE_APPLICATION_CREDENTIALS` exchanged for cached
+OAuth2 tokens, an access token in `api_key`, or the GCE metadata server;
+`vertex_project`, `vertex_location` including `global`), with LiteLLM's price
+table vendored.
 
 **Different by design:** budgets are enforced with reservations, so
 concurrent requests cannot overspend (LiteLLM checks spend after the fact);
@@ -284,8 +295,13 @@ MCP), `background`, `item_reference` inputs, `input_file.file_url`,
 `/v1/responses/{id}/input_items`, conversations, and
 `/v1/responses/{id}/cancel`.
 
-**Not implemented:** Bedrock, Vertex AI and the other non-OpenAI-compatible
-providers; `/v1/completions`, files and batches; the other
+**Not implemented:** the other non-OpenAI-compatible providers; Bedrock
+InvokeModel chat (`bedrock/invoke/` is served through Converse), AWS
+role/profile/web-identity credentials and the instance-metadata chain, Nova
+and TwelveLabs embeddings, media given to Bedrock as `http(s)` URLs (send
+base64 or `s3://`); Vertex AI workload-identity federation
+(`external_account`), partner models other than Claude, Model Garden
+endpoints; `/v1/completions`, files and batches; the other
 guardrail integrations (Bedrock, Aporia, Azure, …), content filter
 `categories` and `blocked_words_file`, LiteLLM's older
 `litellm_settings.guardrails` format, and semantic, S3, disk and
@@ -382,4 +398,5 @@ ones get through.
 ## License
 
 Apache-2.0. `crates/gateway-providers/data/model_prices_and_context_window.json`
-is from LiteLLM (MIT).
+is from LiteLLM (MIT). `crates/gateway-providers/tests/fixtures/eventstream/`
+is from `aws-smithy-eventstream` (Apache-2.0).

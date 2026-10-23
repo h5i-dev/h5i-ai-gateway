@@ -2,7 +2,8 @@
 //!
 //! This crate speaks the OpenAI Chat Completions / Embeddings wire format
 //! ([`types`]) to the gateway and translates to and from each upstream
-//! provider, including streaming. It makes no policy decisions: keys,
+//! provider (OpenAI-compatible, Azure, Anthropic, Gemini, Amazon Bedrock,
+//! Google Vertex AI), including streaming. It makes no policy decisions: keys,
 //! budgets, rate limits, routing and retries live in the server.
 //!
 //! ```no_run
@@ -75,10 +76,23 @@
 //!   `api_key`, ... — see [`GATEWAY_ONLY_FIELDS`]) are never forwarded.
 //! * The `model` in responses is the upstream's; replace it with the alias
 //!   the client used if desired.
+//! * **Bedrock** (`bedrock/...`) chat goes through the Converse API, signed
+//!   with SigV4 (a self-contained implementation checked against AWS's test
+//!   suite) or sent with a Bedrock API key; streams are AWS event-stream
+//!   frames ([`eventstream`]). Embeddings support Amazon Titan and Cohere.
+//!   Settings live in [`Deployment::cloud`] ([`BedrockConfig`]).
+//! * **Vertex AI** (`vertex_ai/...`) reuses the Gemini and Anthropic
+//!   translations. Google OAuth2 access tokens (service-account JWT
+//!   exchange, authorized-user refresh, or the GCE metadata server) are
+//!   cached inside the [`Client`], shared by its clones and refreshed five
+//!   minutes before expiry, so keep one `Client` per process. Settings live
+//!   in [`Deployment::cloud`] ([`VertexConfig`]).
 
+mod auth;
 mod client;
 mod deployment;
 mod error;
+pub mod eventstream;
 pub mod formats;
 pub mod media;
 pub mod pricing;
@@ -91,13 +105,16 @@ use std::pin::Pin;
 
 use futures::Stream;
 
+pub use auth::gcp::{AuthorizedUser, GcpCredentials, ServiceAccountKey};
 pub use client::{Client, HttpSettings};
 pub use deployment::{
-    DEFAULT_AZURE_API_VERSION, Deployment, Provider, REQUEST_DEFAULT_KEYS, Secret,
+    CloudConfig, DEFAULT_AZURE_API_VERSION, Deployment, Provider, REQUEST_DEFAULT_KEYS, Secret,
 };
 pub use error::{ErrorKind, ProviderError};
 pub use pricing::Pricing;
+pub use providers::bedrock::{AwsAuth, AwsCredentials, BedrockConfig};
 pub use providers::openai::GATEWAY_ONLY_FIELDS;
+pub use providers::vertex::VertexConfig;
 pub use tokens::estimate_prompt_tokens;
 pub use types::{
     ChatChunk, ChatMessage, ChatRequest, ChatResponse, EmbeddingRequest, EmbeddingResponse,
