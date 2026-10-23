@@ -25,3 +25,6 @@ rustc-ice-*.txt
 proofs/.lake/
 .h5i/app/runs/
 .claude/worktrees/
+
+# Editor settings stay local.
+.vscode/
