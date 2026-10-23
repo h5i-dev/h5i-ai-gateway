@@ -90,6 +90,8 @@ async fn gateway(yaml: &str) -> Router {
             default_max_tokens: 100,
         }),
         spend: None,
+        guardrails: Default::default(),
+        cache: None,
     };
     sync(&state, &config).await.unwrap();
     router(state)
