@@ -67,7 +67,7 @@ pub enum Failure {
     Api(ApiError),
     /// A guardrail blocked the request or response (400,
     /// `guardrail_violation`), or could not run (500, `guardrail_error`).
-    Guardrail(GuardrailError),
+    Guardrail(Box<GuardrailError>),
 }
 
 impl Failure {
@@ -109,14 +109,14 @@ impl Failure {
                 (status, Json(serde_json::to_value(e.to_openai_body()).unwrap_or(Value::Null))).into_response()
             }
             Failure::Api(e) => e.into_response(),
-            Failure::Guardrail(e) => e.into_response(),
+            Failure::Guardrail(e) => (*e).into_response(),
         }
     }
 }
 
 impl From<GuardrailError> for Failure {
     fn from(e: GuardrailError) -> Self {
-        Failure::Guardrail(e)
+        Failure::Guardrail(Box::new(e))
     }
 }
 

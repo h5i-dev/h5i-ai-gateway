@@ -78,7 +78,7 @@ const SCHEMA_KEYS: &[&str] = &[
     "maxProperties",
 ];
 
-fn model_url(dep: &Deployment, method: &str, stream: bool) -> String {
+pub(crate) fn model_url(dep: &Deployment, method: &str, stream: bool) -> String {
     let base = dep.api_base().trim_end_matches('/');
     let versioned = if ["/v1beta", "/v1", "/v1alpha"]
         .iter()

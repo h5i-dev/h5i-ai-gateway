@@ -478,14 +478,18 @@ pub async fn model_info(State(st): State<AppState>, actor: Actor<Gateway>) -> Re
         .iter()
         .map(|d| {
             let entry = st.registry.get(d.id);
-            json!({
+            // Media deployments are priced per media unit (images, seconds,
+            // characters; see `media::pricing`), not per token.
+            let per_token = entry.is_none_or(|e| e.media.is_none());
+            let (input_key, output_key) =
+                if per_token { ("input_cost_per_token", "output_cost_per_token") } else { ("input_cost_per_unit", "output_cost_per_unit") };
+            let mut info = json!({
                 "model_name": st.registry.model_name(d.model),
                 "litellm_params": entry.map(|e| e.public_params()).unwrap_or(Value::Null),
                 "model_info": {
                     "id": entry.map(|e| e.config_id.clone()).unwrap_or_else(|| d.id.to_string()),
                     "db_model": false,
-                    "input_cost_per_token": usd(d.input_cost),
-                    "output_cost_per_token": usd(d.output_cost),
+                    "mode": entry.and_then(|e| e.mode.clone()),
                     "rpm": limit_or_null(d.rpm),
                     "tpm": limit_or_null(d.tpm),
                     "order": d.priority,
@@ -493,7 +497,10 @@ pub async fn model_info(State(st): State<AppState>, actor: Actor<Gateway>) -> Re
                     "cooling_down": now < d.cooldown_until,
                     "cooldown_until": if d.cooldown_until == 0 { Value::Null } else { d.cooldown_until.into() },
                 },
-            })
+            });
+            info["model_info"][input_key] = usd(d.input_cost).into();
+            info["model_info"][output_key] = usd(d.output_cost).into();
+            info
         })
         .collect();
     Ok(Json(json!({ "data": data })))

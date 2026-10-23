@@ -17,6 +17,13 @@ function health(info) {
   return status("good", "Healthy");
 }
 
+/** Price per million tokens, or per million media units (marked) for image and audio deployments. */
+function price(info, side) {
+  const perToken = info[`${side}_cost_per_token`];
+  if (perToken !== undefined) return fmt.perMillion(perToken);
+  return h("span", { title: `per million ${info.mode ?? "media"} units` }, fmt.perMillion(info[`${side}_cost_per_unit`]), h("span", { class: "sub" }, info.mode ?? "media"));
+}
+
 function modelsTable(models) {
   const rows = [...models].sort((a, b) => (a.model_name ?? "").localeCompare(b.model_name ?? "") || (a.model_info.order ?? 0) - (b.model_info.order ?? 0));
   return table(
@@ -24,8 +31,8 @@ function modelsTable(models) {
       { label: "Model group", cell: (m) => h("strong", null, m.model_name ?? "—") },
       { label: "Deployment", cell: (m) => h("span", null, h("code", null, m.litellm_params?.model ?? "—"), h("span", { class: "sub" }, m.litellm_params?.api_base ?? `id ${m.model_info.id}`)) },
       { label: "Order", num: true, cell: (m) => (m.model_info.order >= 4294967295 ? "—" : m.model_info.order) },
-      { label: "Input / 1M tok", num: true, cell: (m) => fmt.perMillion(m.model_info.input_cost_per_token) },
-      { label: "Output / 1M tok", num: true, cell: (m) => fmt.perMillion(m.model_info.output_cost_per_token) },
+      { label: "Input / 1M units", num: true, cell: (m) => price(m.model_info, "input") },
+      { label: "Output / 1M units", num: true, cell: (m) => price(m.model_info, "output") },
       { label: "RPM / TPM", num: true, cell: (m) => `${fmt.limit(m.model_info.rpm)} / ${fmt.limit(m.model_info.tpm)}` },
       { label: "Health", cell: (m) => health(m.model_info) },
     ],
