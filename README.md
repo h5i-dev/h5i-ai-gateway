@@ -142,7 +142,9 @@ and `model_info`, `os.environ/` secrets, `router_settings.num_retries`,
 `model_group_alias`, `general_settings.master_key`/`database_url`,
 `environment_variables`); `/v1/chat/completions` (streaming included),
 `/v1/embeddings`, `/v1/models`, Azure-style
-`/openai/deployments/{model}/chat/completions`; virtual keys
+`/openai/deployments/{model}/chat/completions`; Anthropic's Messages API
+and OpenAI's Responses API, bridged to chat completions for every provider
+(see below); virtual keys
 (`/key/generate|update|delete|block|unblock|info|list|reset_spend`) with
 `models`, `max_budget`, `budget_duration`, `rpm_limit`, `tpm_limit`,
 `max_parallel_requests`, `duration`, `team_id`, `user_role: proxy_admin`;
@@ -163,9 +165,51 @@ but not used); deployments come from the configuration file (no
 `/model/new`); key, team and user ids are numbers; prompt-cache token prices
 are not discounted.
 
+**Anthropic Messages API** (`POST /v1/messages`, `/anthropic/v1/messages`,
+`/v1/messages/count_tokens`), as LiteLLM's `/v1/messages`: the request is
+translated to a chat completion, so any provider serves it and keys,
+budgets, rate limits, routing, retries, fallbacks and spend work as for
+`/v1/chat/completions`. Supported: `system` as a string or text blocks;
+text, `image` (base64 or URL), `document` (base64, plain text, file id)
+blocks; `tool_use`/`tool_result`; `tools` (custom tools; server tools such
+as `web_search_20250305` pass through to Anthropic only); `tool_choice`
+including `disable_parallel_tool_use`; `stop_sequences`, `temperature`,
+`top_p`, `top_k`, `metadata.user_id`, `thinking` (forwarded to Anthropic
+deployments; mapped to `reasoning_effort` for others), `cache_control`
+(kept for Anthropic deployments, dropped for others), `stream`. Responses,
+SSE events (`message_start`, `ping`, `content_block_start/delta/stop` with
+`text_delta`, `thinking_delta`, `input_json_delta`, `message_delta` with
+`stop_reason` and usage, `message_stop`, `error`) and errors
+(`{"type": "error", "error": {...}}`) are in Anthropic's shape. Keys may be
+sent as `x-api-key`. `count_tokens` returns the gateway's prompt estimate
+(no tokenizer) and charges nothing. Not supported: `signature_delta` and
+thinking signatures in streamed answers, citations, and server tools on
+non-Anthropic deployments.
+
+**OpenAI Responses API** (`POST /v1/responses`, `GET` and
+`DELETE /v1/responses/{id}`), bridged to chat completions like LiteLLM's
+responses-to-chat bridge: `input` as a string or items (messages with
+`input_text`/`input_image`/`input_file`/`input_audio` parts, `function_call`,
+`function_call_output`; `reasoning` items are dropped), `instructions`,
+function `tools`, `tool_choice`, `max_output_tokens`, `temperature`,
+`top_p`, `text.format` (`json_schema`, `json_object`), `reasoning.effort`,
+`parallel_tool_calls`, `stream` (`response.created`, `response.in_progress`,
+`response.output_item.added/done`, `response.content_part.added/done`,
+`response.output_text.delta/done`, `response.function_call_arguments.delta/done`,
+`response.reasoning_summary_*`, `response.completed`/`response.incomplete`,
+`error`/`response.failed`, all with `sequence_number`s), `store` and
+`previous_response_id`. Output items are `message` (`output_text`),
+`function_call` and `reasoning` (as summary text). **Stored responses are
+kept in memory** in the gateway process (lost on restart, not shared between
+replicas), at most `H5I_RESPONSES_STORE_SIZE` of them (default 1000, least
+recently used evicted), each visible only to the key that created it. Not
+supported: hosted tools (web/file search, computer use, code interpreter,
+MCP), `background`, `item_reference` inputs, `input_file.file_url`,
+`/v1/responses/{id}/input_items`, conversations, and
+`/v1/responses/{id}/cancel`.
+
 **Not implemented:** Bedrock, Vertex AI and the other non-OpenAI-compatible
-providers; `/v1/completions`, `/v1/messages`, images, audio, files, batches
-and the Responses API; guardrails, caching, callbacks other than the spend
+providers; `/v1/completions`, images, audio, files and batches; guardrails, caching, callbacks other than the spend
 log webhook, SSO and the admin UI; users, organizations and budgets per
 customer or per model.
 

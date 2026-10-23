@@ -76,6 +76,7 @@
 mod client;
 mod deployment;
 mod error;
+pub mod formats;
 pub mod pricing;
 mod providers;
 pub mod sse;
