@@ -1,10 +1,18 @@
-//! The OpenAI-compatible inference routes.
+//! The inference path shared by every endpoint.
 //!
 //! Each call is `Admit`, the provider call, then `Settle`. The kernel picks
 //! the deployment and decides every limit; this module only carries bytes,
 //! retries on another deployment when the kernel's choice failed in a way
 //! worth retrying (excluding the ones already tried), and moves on to the
 //! configured fallback groups when a group has nothing left.
+//!
+//! Endpoints use one of three entry points:
+//! - [`call`]: any non-streaming provider call, measured in the deployment's
+//!   units (tokens for chat and embeddings; images, seconds or characters for
+//!   media deployments, whose prices are per unit).
+//! - [`run_chat`]: a chat completion, streaming or not, in OpenAI's shape;
+//!   the Anthropic Messages and Responses APIs translate to and from it.
+//! - [`Attempts`]: the admission loop itself, for calls that settle later.
 //!
 //! The reservation covers the estimated prompt plus `max_tokens`. When the
 //! client sets no `max_tokens`, the gateway sets one (the model's output
@@ -27,84 +35,163 @@ use axum::http::{HeaderMap, HeaderValue, StatusCode, header};
 use axum::response::{IntoResponse, Response};
 use axum::Json;
 use bytes::Bytes;
-use futures::StreamExt;
+use futures::{Stream, StreamExt};
 use gateway_kernel::{CallStatus, Command, Error as Refusal, Principal, Reply};
 use gateway_providers::types::EmbeddingInput;
-use gateway_providers::{ChatChunk, ChatRequest, ChatStream, EmbeddingRequest, ProviderError, estimate_prompt_tokens};
+use gateway_providers::{ChatChunk, ChatRequest, ChatResponse, EmbeddingRequest, ProviderError, estimate_prompt_tokens};
 use h5i_app_http::Actor;
 use serde_json::Value;
+use std::future::Future;
+use std::pin::Pin;
+use std::task::{Context, Poll};
 use std::time::Duration;
 
-/// A provider failure as the client sees it: the upstream's status and error.
-fn provider_response(e: &ProviderError) -> Response {
-    let status = StatusCode::from_u16(e.status_code()).unwrap_or(StatusCode::BAD_GATEWAY);
-    (status, Json(serde_json::to_value(e.to_openai_body()).unwrap_or(Value::Null))).into_response()
-}
-
-/// What went wrong in the last attempt, to report if nothing succeeds.
-enum Failure {
+/// Why a call produced no answer: the kernel refused, the provider failed,
+/// or something else went wrong (bad request, database unavailable).
+#[derive(Debug)]
+pub enum Failure {
     Refusal(Refusal),
     Provider(ProviderError),
+    Api(ApiError),
 }
 
 impl Failure {
-    fn into_response(self) -> Response {
+    /// The HTTP status a client should see.
+    pub fn status(&self) -> StatusCode {
+        match self {
+            Failure::Refusal(e) => ApiError::refusal(*e).status,
+            Failure::Provider(e) => StatusCode::from_u16(e.status_code()).unwrap_or(StatusCode::BAD_GATEWAY),
+            Failure::Api(e) => e.status,
+        }
+    }
+
+    /// A short machine-readable kind (`rate_limit_error`, `budget_exceeded`, …).
+    pub fn kind(&self) -> String {
+        match self {
+            Failure::Refusal(e) => ApiError::refusal(*e).kind.to_string(),
+            Failure::Provider(e) => e.to_openai_body().error.kind.clone().unwrap_or_else(|| "provider_error".into()),
+            Failure::Api(e) => e.kind.to_string(),
+        }
+    }
+
+    pub fn message(&self) -> String {
+        match self {
+            Failure::Refusal(e) => ApiError::refusal(*e).message,
+            Failure::Provider(e) => e.message().to_string(),
+            Failure::Api(e) => e.message.clone(),
+        }
+    }
+
+    /// The error in OpenAI's shape.
+    pub fn into_response(self) -> Response {
         match self {
             Failure::Refusal(e) => ApiError::refusal(e).into_response(),
-            Failure::Provider(e) => provider_response(&e),
+            Failure::Provider(e) => {
+                let status = StatusCode::from_u16(e.status_code()).unwrap_or(StatusCode::BAD_GATEWAY);
+                (status, Json(serde_json::to_value(e.to_openai_body()).unwrap_or(Value::Null))).into_response()
+            }
+            Failure::Api(e) => e.into_response(),
         }
     }
 }
 
+impl From<ApiError> for Failure {
+    fn from(e: ApiError) -> Self {
+        Failure::Api(e)
+    }
+}
+
+/// Where a call went, for the `x-litellm-*` headers and logs.
+#[derive(Debug, Clone)]
+pub struct CallInfo {
+    pub deployment: String,
+    pub group: String,
+    pub retries: usize,
+    pub fallbacks: usize,
+    /// Nano-dollars charged; `None` until a streamed call settles.
+    pub cost: Option<u64>,
+}
+
+impl CallInfo {
+    pub fn headers(&self) -> HeaderMap {
+        let mut h = HeaderMap::new();
+        let mut put = |name: &'static str, v: String| {
+            if let Ok(v) = HeaderValue::from_str(&v) {
+                h.insert(name, v);
+            }
+        };
+        put("x-litellm-model-id", self.deployment.clone());
+        put("x-litellm-model-group", self.group.clone());
+        put("x-litellm-attempted-retries", self.retries.to_string());
+        put("x-litellm-attempted-fallbacks", self.fallbacks.to_string());
+        if let Some(c) = self.cost {
+            put("x-litellm-response-cost", usd(c).to_string());
+        }
+        h
+    }
+}
+
 /// A call the kernel admitted.
-struct Admitted<'a> {
-    reservation: u64,
-    deployed: &'a Deployed,
-    group: String,
-    retries: usize,
-    fallbacks: usize,
+pub struct Admitted<'a> {
+    pub reservation: u64,
+    pub deployed: &'a Deployed,
+    pub group: String,
+    pub retries: usize,
+    pub fallbacks: usize,
+}
+
+impl Admitted<'_> {
+    pub fn info(&self, cost: Option<u64>) -> CallInfo {
+        CallInfo {
+            deployment: self.deployed.config_id.clone(),
+            group: self.group.clone(),
+            retries: self.retries,
+            fallbacks: self.fallbacks,
+            cost,
+        }
+    }
 }
 
 /// How a request walks the deployments: the kernel's choice in each group,
 /// then the next group.
-struct Attempts<'a> {
+pub struct Attempts<'a> {
     st: &'a AppState,
     actor: Principal,
     groups: Vec<String>,
     group: usize,
     exclude: Vec<u64>,
     retries: usize,
-    prompt_tokens: u64,
-    max_tokens: u64,
+    prompt_units: u64,
+    max_units: u64,
     last: Option<Failure>,
 }
 
 impl<'a> Attempts<'a> {
-    fn new(st: &'a AppState, actor: Principal, model: &str, prompt_tokens: u64, max_tokens: u64) -> Self {
+    /// `prompt_units`/`max_units` are what the reservation covers: input and
+    /// output tokens for chat, or the deployment's own units.
+    pub fn new(st: &'a AppState, actor: Principal, model: &str, prompt_units: u64, max_units: u64) -> Self {
         let model = st.settings.aliases.get(model).cloned().unwrap_or_else(|| model.to_string());
         let mut groups = vec![model.clone()];
         groups.extend(st.settings.fallbacks.get(&model).cloned().unwrap_or_default());
-        Attempts { st, actor, groups, group: 0, exclude: Vec::new(), retries: 0, prompt_tokens, max_tokens, last: None }
+        Attempts { st, actor, groups, group: 0, exclude: Vec::new(), retries: 0, prompt_units, max_units, last: None }
     }
 
-    fn primary(&self) -> &str {
+    /// The model group the client asked for (after aliases).
+    pub fn primary(&self) -> &str {
         &self.groups[0]
     }
 
-    /// The next admitted call, or the response to give up with.
-    async fn next(&mut self) -> Result<Admitted<'a>, Response> {
+    /// The next admitted call, or why there is none.
+    pub async fn next(&mut self) -> Result<Admitted<'a>, Failure> {
         while self.group < self.groups.len() {
             let group = self.groups[self.group].clone();
             let cmd = Command::Admit {
                 model: group.as_bytes().to_vec(),
-                prompt_tokens: self.prompt_tokens,
-                max_tokens: self.max_tokens,
+                prompt_tokens: self.prompt_units,
+                max_tokens: self.max_units,
                 exclude: self.exclude.clone(),
             };
-            let reply = match self.st.backend.run(&self.actor, &cmd).await {
-                Ok(r) => r,
-                Err(e) => return Err(ApiError::from(e).into_response()),
-            };
+            let reply = self.st.backend.run(&self.actor, &cmd).await.map_err(|e| Failure::Api(e.into()))?;
             match reply {
                 Ok(Reply::Admitted { reservation, deployment, .. }) => match self.st.registry.get(deployment) {
                     Some(deployed) => {
@@ -116,7 +203,7 @@ impl<'a> Attempts<'a> {
                         self.exclude.push(deployment);
                     }
                 },
-                Ok(r) => return Err(ApiError::internal(format!("unexpected reply {r:?}")).into_response()),
+                Ok(r) => return Err(ApiError::internal(format!("unexpected reply {r:?}")).into()),
                 // Nothing left in this group: fall back.
                 Err(Refusal::NoDeployment) => {
                     self.last.get_or_insert(Failure::Refusal(Refusal::NoDeployment));
@@ -124,10 +211,10 @@ impl<'a> Attempts<'a> {
                 }
                 // A fallback group this key cannot use is skipped.
                 Err(Refusal::ModelNotFound | Refusal::ModelNotAllowed) if self.group > 0 => self.next_group(),
-                Err(e) => return Err(ApiError::refusal(e).into_response()),
+                Err(e) => return Err(Failure::Refusal(e)),
             }
         }
-        Err(self.last.take().unwrap_or(Failure::Refusal(Refusal::NoDeployment)).into_response())
+        Err(self.last.take().unwrap_or(Failure::Refusal(Refusal::NoDeployment)))
     }
 
     fn next_group(&mut self) {
@@ -136,7 +223,7 @@ impl<'a> Attempts<'a> {
     }
 
     /// Record a failed call; whether to try again.
-    async fn failed(&mut self, a: &Admitted<'_>, e: ProviderError) -> bool {
+    pub async fn failed(&mut self, a: &Admitted<'_>, e: ProviderError) -> bool {
         let retryable = e.is_retryable();
         let status = if retryable { CallStatus::Retryable } else { CallStatus::Failure };
         settle(self.st, &self.actor, a.reservation, 0, 0, status).await;
@@ -153,15 +240,16 @@ impl<'a> Attempts<'a> {
         true
     }
 
-    fn give_up(&mut self) -> Response {
-        self.last.take().unwrap_or(Failure::Refusal(Refusal::NoDeployment)).into_response()
+    /// The failure to report once nothing is left to try.
+    pub fn give_up(&mut self) -> Failure {
+        self.last.take().unwrap_or(Failure::Refusal(Refusal::NoDeployment))
     }
 }
 
 /// Settle a reservation, retrying while the database is unavailable. If it
 /// stays unavailable the reservation is released by the sweeper later,
 /// uncharged; that is logged as an error.
-async fn settle(st: &AppState, actor: &Principal, reservation: u64, prompt: u64, completion: u64, status: CallStatus) -> Option<u64> {
+pub async fn settle(st: &AppState, actor: &Principal, reservation: u64, prompt: u64, completion: u64, status: CallStatus) -> Option<u64> {
     let cmd = Command::Settle { reservation, prompt_tokens: prompt, completion_tokens: completion, status };
     for attempt in 0..5u32 {
         match st.backend.run(actor, &cmd).await {
@@ -180,51 +268,56 @@ async fn settle(st: &AppState, actor: &Principal, reservation: u64, prompt: u64,
     None
 }
 
-fn headers(a: &Admitted<'_>, cost: Option<u64>) -> HeaderMap {
-    let mut h = HeaderMap::new();
-    let mut put = |name: &'static str, v: String| {
-        if let Ok(v) = HeaderValue::from_str(&v) {
-            h.insert(name, v);
-        }
-    };
-    put("x-litellm-model-id", a.deployed.config_id.clone());
-    put("x-litellm-model-group", a.group.clone());
-    put("x-litellm-attempted-retries", a.retries.to_string());
-    put("x-litellm-attempted-fallbacks", a.fallbacks.to_string());
-    if let Some(c) = cost {
-        put("x-litellm-response-cost", usd(c).to_string());
-    }
-    h
+/// What a provider call used, in the deployment's units.
+#[derive(Debug, Clone, Copy, Default)]
+pub struct Units {
+    pub prompt: u64,
+    pub completion: u64,
 }
 
-fn parse<T: serde::de::DeserializeOwned>(body: Value) -> Result<T, Response> {
-    serde_json::from_value(body).map_err(|e| ApiError::bad_request(format!("invalid request body: {e}")).into_response())
+/// One non-streaming provider call with the full admission, retry, fallback
+/// and settlement path. `f` performs the call on the deployment the kernel
+/// chose and reports the units used.
+pub async fn call<T, F, Fut>(st: &AppState, actor: Principal, model: &str, prompt_units: u64, max_units: u64, mut f: F) -> Result<(T, CallInfo), Failure>
+where
+    F: FnMut(&Deployed) -> Fut,
+    Fut: Future<Output = Result<(T, Units), ProviderError>>,
+{
+    let mut attempts = Attempts::new(st, actor, model, prompt_units, max_units);
+    loop {
+        let a = attempts.next().await?;
+        match f(a.deployed).await {
+            Ok((out, used)) => {
+                let cost = settle(st, &actor, a.reservation, used.prompt, used.completion, CallStatus::Success).await;
+                return Ok((out, a.info(cost)));
+            }
+            Err(e) => {
+                if !attempts.failed(&a, e).await {
+                    return Err(attempts.give_up());
+                }
+            }
+        }
+    }
 }
 
 // ---------------------------------------------------------------------------
 // Chat completions
 
-pub async fn chat_completions(State(st): State<AppState>, actor: Actor<Gateway>, Json(body): Json<Value>) -> Response {
-    match parse::<ChatRequest>(body) {
-        Ok(req) => chat(st, *actor.principal(), req).await,
-        Err(r) => r,
-    }
+/// A chat completion's answer: whole, or a stream of chunks that settles
+/// its reservation when it ends, fails or is dropped.
+pub enum ChatOutcome {
+    Complete(ChatResponse),
+    Stream(SettlingStream),
 }
 
-/// Azure OpenAI's path: the model is in the URL.
-pub async fn azure_chat_completions(
-    State(st): State<AppState>,
-    Path(model): Path<String>,
-    actor: Actor<Gateway>,
-    Json(mut body): Json<Value>,
-) -> Response {
-    if let Some(o) = body.as_object_mut() {
-        o.insert("model".into(), Value::String(model));
-    }
-    chat_completions(State(st), actor, Json(body)).await
+/// About four characters per token.
+pub fn estimate_text(s: &str) -> u64 {
+    (s.chars().count() as u64).div_ceil(4)
 }
 
-async fn chat(st: AppState, actor: Principal, mut req: ChatRequest) -> Response {
+/// Run a chat completion: reservation sizing, admission, the provider call
+/// (streaming if `req.stream`), retries, fallbacks and settlement.
+pub async fn run_chat(st: &AppState, actor: Principal, mut req: ChatRequest) -> Result<(ChatOutcome, CallInfo), Failure> {
     let prompt_tokens = estimate_prompt_tokens(&req);
     let model = req.model.clone();
     let max_tokens = match req.max_output_tokens() {
@@ -236,20 +329,28 @@ async fn chat(st: AppState, actor: Principal, mut req: ChatRequest) -> Response 
             n
         }
     };
-    let stream = req.stream == Some(true);
-    let mut attempts = Attempts::new(&st, actor, &model, prompt_tokens, max_tokens);
+    let mut attempts = Attempts::new(st, actor, &model, prompt_tokens, max_tokens);
     loop {
-        let a = match attempts.next().await {
-            Ok(a) => a,
-            Err(r) => return r,
-        };
+        let a = attempts.next().await?;
         let dep = &a.deployed.deployment;
-        if stream {
+        if req.stream == Some(true) {
             match st.client.chat_stream(dep, &req).await {
-                Ok(s) => return stream_response(&st, actor, &a, s, prompt_tokens, req.wants_stream_usage()),
+                Ok(s) => {
+                    let guard = StreamSettle {
+                        st: st.clone(),
+                        actor,
+                        reservation: a.reservation,
+                        prompt_estimate: prompt_tokens,
+                        usage: None,
+                        chars: 0,
+                        status: CallStatus::Success,
+                        settled: false,
+                    };
+                    return Ok((ChatOutcome::Stream(SettlingStream { inner: s, guard }), a.info(None)));
+                }
                 Err(e) => {
                     if !attempts.failed(&a, e).await {
-                        return attempts.give_up();
+                        return Err(attempts.give_up());
                     }
                 }
             }
@@ -260,13 +361,12 @@ async fn chat(st: AppState, actor: Principal, mut req: ChatRequest) -> Response 
                         Some(u) => (u.prompt_tokens, u.completion_tokens),
                         None => (prompt_tokens, estimate_text(&serde_json::to_string(&resp.choices).unwrap_or_default())),
                     };
-                    let cost = settle(&st, &actor, a.reservation, p, c, CallStatus::Success).await;
-                    tracing::debug!(model = %attempts.primary(), deployment = %a.deployed.config_id, p, c, ?cost, "chat completion");
-                    return (headers(&a, cost), Json(resp)).into_response();
+                    let cost = settle(st, &actor, a.reservation, p, c, CallStatus::Success).await;
+                    return Ok((ChatOutcome::Complete(resp), a.info(cost)));
                 }
                 Err(e) => {
                     if !attempts.failed(&a, e).await {
-                        return attempts.give_up();
+                        return Err(attempts.give_up());
                     }
                 }
             }
@@ -274,12 +374,7 @@ async fn chat(st: AppState, actor: Principal, mut req: ChatRequest) -> Response 
     }
 }
 
-/// About four characters per token.
-fn estimate_text(s: &str) -> u64 {
-    (s.chars().count() as u64).div_ceil(4)
-}
-
-/// Settles a streamed call when the stream ends, fails, or the client goes away.
+/// Settles a streamed call when the stream ends, fails, or is dropped.
 struct StreamSettle {
     st: AppState,
     actor: Principal,
@@ -322,55 +417,95 @@ impl Drop for StreamSettle {
     }
 }
 
-fn sse(v: &impl serde::Serialize) -> Bytes {
+/// A provider's chunk stream that settles the reservation exactly once: when
+/// it ends, when it fails (counting a retryable failure against the
+/// deployment), or when it is dropped (the client went away). Always ends
+/// with the upstream's usage-only chunk when the upstream reported usage.
+pub struct SettlingStream {
+    inner: gateway_providers::ChatStream,
+    guard: StreamSettle,
+}
+
+impl Stream for SettlingStream {
+    type Item = Result<ChatChunk, ProviderError>;
+
+    fn poll_next(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Option<Self::Item>> {
+        let this = self.get_mut();
+        match this.inner.poll_next_unpin(cx) {
+            Poll::Ready(Some(Ok(chunk))) => {
+                this.guard.observe(&chunk);
+                Poll::Ready(Some(Ok(chunk)))
+            }
+            Poll::Ready(Some(Err(e))) => {
+                this.guard.status = if e.is_retryable() { CallStatus::Retryable } else { CallStatus::Failure };
+                this.guard.finish();
+                Poll::Ready(Some(Err(e)))
+            }
+            Poll::Ready(None) => {
+                this.guard.finish();
+                Poll::Ready(None)
+            }
+            Poll::Pending => Poll::Pending,
+        }
+    }
+}
+
+/// `data: <json>\n\n`
+pub fn sse(v: &impl serde::Serialize) -> Bytes {
     let mut b = b"data: ".to_vec();
     b.extend(serde_json::to_vec(v).unwrap_or_default());
     b.extend_from_slice(b"\n\n");
     Bytes::from(b)
 }
 
-fn stream_response(st: &AppState, actor: Principal, a: &Admitted<'_>, s: ChatStream, prompt_estimate: u64, wants_usage: bool) -> Response {
-    let guard = StreamSettle {
-        st: st.clone(),
-        actor,
-        reservation: a.reservation,
-        prompt_estimate,
-        usage: None,
-        chars: 0,
-        status: CallStatus::Success,
-        settled: false,
-    };
-    // State: the upstream stream, the settlement, and whether `[DONE]` went out.
-    let body = futures::stream::unfold((s, guard, false), move |(mut s, mut guard, done)| async move {
-        if done {
-            return None;
-        }
-        loop {
-            match s.next().await {
-                Some(Ok(chunk)) => {
-                    guard.observe(&chunk);
-                    // Usage is always requested upstream for billing; pass it on only if asked.
-                    if chunk.choices.is_empty() && chunk.usage.is_some() && !wants_usage {
-                        continue;
-                    }
-                    return Some((Ok::<_, std::convert::Infallible>(sse(&chunk)), (s, guard, false)));
-                }
-                Some(Err(e)) => {
-                    guard.status = if e.is_retryable() { CallStatus::Retryable } else { CallStatus::Failure };
-                    guard.finish();
-                    return Some((Ok(sse(&e.to_openai_body())), (s, guard, true)));
-                }
-                None => {
-                    guard.finish();
-                    return Some((Ok(Bytes::from_static(b"data: [DONE]\n\n")), (s, guard, true)));
-                }
-            }
-        }
-    });
-    let mut h = headers(a, None);
+/// An SSE response with the call's headers.
+pub fn sse_response(info: &CallInfo, body: impl Stream<Item = Bytes> + Send + 'static) -> Response {
+    let mut h = info.headers();
     h.insert(header::CONTENT_TYPE, HeaderValue::from_static("text/event-stream"));
     h.insert(header::CACHE_CONTROL, HeaderValue::from_static("no-cache"));
-    (h, Body::from_stream(body)).into_response()
+    (h, Body::from_stream(body.map(Ok::<_, std::convert::Infallible>))).into_response()
+}
+
+pub fn parse<T: serde::de::DeserializeOwned>(body: Value) -> Result<T, Failure> {
+    serde_json::from_value(body).map_err(|e| ApiError::bad_request(format!("invalid request body: {e}")).into())
+}
+
+pub async fn chat_completions(State(st): State<AppState>, actor: Actor<Gateway>, Json(body): Json<Value>) -> Response {
+    let req = match parse::<ChatRequest>(body) {
+        Ok(r) => r,
+        Err(f) => return f.into_response(),
+    };
+    let wants_usage = req.wants_stream_usage();
+    match run_chat(&st, *actor.principal(), req).await {
+        Ok((ChatOutcome::Complete(resp), info)) => (info.headers(), Json(resp)).into_response(),
+        Ok((ChatOutcome::Stream(s), info)) => {
+            let body = s
+                .filter_map(move |item| async move {
+                    match item {
+                        // Usage is always requested upstream for billing; pass it on only if asked.
+                        Ok(c) if c.choices.is_empty() && c.usage.is_some() && !wants_usage => None,
+                        Ok(c) => Some(sse(&c)),
+                        Err(e) => Some(sse(&e.to_openai_body())),
+                    }
+                })
+                .chain(futures::stream::once(async { Bytes::from_static(b"data: [DONE]\n\n") }));
+            sse_response(&info, body)
+        }
+        Err(f) => f.into_response(),
+    }
+}
+
+/// Azure OpenAI's path: the model is in the URL.
+pub async fn azure_chat_completions(
+    State(st): State<AppState>,
+    Path(model): Path<String>,
+    actor: Actor<Gateway>,
+    Json(mut body): Json<Value>,
+) -> Response {
+    if let Some(o) = body.as_object_mut() {
+        o.insert("model".into(), Value::String(model));
+    }
+    chat_completions(State(st), actor, Json(body)).await
 }
 
 // ---------------------------------------------------------------------------
@@ -379,31 +514,26 @@ fn stream_response(st: &AppState, actor: Principal, a: &Admitted<'_>, s: ChatStr
 pub async fn embeddings(State(st): State<AppState>, actor: Actor<Gateway>, Json(body): Json<Value>) -> Response {
     let req = match parse::<EmbeddingRequest>(body) {
         Ok(r) => r,
-        Err(r) => return r,
+        Err(f) => return f.into_response(),
     };
-    let actor = *actor.principal();
     let prompt_tokens = match &req.input {
         EmbeddingInput::Text(s) => estimate_text(s),
         EmbeddingInput::Texts(v) => v.iter().map(|s| estimate_text(s)).sum(),
         EmbeddingInput::Tokens(t) => t.len() as u64,
         EmbeddingInput::TokenBatches(b) => b.iter().map(|t| t.len() as u64).sum(),
     };
-    let mut attempts = Attempts::new(&st, actor, &req.model, prompt_tokens, 0);
-    loop {
-        let a = match attempts.next().await {
-            Ok(a) => a,
-            Err(r) => return r,
-        };
-        match st.client.embeddings(&a.deployed.deployment, &req).await {
-            Ok(resp) => {
-                let cost = settle(&st, &actor, a.reservation, resp.usage.prompt_tokens, 0, CallStatus::Success).await;
-                return (headers(&a, cost), Json(resp)).into_response();
-            }
-            Err(e) => {
-                if !attempts.failed(&a, e).await {
-                    return attempts.give_up();
-                }
-            }
+    let client = st.client.clone();
+    let result = call(&st, *actor.principal(), &req.model, prompt_tokens, 0, |d| {
+        let (client, dep, req) = (client.clone(), d.deployment.clone(), req.clone());
+        async move {
+            let resp = client.embeddings(&dep, &req).await?;
+            let used = Units { prompt: resp.usage.prompt_tokens, completion: 0 };
+            Ok((resp, used))
         }
+    })
+    .await;
+    match result {
+        Ok((resp, info)) => (info.headers(), Json(resp)).into_response(),
+        Err(f) => f.into_response(),
     }
 }

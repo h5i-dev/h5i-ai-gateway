@@ -8,14 +8,18 @@
 //! spend log sink. It decides nothing; the kernel's `Command`s are its only
 //! way to change state.
 
+pub mod anthropic_api;
 pub mod auth;
 pub mod config;
 pub mod error;
 pub mod kernel;
 pub mod management;
+pub mod media;
 pub mod proxy;
 pub mod registry;
+pub mod responses_api;
 pub mod spend;
+pub mod ui;
 
 use crate::auth::GatewayAuth;
 use crate::config::Config;
@@ -114,6 +118,10 @@ pub fn router(state: AppState) -> Router {
         .route("/global/spend", get(m::global_spend))
         .route("/health/liveliness", get(m::liveliness))
         .route("/health/readiness", get(m::readiness))
+        .merge(anthropic_api::routes())
+        .merge(responses_api::routes())
+        .merge(media::routes())
+        .merge(ui::routes())
         .with_state(state)
 }
 
