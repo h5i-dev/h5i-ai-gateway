@@ -14,6 +14,8 @@ model_list:
       api_key: os.environ/AZURE_API_KEY
       api_version: "2024-10-21"
       order: 2
+    model_info:
+      base_model: gpt-4o   # prices Azure deployments by the model they serve
   - model_name: claude-sonnet
     litellm_params:
       model: anthropic/claude-3-5-sonnet-20241022
