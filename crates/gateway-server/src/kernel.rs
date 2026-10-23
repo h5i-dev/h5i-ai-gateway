@@ -6,7 +6,7 @@
 
 use gateway_kernel as k;
 use h5i_app_core::{Executed, Executor, Kernel, ReplyCodec, TenantId, Timestamp};
-use h5i_app_pg::{DbError, Store, Tx, outbox};
+use h5i_app_pg::{DbError, ReadSqlMode, Store, Tx, outbox};
 use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
 
@@ -64,6 +64,22 @@ impl Store<Gateway> for GatewayStore {
 
     async fn load(tx: &Tx<'_>, t: TenantId) -> Result<k::Snapshot, DbError> {
         schema_load(tx, t).await
+    }
+
+    /// Only the rows the command can look at (`k::read_plan`), so a request
+    /// does not pay for every key of its tenant. `proofs/Frame.lean`
+    /// (`Frame.frame`) shows `transition` gives the same result on them as
+    /// on the whole tenant. Management commands and `Dump` load everything.
+    ///
+    /// Each arm of a plan's predicates fixes a key, and a sub-read by key is
+    /// sent as a scalar sub-query (`ReadSqlMode::ScalarWhenUnique`, which
+    /// selects the same rows), so PostgreSQL answers every arm from an index
+    /// instead of scanning the tenant's keys.
+    async fn load_for(tx: &Tx<'_>, t: TenantId, actor: &k::Principal, cmd: &k::Command) -> Result<k::Snapshot, DbError> {
+        match k::read_plan(actor, cmd) {
+            Some(plan) => schema_load_plan(&tx.with_read_sql_mode(ReadSqlMode::ScalarWhenUnique), t, &plan).await,
+            None => schema_load(tx, t).await,
+        }
     }
 
     // Table writes go through the kernel's `sql_writes` (`proofs/Storage.lean`).

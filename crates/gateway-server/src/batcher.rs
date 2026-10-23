@@ -41,12 +41,9 @@ impl Batcher {
             Command::Admit { model, prompt_tokens, max_tokens, exclude } => {
                 BatchOp::Admit { model: model.clone(), prompt_tokens: *prompt_tokens, max_tokens: *max_tokens, exclude: exclude.clone() }
             }
-            Command::Settle { reservation, prompt_tokens, completion_tokens, status } => BatchOp::Settle {
-                reservation: *reservation,
-                prompt_tokens: *prompt_tokens,
-                completion_tokens: *completion_tokens,
-                status: *status,
-            },
+            Command::Settle { reservation, prompt_tokens, completion_tokens, status } => {
+                BatchOp::Settle { reservation: *reservation, prompt_tokens: *prompt_tokens, completion_tokens: *completion_tokens, status: *status }
+            }
             _ => return None,
         };
         Some(BatchItem { key: actor.key, master: actor.master, op })

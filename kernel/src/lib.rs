@@ -1558,6 +1558,255 @@ pub fn read_only(cmd: &Command) -> bool {
 }
 
 // ---------------------------------------------------------------------------
+// Read plans
+//
+// A command looks only at the rows of the keys, teams, reservations and
+// models it names (and of the keys' teams and the reservations' keys and
+// teams), plus the settings and every deployment. `read_plan` names those
+// rows as declarative reads, one per table, so the engine loads them instead
+// of the whole tenant. `proofs/Frame.lean` shows `transition` gives the same
+// result on what the plan loads as on the whole tenant.
+
+// Tables and columns, in `schema!` order (`gateway_tables`).
+const T_SETTINGS: u32 = 0;
+const T_TEAMS: u32 = 1;
+const T_KEYS: u32 = 2;
+const T_MODELS: u32 = 3;
+const T_DEPLOYMENTS: u32 = 4;
+const T_KEY_MODELS: u32 = 5;
+const T_TEAM_MODELS: u32 = 6;
+const T_USAGE: u32 = 7;
+const T_RESERVATIONS: u32 = 8;
+/// The first column: `id` of teams, keys, models and reservations, `key` of
+/// key grants, `team` of team grants, `scope` of usage counters.
+const COL_FIRST: u32 = 0;
+const KEY_TEAM: u32 = 1;
+const MODEL_NAME: u32 = 1;
+const USAGE_ID: u32 = 1;
+const RES_KEY: u32 = 1;
+const RES_TEAM: u32 = 2;
+
+fn v_int(x: u64) -> h5i_app_sql::Val {
+    h5i_app_sql::Column::to_val(&x)
+}
+
+fn v_bytes(t: &Vec<u8>) -> h5i_app_sql::Val {
+    h5i_app_sql::Column::to_val(t)
+}
+
+fn p_eq(col: u32, v: h5i_app_sql::Val) -> h5i_app_sql::Pred {
+    h5i_app_sql::Pred::Eq { col, val: v }
+}
+
+fn p_or(a: h5i_app_sql::Pred, b: h5i_app_sql::Pred) -> h5i_app_sql::Pred {
+    h5i_app_sql::Pred::Or(Box::new(a), Box::new(b))
+}
+
+fn p_and(a: h5i_app_sql::Pred, b: h5i_app_sql::Pred) -> h5i_app_sql::Pred {
+    h5i_app_sql::Pred::And(Box::new(a), Box::new(b))
+}
+
+/// Column `col` is column `of` of a row of `table` that `pred` keeps.
+fn p_in(col: u32, table: u32, pred: h5i_app_sql::Pred, of: u32) -> h5i_app_sql::Pred {
+    h5i_app_sql::Pred::In { col, table, pred: Box::new(pred), of, window: h5i_app_sql::whole() }
+}
+
+fn rd(table: u32, pred: h5i_app_sql::Pred) -> h5i_app_sql::Read {
+    h5i_app_sql::Read { table, pred, window: h5i_app_sql::whole() }
+}
+
+/// No row (the first column is never both 0 and 1).
+fn p_none() -> h5i_app_sql::Pred {
+    p_and(p_eq(COL_FIRST, v_int(0)), p_eq(COL_FIRST, v_int(1)))
+}
+
+/// How an arm of a predicate names a row by an id (`p_arm`).
+#[derive(Clone, Copy)]
+enum Via {
+    /// The column holds the id.
+    Id,
+    /// The column is column `of` (the second field) of the row of table
+    /// `table` (the first) whose key is the id.
+    Row(u32, u32),
+    /// The column is the id of an existing team: the team of the key with the id.
+    TeamOfKey,
+}
+
+/// Column `col` names `id` as `via` says; a usage counter's also has scope
+/// `scope`, if given. Each arm fixes a key, so PostgreSQL answers it from an
+/// index (a sub-read by key is a scalar sub-query).
+fn p_arm(col: u32, scope: Option<u64>, via: Via, id: u64) -> h5i_app_sql::Pred {
+    let base = match via {
+        Via::Id => p_eq(col, v_int(id)),
+        Via::Row(table, of) => p_in(col, table, p_eq(COL_FIRST, v_int(id)), of),
+        Via::TeamOfKey => p_in(col, T_TEAMS, p_in(COL_FIRST, T_KEYS, p_eq(COL_FIRST, v_int(id)), KEY_TEAM), COL_FIRST),
+    };
+    match scope {
+        None => base,
+        Some(sc) => p_and(p_eq(COL_FIRST, v_int(sc)), base),
+    }
+}
+
+/// `p`, or column `col` names one of `ids` as `via` says (`p_arm`). Built
+/// afresh for each use (a `Pred` is never cloned).
+fn p_arms(p: h5i_app_sql::Pred, col: u32, scope: Option<u64>, via: Via, ids: &Vec<u64>) -> h5i_app_sql::Pred {
+    let mut p = p;
+    let mut i = 0;
+    while i < ids.len() {
+        p = p_or(p, p_arm(col, scope, via, ids[i]));
+        i += 1;
+    }
+    p
+}
+
+/// A model named one of `names`.
+fn p_names(names: &Vec<Vec<u8>>) -> h5i_app_sql::Pred {
+    let mut p = p_none();
+    let mut i = 0;
+    while i < names.len() {
+        p = p_or(p, p_eq(MODEL_NAME, v_bytes(&names[i])));
+        i += 1;
+    }
+    p
+}
+
+/// The reads of a command that looks at the keys `keys`, the teams `teams`,
+/// the reservations `res` and the models `names` (every model if
+/// `all_models`): those rows, the teams of the keys, the keys and teams of
+/// the reservations, the keys' and teams' model grants, the usage counters of
+/// those keys and teams and of every deployment, the reservations of those
+/// keys and (existing) teams, and of the master key if `master_admit`, the
+/// settings and every deployment.
+fn plan_of(keys: &Vec<u64>, teams: &Vec<u64>, res: &Vec<u64>, names: &Vec<Vec<u8>>, master_admit: bool, all_models: bool) -> Vec<h5i_app_sql::Read> {
+    let res_key = Via::Row(T_RESERVATIONS, RES_KEY);
+    let res_team = Via::Row(T_RESERVATIONS, RES_TEAM);
+    let key_team = Via::Row(T_KEYS, KEY_TEAM);
+    let keys_p = p_arms(p_arms(p_none(), COL_FIRST, None, Via::Id, keys), COL_FIRST, None, res_key, res);
+    let teams_p = p_arms(p_arms(p_arms(p_none(), COL_FIRST, None, Via::Id, teams), COL_FIRST, None, key_team, keys), COL_FIRST, None, res_team, res);
+    let models = if all_models { h5i_app_sql::Pred::All } else { p_names(names) };
+    let team_models = p_arms(p_arms(p_none(), COL_FIRST, None, Via::Id, teams), COL_FIRST, None, key_team, keys);
+    let mut usage = p_eq(COL_FIRST, v_int(SCOPE_DEPLOYMENT));
+    usage = p_arms(usage, USAGE_ID, Some(SCOPE_KEY), Via::Id, keys);
+    usage = p_arms(usage, USAGE_ID, Some(SCOPE_KEY), res_key, res);
+    usage = p_arms(usage, USAGE_ID, Some(SCOPE_TEAM), Via::Id, teams);
+    usage = p_arms(usage, USAGE_ID, Some(SCOPE_TEAM), key_team, keys);
+    usage = p_arms(usage, USAGE_ID, Some(SCOPE_TEAM), res_team, res);
+    let mut reservations = if master_admit { p_eq(RES_KEY, v_int(0)) } else { p_none() };
+    reservations = p_arms(reservations, RES_KEY, None, Via::Id, keys);
+    reservations = p_arms(reservations, RES_TEAM, None, Via::Row(T_TEAMS, COL_FIRST), teams);
+    reservations = p_arms(reservations, RES_TEAM, None, Via::TeamOfKey, keys);
+    reservations = p_arms(reservations, COL_FIRST, None, Via::Id, res);
+    let mut out = Vec::new();
+    out.push(rd(T_SETTINGS, h5i_app_sql::Pred::All));
+    out.push(rd(T_TEAMS, teams_p));
+    out.push(rd(T_KEYS, keys_p));
+    out.push(rd(T_MODELS, models));
+    out.push(rd(T_DEPLOYMENTS, h5i_app_sql::Pred::All));
+    out.push(rd(T_KEY_MODELS, p_arms(p_none(), COL_FIRST, None, Via::Id, keys)));
+    out.push(rd(T_TEAM_MODELS, team_models));
+    out.push(rd(T_USAGE, usage));
+    out.push(rd(T_RESERVATIONS, reservations));
+    out
+}
+
+/// `v` with `x` added, unless it is already there.
+fn add_id(v: &mut Vec<u64>, x: u64) {
+    if !contains(v, x) {
+        v.push(x);
+    }
+}
+
+fn has_name(v: &Vec<Vec<u8>>, n: &Vec<u8>) -> bool {
+    let mut i = 0;
+    while i < v.len() {
+        if bytes_eq(&v[i], n) {
+            return true;
+        }
+        i += 1;
+    }
+    false
+}
+
+/// `v` with `n` added, unless it is already there.
+fn add_name(v: &mut Vec<Vec<u8>>, n: &Vec<u8>) {
+    if !has_name(v, n) {
+        v.push(n.clone());
+    }
+}
+
+/// The reads of a batch: the union of its items' reads, each key,
+/// reservation and model named once.
+fn batch_plan(items: &Vec<BatchItem>) -> Vec<h5i_app_sql::Read> {
+    let mut keys = Vec::new();
+    let mut res = Vec::new();
+    let mut names = Vec::new();
+    let mut master_admit = false;
+    let mut i = 0;
+    while i < items.len() {
+        let it = &items[i];
+        if !it.master {
+            add_id(&mut keys, it.key);
+        }
+        match &it.op {
+            BatchOp::Admit { model, prompt_tokens: _, max_tokens: _, exclude: _ } => {
+                add_name(&mut names, model);
+                if it.master {
+                    master_admit = true;
+                }
+            }
+            BatchOp::Settle { reservation, prompt_tokens: _, completion_tokens: _, status: _ } => add_id(&mut res, *reservation),
+        }
+        i += 1;
+    }
+    plan_of(&keys, &Vec::new(), &res, &names, master_admit, false)
+}
+
+/// The caller's own key, if not the master key: its limits, or whether it is an admin.
+fn caller_keys(a: &Principal) -> Vec<u64> {
+    let mut keys = Vec::new();
+    if !a.master {
+        keys.push(a.key);
+    }
+    keys
+}
+
+/// The rows `cmd` reads when `a` runs it, one read per table (a table
+/// without a read loads empty), or `None` for the whole tenant (management
+/// commands and `Dump`).
+pub fn read_plan(a: &Principal, cmd: &Command) -> Option<Vec<h5i_app_sql::Read>> {
+    match cmd {
+        Command::Admit { model, prompt_tokens: _, max_tokens: _, exclude: _ } => {
+            let mut names = Vec::new();
+            names.push(model.clone());
+            Some(plan_of(&caller_keys(a), &Vec::new(), &Vec::new(), &names, false, false))
+        }
+        Command::Settle { reservation, prompt_tokens: _, completion_tokens: _, status: _ } => {
+            let mut res = Vec::new();
+            res.push(*reservation);
+            Some(plan_of(&caller_keys(a), &Vec::new(), &res, &Vec::new(), false, false))
+        }
+        Command::Expire { reservation } => {
+            let mut res = Vec::new();
+            res.push(*reservation);
+            Some(plan_of(&caller_keys(a), &Vec::new(), &res, &Vec::new(), false, false))
+        }
+        Command::KeyInfo { id } => {
+            let mut keys = caller_keys(a);
+            keys.push(*id);
+            Some(plan_of(&keys, &Vec::new(), &Vec::new(), &Vec::new(), false, false))
+        }
+        Command::TeamInfo { id } => {
+            let mut teams = Vec::new();
+            teams.push(*id);
+            Some(plan_of(&caller_keys(a), &teams, &Vec::new(), &Vec::new(), false, false))
+        }
+        Command::ListModels => Some(plan_of(&caller_keys(a), &Vec::new(), &Vec::new(), &Vec::new(), false, true)),
+        Command::Batch { items } => Some(batch_plan(items)),
+        _ => None,
+    }
+}
+
+// ---------------------------------------------------------------------------
 // Group commit
 
 /// The principal an item of a batch runs as: its own key, the batch's tenant and time.
@@ -1962,11 +2211,8 @@ mod tests {
     #[test]
     fn compaction_keeps_the_last_write_per_row_and_every_spend_log() {
         let (s, k) = setup(UNLIMITED);
-        let admit = BatchItem {
-            key: k,
-            master: false,
-            op: BatchOp::Admit { model: b"gpt".to_vec(), prompt_tokens: 1, max_tokens: 1, exclude: Vec::new() },
-        };
+        let admit =
+            BatchItem { key: k, master: false, op: BatchOp::Admit { model: b"gpt".to_vec(), prompt_tokens: 1, max_tokens: 1, exclude: Vec::new() } };
         let (ws, _) = transition(&MASTER, &s, &Command::Batch { items: vec![admit.clone(); 10] }).unwrap();
         // One key row, one key and one deployment usage row, ten reservations, one counter.
         assert_eq!(ws.len(), 14);
