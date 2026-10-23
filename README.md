@@ -53,6 +53,46 @@ already tried (`num_retries`), then moves on to the configured `fallbacks`.
 Reservations whose calls never settle are released by `Expire` after the
 reservation TTL.
 
+### What a transaction reads
+
+A command loads only the rows it can look at, not the whole tenant. The
+kernel's `read_plan` names them as one declarative read per table
+(`h5i_app_sql::Read`), and `GatewayStore::load_for` loads exactly those
+(`schema_load_plan`):
+
+| Command | Rows loaded (besides the settings and every deployment) |
+|---|---|
+| `Admit` | the caller's key, its team, the model by name, the key's and team's grants, the usage counters of the key, the team and every deployment, the reservations of the key and of its team (they feed the budget and parallel checks) |
+| `Settle`, `Expire` | the reservation, its key and team and their counters, the caller's key (is it an admin?), every deployment's counter |
+| `KeyInfo` | the caller's key and the key asked about, its grants and reservations |
+| `TeamInfo` | the caller's key, the team asked about, its grants and reservations |
+| `ListModels` | the caller's key, its team and their grants, every model |
+| `Batch` | the union over its items: each key, reservation and model named once |
+| management, `Dump` | everything |
+
+Each arm of a plan's predicates fixes a key (a sub-read of "the team of key
+`k`" is a scalar sub-query), so PostgreSQL answers it from an index: the cost
+of a request no longer grows with the number of keys in the tenant. A batch
+of 256 items by one key reads that key once.
+
+Chat completions with one virtual key at concurrency 64 (mock upstream,
+PostgreSQL 17 on host networking, group commit on), in a tenant holding
+1, ~1,000 and ~10,000 keys, two runs each:
+
+| Keys in the tenant | 1 | ~1,000 | ~10,000 |
+|---|---|---|---|
+| whole-tenant loads | 1,672 / 1,656 req/s | 1,248 / 1,240 | 336 / 336 |
+| read plans | 1,520 / 1,504 req/s | 1,120 / 1,304 | 1,280 / 1,248 |
+| read plans, `plan_cache_mode = force_generic_plan` | 1,520 req/s | 1,400 | — |
+
+A plan's queries are larger than `SELECT ... WHERE tenant_id = $1`: a
+batch that settles `n` reservations has an arm per reservation in the keys,
+teams and usage reads. In a very small tenant that costs about 9%;
+PostgreSQL also re-plans these statements (custom plans) on each new
+connection, which is what makes the ~1,000-key runs vary. Setting
+`plan_cache_mode = force_generic_plan` for the gateway's database role
+(`ALTER ROLE ... SET plan_cache_mode = force_generic_plan`) avoids that.
+
 ## What is proven
 
 `proofs/Spec.lean` is the file to review: it restates the policy on lists and
@@ -80,14 +120,20 @@ and gates them (no `sorry`, `native_decide` or axioms beyond `propext`,
 | `Commands.transition_total` | the kernel never panics, overflows or indexes out of bounds (for inputs whose vectors fit in memory; for a batch, the snapshot's rows plus 8 per item fit in a vector) |
 | `Apply.apply_spec`, `Storage.pg_stored`, `Storage.db_inv` | committing a write set computes `Spec.applyAll`, and PostgreSQL holds and loads back exactly that state (h5i-app's store theorem) |
 | `ReadOnly.sound` | `Dump`, `KeyInfo`, `TeamInfo` and `ListModels` never write, so they may run without a write transaction |
+| `Frame.frame` | the read plans load enough: for every principal, snapshot and command with a plan, `transition` on `Snapshot.load plan s` (what the server loads) gives exactly the result, writes and reply or refusal, it gives on the whole tenant `s`. For `Admit`, `Settle`, `Expire`, `KeyInfo`, `TeamInfo` and `ListModels` this holds unconditionally (`frame_cmd`). For `Batch` (`batch_frame`) it needs that `s` keeps `Spec.Inv` (a new reservation's id is fresh) and fits in memory (`Commands.Fits`, as for `transition_total`); the proof follows the sequential run of the items: each runs on a state that differs from `s` only by earlier items' writes, every row an item writes is one the plan keeps (the reservation an admission inserts carries the item's key and team, the key and team rows it updates are the item key's), so each item runs on a slice of the full run's state and gives the same result |
+| `Plan.reads_abs`, `Frame.load_for_sound` | the extracted `read_plan` computes the plans `Frame.frame` is about (`Plan.readsA`); end to end, rows holding what each read of the plan returns decode (`Schema.decode_load`) to a snapshot on which `transition` gives the same result as on `s` |
 | `Scenarios.*` | concrete runs of the extracted code: routing by priority, exclusion and cooldown, budgets counting reservations, rate-limit windows, settlement charging the actual cost once, refusals, a batch whose second admission is refused only because of the first one's reservation |
 
-`h5i app mutate` injects fourteen bugs listed in `h5i-app.toml` (budget
+`h5i app mutate` injects sixteen bugs listed in `h5i-app.toml` (budget
 ignoring reservations, off-by-one rate limits, expiry, parallel and cooldown
 thresholds, ignored cooldowns, ignored model grants, inverted routing,
 charging the reservation instead of the cost, letting any key settle any
 reservation, late budget resets, batch items running on the original
-state, compaction merging spend logs); each must break a proof.
+state, compaction merging spend logs, and a read plan that looks for the
+reservations of a key's team in the wrong column or drops them, which would
+let a team overspend); each must break a proof. The wrong-column plan is
+rejected by the frame theorem itself: the plan's Lean form follows the
+column constant, so `Plan.reads_abs` still holds and `Frame.frame` fails.
 
 ### What is trusted
 
@@ -118,6 +164,12 @@ Aeneas, Lean, rustc) and PostgreSQL. Beyond that, the shell in
   so a wrong decoding can only produce a command the caller could have sent.
 - **Spend log delivery** from the outbox is at least once; a sink must drop
   repeats by the `Idempotency-Key` header.
+- **Read plans.** PostgreSQL returns, for each read of a plan, the rows
+  `H5iAppLib.Query.Read.rows` says, in key order: h5i-app's
+  `compile_read` is differential-tested against that definition (in both
+  SQL modes; the gateway uses `ReadSqlMode::ScalarWhenUnique`), not proved.
+  The frame theorem is stated on `Snapshot.load`, the snapshot those rows
+  decode to.
 - **Unsettled calls.** If the database is unreachable when a call settles,
   the reservation is released uncharged when it expires (logged as an error).
 - **Guardrails** (`guardrails.rs`) and **the response cache** (`cache.rs`)
@@ -397,7 +449,10 @@ The PostgreSQL tests run random commands through the PostgreSQL engine and
 the in-memory executor and require identical replies, identical final
 state and exactly the committed spend logs in the outbox, and fire 32
 concurrent admissions at one budget to check that exactly the affordable
-ones get through.
+ones get through. One of them does so in a tenant of 40 teams and 400 keys,
+with batches whose items settle reservations admitted earlier in the same
+batch: the PostgreSQL engine loads only what `read_plan` names, the
+in-memory executor runs every command on the whole tenant.
 
 ## License
 

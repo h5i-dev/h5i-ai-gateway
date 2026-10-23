@@ -2,7 +2,7 @@
 
 [extract]
 crate = "kernel"
-start-from = ["transition", "apply", "sql_writes", "read_only"]
+start-from = ["transition", "apply", "sql_writes", "read_only", "read_plan"]
 schema = true
 include = ["h5i_app_sql"]
 
@@ -31,6 +31,12 @@ theorems = [
   "gateway_kernel.Storage.pg_stored",
   "gateway_kernel.Storage.db_inv",
   "gateway_kernel.ReadOnly.sound",
+  "gateway_kernel.Plan.reads_abs",
+  "gateway_kernel.Schema.decode_load",
+  "gateway_kernel.Frame.frame",
+  "gateway_kernel.Frame.frame_cmd",
+  "gateway_kernel.Frame.batch_frame",
+  "gateway_kernel.Frame.load_for_sound",
 ]
 
 # Bugs the proofs must reject (`h5i app mutate`).
@@ -103,3 +109,20 @@ new = "match run_item(a, s, &items[i]) {"
 name = "compaction_merges_spend_logs"
 old = "Write::Emit(_) => None,"
 new = "Write::Emit(_) => Some((9, 0, 0)),"
+
+# The read plan looks for the reservations of a key's team (and the team of a
+# reservation) in the wrong column, so an admission no longer sees what the
+# team's other keys reserved and the team could overspend. The plan's Lean
+# form follows the column constant (`Plan.reads_abs` still holds); the frame
+# theorem (`Frame.plan_keep`, `Frame.frame`) is what fails.
+[[mutant]]
+name = "plan_misses_team_reservations"
+old = "const RES_TEAM: u32 = 2;"
+new = "const RES_TEAM: u32 = 1;"
+
+# The read plan drops the reservations of the keys' teams altogether (caught
+# where the extracted plan is read back, `Plan.reads_abs`).
+[[mutant]]
+name = "plan_omits_team_reservations"
+old = "    reservations = p_arms(reservations, RES_TEAM, None, Via::TeamOfKey, keys);\n"
+new = ""

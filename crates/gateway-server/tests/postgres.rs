@@ -279,7 +279,8 @@ async fn group_commit_answers_like_single_commands_in_fewer_transactions() {
     use gateway_server::kernel::Backend;
     use std::sync::atomic::Ordering;
     let Some(url) = url() else { return };
-    let engine = Engine::<Gateway, GatewayStore>::new(pool(&with_schema(&url, "gateway_test").unwrap(), 16).unwrap(), EngineConfig::default().database_time());
+    let engine =
+        Engine::<Gateway, GatewayStore>::new(pool(&with_schema(&url, "gateway_test").unwrap(), 16).unwrap(), EngineConfig::default().database_time());
     engine.install_schema().await.unwrap();
     let backend = Arc::new(Backend::postgres(engine, 256));
     let org = fresh_org();
@@ -343,4 +344,173 @@ async fn group_commit_answers_like_single_commands_in_fewer_transactions() {
     let s = engine.snapshot(TenantId(org)).await.unwrap();
     assert_eq!(k::find_key(&s.keys, key).unwrap().spend, 7 * 15_000);
     assert!(s.reservations.is_empty());
+}
+
+/// A batch item: an admission or a settlement, by a key or the master key.
+fn random_item(s: &mut u64, keys: u64, open: &[u64]) -> k::BatchItem {
+    let master = rng(s, 8) == 0;
+    let key = if master { 0 } else { 1 + rng(s, keys) };
+    let op = if open.is_empty() || rng(s, 2) == 0 {
+        k::BatchOp::Admit {
+            model: [b"gpt".to_vec(), b"claude".to_vec(), b"nope".to_vec()][rng(s, 3) as usize].clone(),
+            prompt_tokens: rng(s, 30),
+            max_tokens: rng(s, 30),
+            exclude: vec![],
+        }
+    } else {
+        k::BatchOp::Settle {
+            reservation: open[rng(s, open.len() as u64) as usize],
+            prompt_tokens: rng(s, 30),
+            completion_tokens: rng(s, 30),
+            status: [k::CallStatus::Success, k::CallStatus::Retryable][rng(s, 2) as usize],
+        }
+    };
+    k::BatchItem { key, master, op }
+}
+
+/// The PostgreSQL engine loads, for admissions, settlements, expiries, the
+/// read commands and batches, only the rows `read_plan` names. In a tenant
+/// with many keys and teams it must answer exactly like the in-memory
+/// executor, which runs every command on the whole tenant, and reach the
+/// same state.
+#[tokio::test]
+async fn planned_loads_agree_with_whole_snapshots_in_a_large_tenant() {
+    let Some(url) = url() else { return };
+    let clock = ManualClock::new(Timestamp::from_secs(10_000));
+    let config = EngineConfig { clock: Clock::Manual(clock.clone()), monotonic: true, ..EngineConfig::default() };
+    // Its own tables: with the other tests' tenants in the same small tables,
+    // SERIALIZABLE predicate locks make their commands retry.
+    let pg = Engine::<Gateway, GatewayStore>::new(pool(&with_schema(&url, "gateway_plan_test").unwrap(), 4).unwrap(), config);
+    pg.install_schema().await.unwrap();
+    let c2 = clock.clone();
+    let mem = MemoryExecutor::with_clock(Box::new(|_, _| {}), Box::new(move || c2.get()));
+    let org = fresh_org();
+    let master = k::Principal { org, key: 0, master: true, now: 0 };
+    let both = |actor: k::Principal, cmd: k::Command| {
+        let (pg, mem) = (&pg, &mem);
+        async move {
+            let got = normalize_reply(pg.execute(&actor, &cmd).await.unwrap());
+            let want = normalize_reply(mem.run(&actor, &cmd));
+            assert_eq!(got, want, "{actor:?} {cmd:?}");
+            got
+        }
+    };
+
+    let mut s = 7;
+    both(master, k::Command::Configure { allowed_fails: 1, cooldown_secs: 30, reservation_ttl: 60 }).await.unwrap();
+    for (id, m, priority, rpm) in [(100, "gpt", 0, 30), (101, "gpt", 1, k::UNLIMITED), (200, "claude", 0, k::UNLIMITED)] {
+        let spec = k::DeploymentSpec { id, input_cost: 1_000, output_cost: 2_000, rpm, tpm: k::UNLIMITED, priority, enabled: true };
+        both(master, k::Command::UpsertDeployment { model: m.as_bytes().to_vec(), spec }).await.unwrap();
+    }
+    // 40 teams, then 400 keys, most of them in a team.
+    let mut teams = Vec::new();
+    for _ in 0..40 {
+        let spec = k::TeamSpec { max_budget: 2_000_000, rpm: 40, tpm: k::UNLIMITED, budget_duration: 0, all_models: rng(&mut s, 3) != 0 };
+        match both(master, k::Command::CreateTeam { spec, models: vec![b"claude".to_vec()] }).await {
+            Ok(k::Reply::Created(id)) => teams.push(id),
+            r => panic!("{r:?}"),
+        }
+    }
+    let mut last = 0;
+    for i in 0..400 {
+        let spec = k::KeySpec {
+            team: if rng(&mut s, 4) == 0 { 0 } else { teams[rng(&mut s, teams.len() as u64) as usize] },
+            user: 1,
+            max_budget: if rng(&mut s, 3) == 0 { 300_000 } else { k::UNLIMITED },
+            rpm: if rng(&mut s, 4) == 0 { 3 } else { k::UNLIMITED },
+            tpm: k::UNLIMITED,
+            max_parallel: if rng(&mut s, 4) == 0 { 2 } else { k::UNLIMITED },
+            expires_at: k::UNLIMITED,
+            budget_duration: if rng(&mut s, 5) == 0 { 120 } else { 0 },
+            admin: i % 97 == 5,
+            all_models: rng(&mut s, 2) == 0,
+        };
+        match both(master, k::Command::CreateKey { spec, models: vec![b"gpt".to_vec()] }).await {
+            Ok(k::Reply::Created(id)) => last = id,
+            r => panic!("{r:?}"),
+        }
+    }
+    // Ids above the last key name no key, or a team or reservation.
+    let top = last + 5;
+
+    let mut open: Vec<u64> = Vec::new();
+    let mut accepted = [0usize; 4];
+    for _ in 0..1_200 {
+        if rng(&mut s, 6) == 0 {
+            clock.set(Timestamp::from_secs(clock.get().secs() + rng(&mut s, 30)));
+        }
+        let actor = if rng(&mut s, 6) == 0 { master } else { k::Principal { org, key: 1 + rng(&mut s, top), master: false, now: 0 } };
+        let any_res = |s: &mut u64| if !open.is_empty() && rng(s, 5) != 0 { open[rng(s, open.len() as u64) as usize] } else { rng(s, 2 * top) };
+        let (actor, cmd) = match rng(&mut s, 20) {
+            0..=5 => (
+                actor,
+                k::Command::Admit {
+                    model: [b"gpt".to_vec(), b"claude".to_vec(), b"nope".to_vec()][rng(&mut s, 3) as usize].clone(),
+                    prompt_tokens: rng(&mut s, 40),
+                    max_tokens: rng(&mut s, 40),
+                    exclude: if rng(&mut s, 5) == 0 { vec![100] } else { vec![] },
+                },
+            ),
+            6..=8 => (
+                actor,
+                k::Command::Settle {
+                    reservation: any_res(&mut s),
+                    prompt_tokens: rng(&mut s, 50),
+                    completion_tokens: rng(&mut s, 50),
+                    status: [k::CallStatus::Success, k::CallStatus::Failure, k::CallStatus::Retryable][rng(&mut s, 3) as usize],
+                },
+            ),
+            9 => (actor, k::Command::Expire { reservation: any_res(&mut s) }),
+            10 => (actor, k::Command::KeyInfo { id: 1 + rng(&mut s, top) }),
+            11 => {
+                let id = if rng(&mut s, 2) == 0 { 1 + rng(&mut s, top) } else { teams[rng(&mut s, teams.len() as u64) as usize] };
+                (actor, k::Command::TeamInfo { id })
+            }
+            12 => (actor, k::Command::ListModels),
+            // Batches run as the master key; their items settle open
+            // reservations and ones admitted earlier in the same batch.
+            13..=16 => {
+                let next = mem.snapshot(TenantId(org)).settings.next_id;
+                let mut targets = open.clone();
+                let mut items = Vec::new();
+                for _ in 0..1 + rng(&mut s, 40) {
+                    let it = random_item(&mut s, top, &targets);
+                    if let k::BatchOp::Admit { .. } = it.op {
+                        // The id this admission gets if it and the ones before it succeed.
+                        targets.push(next + 1 + items.iter().filter(|i: &&k::BatchItem| matches!(i.op, k::BatchOp::Admit { .. })).count() as u64);
+                    }
+                    items.push(it);
+                }
+                (master, k::Command::Batch { items })
+            }
+            17 => {
+                let patch = k::KeyPatch { blocked: Some(rng(&mut s, 3) == 0), max_budget: Some(rng(&mut s, 2_000_000)), ..NONE_PATCH };
+                (master, k::Command::UpdateKey { id: 1 + rng(&mut s, top), patch })
+            }
+            18 => (master, k::Command::DeleteKey { id: 1 + rng(&mut s, top) }),
+            _ => {
+                let models = vec![[b"gpt".to_vec(), b"claude".to_vec()][rng(&mut s, 2) as usize].clone()];
+                (master, k::Command::SetKeyModels { id: 1 + rng(&mut s, top), models })
+            }
+        };
+        match (&cmd, both(actor, cmd.clone()).await) {
+            (k::Command::Admit { .. }, Ok(k::Reply::Admitted { reservation, .. })) => {
+                open.push(reservation);
+                accepted[0] += 1;
+            }
+            (k::Command::Settle { .. }, Ok(_)) => accepted[1] += 1,
+            (k::Command::KeyInfo { .. } | k::Command::TeamInfo { .. }, Ok(_)) => accepted[2] += 1,
+            (k::Command::Batch { .. }, Ok(k::Reply::Batch(outs))) => {
+                for o in outs {
+                    if let k::ItemOutcome::Admitted { reservation, .. } = o {
+                        open.push(reservation);
+                        accepted[3] += 1;
+                    }
+                }
+            }
+            _ => {}
+        }
+    }
+    assert!(accepted.iter().all(|n| *n >= 10), "the run should exercise admits, settles, reads and batches: {accepted:?}");
+    assert_eq!(normalize(pg.snapshot(TenantId(org)).await.unwrap()), normalize(mem.snapshot(TenantId(org))));
 }

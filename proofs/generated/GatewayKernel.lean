@@ -194,6 +194,52 @@ inductive h5i_app_sql.Write where
 | Del : Std.U32 → alloc.vec.Vec h5i_app_sql.Val → h5i_app_sql.Write
 | DelWhere : Std.U32 → Std.U32 → h5i_app_sql.Val → h5i_app_sql.Write
 
+/-- [h5i_app_sql::Window]
+    Source: '/cargo/registry/src/index.crates.io-1949cf8c6b5b557f/h5i-app-sql-0.1.3/src/lib.rs', lines 237:0-237:17
+    Name pattern: [h5i_app_sql::Window]
+    Visibility: public -/
+@[rust_type "h5i_app_sql::Window"]
+structure h5i_app_sql.Window where
+  desc : Bool
+  offset : Std.U64
+  limit : Option Std.U64
+
+/-- [h5i_app_sql::whole]:
+    Source: '/cargo/registry/src/index.crates.io-1949cf8c6b5b557f/h5i-app-sql-0.1.3/src/lib.rs', lines 244:0-244:24
+    Name pattern: [h5i_app_sql::whole]
+    Visibility: public -/
+@[rust_fun "h5i_app_sql::whole"]
+def h5i_app_sql.whole : Result h5i_app_sql.Window := do
+  ok { desc := false, offset := 0#u64, limit := none }
+
+/-- [h5i_app_sql::Pred]
+    Source: '/cargo/registry/src/index.crates.io-1949cf8c6b5b557f/h5i-app-sql-0.1.3/src/lib.rs', lines 250:0-250:13
+    Name pattern: [h5i_app_sql::Pred]
+    Visibility: public -/
+@[discriminant isize, rust_type "h5i_app_sql::Pred"]
+inductive h5i_app_sql.Pred where
+| All : h5i_app_sql.Pred
+| Eq : Std.U32 → h5i_app_sql.Val → h5i_app_sql.Pred
+| In :
+  Std.U32 →
+  Std.U32 →
+  h5i_app_sql.Pred →
+  Std.U32 →
+  h5i_app_sql.Window →
+  h5i_app_sql.Pred
+| And : h5i_app_sql.Pred → h5i_app_sql.Pred → h5i_app_sql.Pred
+| Or : h5i_app_sql.Pred → h5i_app_sql.Pred → h5i_app_sql.Pred
+
+/-- [h5i_app_sql::Read]
+    Source: '/cargo/registry/src/index.crates.io-1949cf8c6b5b557f/h5i-app-sql-0.1.3/src/lib.rs', lines 265:0-265:15
+    Name pattern: [h5i_app_sql::Read]
+    Visibility: public -/
+@[rust_type "h5i_app_sql::Read"]
+structure h5i_app_sql.Read where
+  table : Std.U32
+  pred : h5i_app_sql.Pred
+  window : h5i_app_sql.Window
+
 /-- [gateway_kernel::Principal]
     Source: 'kernel/src/lib.rs', lines 43:0-52:1
     Visibility: public -/
@@ -3661,7 +3707,7 @@ def Team.put
   Team.put_loop v x 0#usize
 
 /-- [gateway_kernel::apply_write]:
-    Source: 'kernel/src/lib.rs', lines 1683:0-1703:1 -/
+    Source: 'kernel/src/lib.rs', lines 1932:0-1952:1 -/
 def apply_write (s : Snapshot) (w : Write) : Result Snapshot := do
   match w with
   | Write.SetSettings x => ok { s with settings := x }
@@ -3743,7 +3789,7 @@ def apply (snap : Snapshot) (ws : alloc.vec.Vec Write) : Result Snapshot := do
   apply_loop ws s 0#usize
 
 /-- [gateway_kernel::target]:
-    Source: 'kernel/src/lib.rs', lines 1624:0-1643:1
+    Source: 'kernel/src/lib.rs', lines 1873:0-1892:1
     Visibility: public -/
 def target (w : Write) : Result (Option (Std.U64 × Std.U64 × Std.U64)) := do
   match w with
@@ -3765,7 +3811,7 @@ def target (w : Write) : Result (Option (Std.U64 × Std.U64 × Std.U64)) := do
   | Write.Emit _ => ok none
 
 /-- [gateway_kernel::overwritten]: loop body 0:
-    Source: 'kernel/src/lib.rs', lines 1652:4-1664:1 -/
+    Source: 'kernel/src/lib.rs', lines 1901:4-1913:1 -/
 @[rust_loop_body]
 def overwritten_loop.body
   (ws : alloc.vec.Vec Write) (t : (Std.U64 × Std.U64 × Std.U64))
@@ -3799,7 +3845,7 @@ def overwritten_loop.body
   else ok (done false)
 
 /-- [gateway_kernel::overwritten]: loop 0:
-    Source: 'kernel/src/lib.rs', lines 1652:4-1664:1 -/
+    Source: 'kernel/src/lib.rs', lines 1901:4-1913:1 -/
 @[rust_loop]
 def overwritten_loop
   (ws : alloc.vec.Vec Write) (t : (Std.U64 × Std.U64 × Std.U64))
@@ -3811,7 +3857,7 @@ def overwritten_loop
     j
 
 /-- [gateway_kernel::overwritten]:
-    Source: 'kernel/src/lib.rs', lines 1646:0-1664:1 -/
+    Source: 'kernel/src/lib.rs', lines 1895:0-1913:1 -/
 def overwritten (ws : alloc.vec.Vec Write) (i : Std.Usize) : Result Bool := do
   let w ←
     alloc.vec.Vec.index (core.slice.index.SliceIndexUsizeSlice Write) ws i
@@ -3822,7 +3868,7 @@ def overwritten (ws : alloc.vec.Vec Write) (i : Std.Usize) : Result Bool := do
               overwritten_loop ws t j
 
 /-- [gateway_kernel::compact]: loop body 0:
-    Source: 'kernel/src/lib.rs', lines 1673:4-1678:5
+    Source: 'kernel/src/lib.rs', lines 1922:4-1927:5
     Visibility: public -/
 @[rust_loop_body]
 def compact_loop.body
@@ -3849,7 +3895,7 @@ def compact_loop.body
   else ok (done out)
 
 /-- [gateway_kernel::compact]: loop 0:
-    Source: 'kernel/src/lib.rs', lines 1673:4-1678:5
+    Source: 'kernel/src/lib.rs', lines 1922:4-1927:5
     Visibility: public -/
 @[rust_loop]
 def compact_loop
@@ -3861,14 +3907,14 @@ def compact_loop
     (out, i)
 
 /-- [gateway_kernel::compact]:
-    Source: 'kernel/src/lib.rs', lines 1670:0-1680:1
+    Source: 'kernel/src/lib.rs', lines 1919:0-1929:1
     Visibility: public -/
 @[reducible]
 def compact (ws : alloc.vec.Vec Write) : Result (alloc.vec.Vec Write) := do
   compact_loop ws (alloc.vec.Vec.new Write) 0#usize
 
 /-- [gateway_kernel::append]: loop body 0:
-    Source: 'kernel/src/lib.rs', lines 1592:4-1595:5 -/
+    Source: 'kernel/src/lib.rs', lines 1841:4-1844:5 -/
 @[rust_loop_body]
 def append_loop.body
   (w : alloc.vec.Vec Write) (ws : alloc.vec.Vec Write) (i : Std.Usize) :
@@ -3887,7 +3933,7 @@ def append_loop.body
   else ok (done ws)
 
 /-- [gateway_kernel::append]: loop 0:
-    Source: 'kernel/src/lib.rs', lines 1592:4-1595:5 -/
+    Source: 'kernel/src/lib.rs', lines 1841:4-1844:5 -/
 @[rust_loop]
 def append_loop
   (ws : alloc.vec.Vec Write) (w : alloc.vec.Vec Write) (i : Std.Usize) :
@@ -3898,7 +3944,7 @@ def append_loop
     (ws, i)
 
 /-- [gateway_kernel::append]:
-    Source: 'kernel/src/lib.rs', lines 1590:0-1596:1 -/
+    Source: 'kernel/src/lib.rs', lines 1839:0-1845:1 -/
 @[reducible]
 def append
   (ws : alloc.vec.Vec Write) (w : alloc.vec.Vec Write) :
@@ -3907,7 +3953,7 @@ def append
   append_loop ws w 0#usize
 
 /-- [gateway_kernel::outcome_of]:
-    Source: 'kernel/src/lib.rs', lines 1579:0-1588:1 -/
+    Source: 'kernel/src/lib.rs', lines 1828:0-1837:1 -/
 def outcome_of (r : Reply) : Result ItemOutcome := do
   match r with
   | Reply.Created _ => ok (ItemOutcome.Refused Error.Forbidden)
@@ -3922,13 +3968,13 @@ def outcome_of (r : Reply) : Result ItemOutcome := do
   | Reply.Batch _ => ok (ItemOutcome.Refused Error.Forbidden)
 
 /-- [gateway_kernel::item_principal]:
-    Source: 'kernel/src/lib.rs', lines 1564:0-1566:1
+    Source: 'kernel/src/lib.rs', lines 1813:0-1815:1
     Visibility: public -/
 def item_principal (a : Principal) (it : BatchItem) : Result Principal := do
   ok { a with key := it.key, master := it.master }
 
 /-- [gateway_kernel::run_item]:
-    Source: 'kernel/src/lib.rs', lines 1569:0-1577:1 -/
+    Source: 'kernel/src/lib.rs', lines 1818:0-1826:1 -/
 def run_item
   (a : Principal) (s : Snapshot) (it : BatchItem) :
   Result (core.result.Result ((alloc.vec.Vec Write) × Reply) Error)
@@ -3941,7 +3987,7 @@ def run_item
     settle p s reservation prompt_tokens completion_tokens status
 
 /-- [gateway_kernel::batch]: loop body 0:
-    Source: 'kernel/src/lib.rs', lines 1609:4-1619:5 -/
+    Source: 'kernel/src/lib.rs', lines 1858:4-1868:5 -/
 @[rust_loop_body]
 def batch_loop.body
   (i : Std.U64) (i1 : Std.U64) (b : Bool) (i2 : Std.U64)
@@ -3977,7 +4023,7 @@ def batch_loop.body
   else ok (done (ws, outs))
 
 /-- [gateway_kernel::batch]: loop 0:
-    Source: 'kernel/src/lib.rs', lines 1609:4-1619:5 -/
+    Source: 'kernel/src/lib.rs', lines 1858:4-1868:5 -/
 @[rust_loop]
 def batch_loop
   (i : Std.U64) (i1 : Std.U64) (b : Bool) (i2 : Std.U64)
@@ -3991,7 +4037,7 @@ def batch_loop
     (cur, ws, outs, i3)
 
 /-- [gateway_kernel::batch]:
-    Source: 'kernel/src/lib.rs', lines 1601:0-1621:1 -/
+    Source: 'kernel/src/lib.rs', lines 1850:0-1870:1 -/
 def batch
   (a : Principal) (s : Snapshot) (items : alloc.vec.Vec BatchItem) :
   Result (core.result.Result ((alloc.vec.Vec Write) × Reply) Error)
@@ -4145,6 +4191,507 @@ def read_only (cmd : Command) : Result Bool := do
   | Command.TeamInfo _ => ok true
   | Command.ListModels => ok true
   | Command.Batch _ => ok false
+
+/-- [gateway_kernel::T_SETTINGS]
+    Source: 'kernel/src/lib.rs', lines 1571:0-1571:26 -/
+@[global_simps, irreducible] def T_SETTINGS : Std.U32 := 0#u32
+
+/-- [gateway_kernel::T_TEAMS]
+    Source: 'kernel/src/lib.rs', lines 1572:0-1572:23 -/
+@[global_simps, irreducible] def T_TEAMS : Std.U32 := 1#u32
+
+/-- [gateway_kernel::T_KEYS]
+    Source: 'kernel/src/lib.rs', lines 1573:0-1573:22 -/
+@[global_simps, irreducible] def T_KEYS : Std.U32 := 2#u32
+
+/-- [gateway_kernel::T_MODELS]
+    Source: 'kernel/src/lib.rs', lines 1574:0-1574:24 -/
+@[global_simps, irreducible] def T_MODELS : Std.U32 := 3#u32
+
+/-- [gateway_kernel::T_DEPLOYMENTS]
+    Source: 'kernel/src/lib.rs', lines 1575:0-1575:29 -/
+@[global_simps, irreducible] def T_DEPLOYMENTS : Std.U32 := 4#u32
+
+/-- [gateway_kernel::T_KEY_MODELS]
+    Source: 'kernel/src/lib.rs', lines 1576:0-1576:28 -/
+@[global_simps, irreducible] def T_KEY_MODELS : Std.U32 := 5#u32
+
+/-- [gateway_kernel::T_TEAM_MODELS]
+    Source: 'kernel/src/lib.rs', lines 1577:0-1577:29 -/
+@[global_simps, irreducible] def T_TEAM_MODELS : Std.U32 := 6#u32
+
+/-- [gateway_kernel::T_USAGE]
+    Source: 'kernel/src/lib.rs', lines 1578:0-1578:23 -/
+@[global_simps, irreducible] def T_USAGE : Std.U32 := 7#u32
+
+/-- [gateway_kernel::T_RESERVATIONS]
+    Source: 'kernel/src/lib.rs', lines 1579:0-1579:30 -/
+@[global_simps, irreducible] def T_RESERVATIONS : Std.U32 := 8#u32
+
+/-- [gateway_kernel::COL_FIRST]
+    Source: 'kernel/src/lib.rs', lines 1582:0-1582:25 -/
+@[global_simps, irreducible] def COL_FIRST : Std.U32 := 0#u32
+
+/-- [gateway_kernel::KEY_TEAM]
+    Source: 'kernel/src/lib.rs', lines 1583:0-1583:24 -/
+@[global_simps, irreducible] def KEY_TEAM : Std.U32 := 1#u32
+
+/-- [gateway_kernel::MODEL_NAME]
+    Source: 'kernel/src/lib.rs', lines 1584:0-1584:26 -/
+@[global_simps, irreducible] def MODEL_NAME : Std.U32 := 1#u32
+
+/-- [gateway_kernel::USAGE_ID]
+    Source: 'kernel/src/lib.rs', lines 1585:0-1585:24 -/
+@[global_simps, irreducible] def USAGE_ID : Std.U32 := 1#u32
+
+/-- [gateway_kernel::RES_KEY]
+    Source: 'kernel/src/lib.rs', lines 1586:0-1586:23 -/
+@[global_simps, irreducible] def RES_KEY : Std.U32 := 1#u32
+
+/-- [gateway_kernel::RES_TEAM]
+    Source: 'kernel/src/lib.rs', lines 1587:0-1587:24 -/
+@[global_simps, irreducible] def RES_TEAM : Std.U32 := 2#u32
+
+/-- [gateway_kernel::v_int]:
+    Source: 'kernel/src/lib.rs', lines 1589:0-1591:1 -/
+def v_int (x : Std.U64) : Result h5i_app_sql.Val := do
+  U64.Insts.H5i_app_sqlColumn.to_val x
+
+/-- [gateway_kernel::v_bytes]:
+    Source: 'kernel/src/lib.rs', lines 1593:0-1595:1 -/
+def v_bytes (t : alloc.vec.Vec Std.U8) : Result h5i_app_sql.Val := do
+  alloc.vec.VecU8.Insts.H5i_app_sqlColumn.to_val t
+
+/-- [gateway_kernel::p_eq]:
+    Source: 'kernel/src/lib.rs', lines 1597:0-1599:1 -/
+def p_eq (col : Std.U32) (v : h5i_app_sql.Val) : Result h5i_app_sql.Pred := do
+  ok (h5i_app_sql.Pred.Eq col v)
+
+/-- [gateway_kernel::p_or]:
+    Source: 'kernel/src/lib.rs', lines 1601:0-1603:1 -/
+def p_or
+  (a : h5i_app_sql.Pred) (b : h5i_app_sql.Pred) : Result h5i_app_sql.Pred := do
+  ok (h5i_app_sql.Pred.Or a b)
+
+/-- [gateway_kernel::p_and]:
+    Source: 'kernel/src/lib.rs', lines 1605:0-1607:1 -/
+def p_and
+  (a : h5i_app_sql.Pred) (b : h5i_app_sql.Pred) : Result h5i_app_sql.Pred := do
+  ok (h5i_app_sql.Pred.And a b)
+
+/-- [gateway_kernel::p_in]:
+    Source: 'kernel/src/lib.rs', lines 1610:0-1612:1 -/
+def p_in
+  (col : Std.U32) (table : Std.U32) (pred : h5i_app_sql.Pred) (of : Std.U32) :
+  Result h5i_app_sql.Pred
+  := do
+  let w ← h5i_app_sql.whole
+  ok (h5i_app_sql.Pred.In col table pred of w)
+
+/-- [gateway_kernel::rd]:
+    Source: 'kernel/src/lib.rs', lines 1614:0-1616:1 -/
+def rd
+  (table : Std.U32) (pred : h5i_app_sql.Pred) : Result h5i_app_sql.Read := do
+  let w ← h5i_app_sql.whole
+  ok { table, pred, window := w }
+
+/-- [gateway_kernel::p_none]:
+    Source: 'kernel/src/lib.rs', lines 1619:0-1621:1 -/
+def p_none : Result h5i_app_sql.Pred := do
+  let v ← v_int 0#u64
+  let p ← p_eq COL_FIRST v
+  let v1 ← v_int 1#u64
+  let p1 ← p_eq COL_FIRST v1
+  p_and p p1
+
+/-- [gateway_kernel::Via]
+    Source: 'kernel/src/lib.rs', lines 1625:0-1633:1 -/
+@[discriminant isize]
+inductive Via where
+| Id : Via
+| Row : Std.U32 → Std.U32 → Via
+| TeamOfKey : Via
+
+/-- [gateway_kernel::p_arm]:
+    Source: 'kernel/src/lib.rs', lines 1638:0-1648:1 -/
+def p_arm
+  (col : Std.U32) (scope : Option Std.U64) (via : Via) (id : Std.U64) :
+  Result h5i_app_sql.Pred
+  := do
+  let base ←
+    match via with
+    | Via.Id => do
+                let v ← v_int id
+                p_eq col v
+    | Via.Row table of =>
+      do
+      let v ← v_int id
+      let p ← p_eq COL_FIRST v
+      p_in col table p of
+    | Via.TeamOfKey =>
+      do
+      let v ← v_int id
+      let p ← p_eq COL_FIRST v
+      let p1 ← p_in COL_FIRST T_KEYS p KEY_TEAM
+      p_in col T_TEAMS p1 COL_FIRST
+  match scope with
+  | none => ok base
+  | some sc => let v ← v_int sc
+               let p ← p_eq COL_FIRST v
+               p_and p base
+
+/-- [gateway_kernel::p_arms]: loop body 0:
+    Source: 'kernel/src/lib.rs', lines 1655:4-1658:5 -/
+@[rust_loop_body]
+def p_arms_loop.body
+  (col : Std.U32) (scope : Option Std.U64) (via : Via)
+  (ids : alloc.vec.Vec Std.U64) (p : h5i_app_sql.Pred) (i : Std.Usize) :
+  Result (ControlFlow (h5i_app_sql.Pred × Std.Usize) h5i_app_sql.Pred)
+  := do
+  let i1 := alloc.vec.Vec.len ids
+  if i < i1
+  then
+    let i2 ←
+      alloc.vec.Vec.index (core.slice.index.SliceIndexUsizeSlice Std.U64) ids i
+    let p1 ← p_arm col scope via i2
+    let p2 ← p_or p p1
+    let i3 ← i + 1#usize
+    ok (cont (p2, i3))
+  else ok (done p)
+
+/-- [gateway_kernel::p_arms]: loop 0:
+    Source: 'kernel/src/lib.rs', lines 1655:4-1658:5 -/
+@[rust_loop]
+def p_arms_loop
+  (col : Std.U32) (scope : Option Std.U64) (via : Via)
+  (ids : alloc.vec.Vec Std.U64) (p : h5i_app_sql.Pred) (i : Std.Usize) :
+  Result h5i_app_sql.Pred
+  := do
+  loop
+    (fun (p1, i1) => p_arms_loop.body col scope via ids p1 i1)
+    (p, i)
+
+/-- [gateway_kernel::p_arms]:
+    Source: 'kernel/src/lib.rs', lines 1652:0-1660:1 -/
+@[reducible]
+def p_arms
+  (p : h5i_app_sql.Pred) (col : Std.U32) (scope : Option Std.U64) (via : Via)
+  (ids : alloc.vec.Vec Std.U64) :
+  Result h5i_app_sql.Pred
+  := do
+  p_arms_loop col scope via ids p 0#usize
+
+/-- [gateway_kernel::p_names]: loop body 0:
+    Source: 'kernel/src/lib.rs', lines 1666:4-1669:5 -/
+@[rust_loop_body]
+def p_names_loop.body
+  (names : alloc.vec.Vec (alloc.vec.Vec Std.U8)) (p : h5i_app_sql.Pred)
+  (i : Std.Usize) :
+  Result (ControlFlow (h5i_app_sql.Pred × Std.Usize) h5i_app_sql.Pred)
+  := do
+  let i1 := alloc.vec.Vec.len names
+  if i < i1
+  then
+    let v ←
+      alloc.vec.Vec.index (core.slice.index.SliceIndexUsizeSlice (alloc.vec.Vec
+        Std.U8)) names i
+    let v1 ← v_bytes v
+    let p1 ← p_eq MODEL_NAME v1
+    let p2 ← p_or p p1
+    let i2 ← i + 1#usize
+    ok (cont (p2, i2))
+  else ok (done p)
+
+/-- [gateway_kernel::p_names]: loop 0:
+    Source: 'kernel/src/lib.rs', lines 1666:4-1669:5 -/
+@[rust_loop]
+def p_names_loop
+  (names : alloc.vec.Vec (alloc.vec.Vec Std.U8)) (p : h5i_app_sql.Pred)
+  (i : Std.Usize) :
+  Result h5i_app_sql.Pred
+  := do
+  loop
+    (fun (p1, i1) => p_names_loop.body names p1 i1)
+    (p, i)
+
+/-- [gateway_kernel::p_names]:
+    Source: 'kernel/src/lib.rs', lines 1663:0-1671:1 -/
+def p_names
+  (names : alloc.vec.Vec (alloc.vec.Vec Std.U8)) :
+  Result h5i_app_sql.Pred
+  := do
+  let p ← p_none
+  p_names_loop names p 0#usize
+
+/-- [gateway_kernel::plan_of]:
+    Source: 'kernel/src/lib.rs', lines 1680:0-1710:1 -/
+def plan_of
+  (keys : alloc.vec.Vec Std.U64) (teams : alloc.vec.Vec Std.U64)
+  (res : alloc.vec.Vec Std.U64) (names : alloc.vec.Vec (alloc.vec.Vec Std.U8))
+  (master_admit : Bool) (all_models : Bool) :
+  Result (alloc.vec.Vec h5i_app_sql.Read)
+  := do
+  let p ← p_none
+  let p1 ← p_arms p COL_FIRST none Via.Id keys
+  let keys_p ← p_arms p1 COL_FIRST none (Via.Row T_RESERVATIONS RES_KEY) res
+  let p2 ← p_arms p COL_FIRST none Via.Id teams
+  let p3 ← p_arms p2 COL_FIRST none (Via.Row T_KEYS KEY_TEAM) keys
+  let teams_p ←
+    p_arms p3 COL_FIRST none (Via.Row T_RESERVATIONS RES_TEAM) res
+  let models ← if all_models
+                 then ok h5i_app_sql.Pred.All
+                 else p_names names
+  let p4 ← p_arms p COL_FIRST none Via.Id teams
+  let team_models ← p_arms p4 COL_FIRST none (Via.Row T_KEYS KEY_TEAM) keys
+  let v ← v_int SCOPE_DEPLOYMENT
+  let usage ← p_eq COL_FIRST v
+  let usage1 ← p_arms usage USAGE_ID (some SCOPE_KEY) Via.Id keys
+  let usage2 ←
+    p_arms usage1 USAGE_ID (some SCOPE_KEY) (Via.Row T_RESERVATIONS RES_KEY)
+      res
+  let usage3 ← p_arms usage2 USAGE_ID (some SCOPE_TEAM) Via.Id teams
+  let usage4 ←
+    p_arms usage3 USAGE_ID (some SCOPE_TEAM) (Via.Row T_KEYS KEY_TEAM) keys
+  let usage5 ←
+    p_arms usage4 USAGE_ID (some SCOPE_TEAM) (Via.Row T_RESERVATIONS 
+      RES_TEAM) res
+  let reservations ←
+    if master_admit
+    then do
+         let v1 ← v_int 0#u64
+         p_eq RES_KEY v1
+    else ok p
+  let reservations1 ← p_arms reservations RES_KEY none Via.Id keys
+  let reservations2 ←
+    p_arms reservations1 RES_TEAM none (Via.Row T_TEAMS COL_FIRST) teams
+  let reservations3 ← p_arms reservations2 RES_TEAM none Via.TeamOfKey keys
+  let reservations4 ← p_arms reservations3 COL_FIRST none Via.Id res
+  let r ← rd T_SETTINGS h5i_app_sql.Pred.All
+  let out ← alloc.vec.Vec.push (alloc.vec.Vec.new h5i_app_sql.Read) r
+  let r1 ← rd T_TEAMS teams_p
+  let out1 ← alloc.vec.Vec.push out r1
+  let r2 ← rd T_KEYS keys_p
+  let out2 ← alloc.vec.Vec.push out1 r2
+  let r3 ← rd T_MODELS models
+  let out3 ← alloc.vec.Vec.push out2 r3
+  let r4 ← rd T_DEPLOYMENTS h5i_app_sql.Pred.All
+  let out4 ← alloc.vec.Vec.push out3 r4
+  let p5 ← p_arms p COL_FIRST none Via.Id keys
+  let r5 ← rd T_KEY_MODELS p5
+  let out5 ← alloc.vec.Vec.push out4 r5
+  let r6 ← rd T_TEAM_MODELS team_models
+  let out6 ← alloc.vec.Vec.push out5 r6
+  let r7 ← rd T_USAGE usage5
+  let out7 ← alloc.vec.Vec.push out6 r7
+  let r8 ← rd T_RESERVATIONS reservations4
+  alloc.vec.Vec.push out7 r8
+
+/-- [gateway_kernel::add_id]:
+    Source: 'kernel/src/lib.rs', lines 1713:0-1717:1 -/
+def add_id
+  (v : alloc.vec.Vec Std.U64) (x : Std.U64) :
+  Result (alloc.vec.Vec Std.U64)
+  := do
+  let b ← contains v x
+  if b
+  then ok v
+  else alloc.vec.Vec.push v x
+
+/-- [gateway_kernel::has_name]: loop body 0:
+    Source: 'kernel/src/lib.rs', lines 1721:4-1728:1 -/
+@[rust_loop_body]
+def has_name_loop.body
+  (v : alloc.vec.Vec (alloc.vec.Vec Std.U8)) (n : alloc.vec.Vec Std.U8)
+  (i : Std.Usize) :
+  Result (ControlFlow Std.Usize Bool)
+  := do
+  let i1 := alloc.vec.Vec.len v
+  if i < i1
+  then
+    let v1 ←
+      alloc.vec.Vec.index (core.slice.index.SliceIndexUsizeSlice (alloc.vec.Vec
+        Std.U8)) v i
+    let b ← bytes_eq v1 n
+    if b
+    then ok (done true)
+    else let i2 ← i + 1#usize
+         ok (cont i2)
+  else ok (done false)
+
+/-- [gateway_kernel::has_name]: loop 0:
+    Source: 'kernel/src/lib.rs', lines 1721:4-1728:1 -/
+@[rust_loop]
+def has_name_loop
+  (v : alloc.vec.Vec (alloc.vec.Vec Std.U8)) (n : alloc.vec.Vec Std.U8)
+  (i : Std.Usize) :
+  Result Bool
+  := do
+  loop
+    (fun i1 => has_name_loop.body v n i1)
+    i
+
+/-- [gateway_kernel::has_name]:
+    Source: 'kernel/src/lib.rs', lines 1719:0-1728:1 -/
+@[reducible]
+def has_name
+  (v : alloc.vec.Vec (alloc.vec.Vec Std.U8)) (n : alloc.vec.Vec Std.U8) :
+  Result Bool
+  := do
+  has_name_loop v n 0#usize
+
+/-- [gateway_kernel::add_name]:
+    Source: 'kernel/src/lib.rs', lines 1731:0-1735:1 -/
+def add_name
+  (v : alloc.vec.Vec (alloc.vec.Vec Std.U8)) (n : alloc.vec.Vec Std.U8) :
+  Result (alloc.vec.Vec (alloc.vec.Vec Std.U8))
+  := do
+  let b ← has_name v n
+  if b
+  then ok v
+  else
+    let v1 ← alloc.vec.CloneVec.clone core.clone.CloneU8 n
+    alloc.vec.Vec.push v v1
+
+/-- [gateway_kernel::batch_plan]: loop body 0:
+    Source: 'kernel/src/lib.rs', lines 1745:4-1760:5 -/
+@[rust_loop_body]
+def batch_plan_loop.body
+  (items : alloc.vec.Vec BatchItem) (keys : alloc.vec.Vec Std.U64)
+  (res : alloc.vec.Vec Std.U64) (names : alloc.vec.Vec (alloc.vec.Vec Std.U8))
+  (master_admit : Bool) (i : Std.Usize) :
+  Result (ControlFlow ((alloc.vec.Vec Std.U64) × (alloc.vec.Vec Std.U64) ×
+    (alloc.vec.Vec (alloc.vec.Vec Std.U8)) × Bool × Std.Usize)
+    ((alloc.vec.Vec Std.U64) × (alloc.vec.Vec Std.U64) × (alloc.vec.Vec
+    (alloc.vec.Vec Std.U8)) × Bool))
+  := do
+  let i1 := alloc.vec.Vec.len items
+  if i < i1
+  then
+    let it ←
+      alloc.vec.Vec.index (core.slice.index.SliceIndexUsizeSlice BatchItem)
+        items i
+    let (keys1, b) ←
+      if it.master
+      then ok (keys, true)
+      else do
+           let keys2 ← add_id keys it.key
+           ok (keys2, false)
+    let (res1, names1, master_admit1) ←
+      match it.op with
+      | BatchOp.Admit model _ _ _ =>
+        do
+        let names2 ← add_name names model
+        let b1 ← if b
+                   then ok true
+                   else ok master_admit
+        ok (res, names2, b1)
+      | BatchOp.Settle reservation _ _ _ =>
+        do
+        let res2 ← add_id res reservation
+        ok (res2, names, master_admit)
+    let i2 ← i + 1#usize
+    ok (cont (keys1, res1, names1, master_admit1, i2))
+  else ok (done (keys, res, names, master_admit))
+
+/-- [gateway_kernel::batch_plan]: loop 0:
+    Source: 'kernel/src/lib.rs', lines 1745:4-1760:5 -/
+@[rust_loop]
+def batch_plan_loop
+  (items : alloc.vec.Vec BatchItem) (keys : alloc.vec.Vec Std.U64)
+  (res : alloc.vec.Vec Std.U64) (names : alloc.vec.Vec (alloc.vec.Vec Std.U8))
+  (master_admit : Bool) (i : Std.Usize) :
+  Result ((alloc.vec.Vec Std.U64) × (alloc.vec.Vec Std.U64) × (alloc.vec.Vec
+    (alloc.vec.Vec Std.U8)) × Bool)
+  := do
+  loop
+    (fun (keys1, res1, names1, master_admit1, i1) => batch_plan_loop.body items
+      keys1 res1 names1 master_admit1 i1)
+    (keys, res, names, master_admit, i)
+
+/-- [gateway_kernel::batch_plan]:
+    Source: 'kernel/src/lib.rs', lines 1739:0-1762:1 -/
+def batch_plan
+  (items : alloc.vec.Vec BatchItem) :
+  Result (alloc.vec.Vec h5i_app_sql.Read)
+  := do
+  let (keys, res, names, master_admit) ←
+    batch_plan_loop items (alloc.vec.Vec.new Std.U64) (alloc.vec.Vec.new
+      Std.U64) (alloc.vec.Vec.new (alloc.vec.Vec Std.U8)) false 0#usize
+  plan_of keys (alloc.vec.Vec.new Std.U64) res names master_admit false
+
+/-- [gateway_kernel::caller_keys]:
+    Source: 'kernel/src/lib.rs', lines 1765:0-1771:1 -/
+def caller_keys (a : Principal) : Result (alloc.vec.Vec Std.U64) := do
+  if a.master
+  then ok (alloc.vec.Vec.new Std.U64)
+  else alloc.vec.Vec.push (alloc.vec.Vec.new Std.U64) a.key
+
+/-- [gateway_kernel::read_plan]:
+    Source: 'kernel/src/lib.rs', lines 1776:0-1807:1
+    Visibility: public -/
+def read_plan
+  (a : Principal) (cmd : Command) :
+  Result (Option (alloc.vec.Vec h5i_app_sql.Read))
+  := do
+  match cmd with
+  | Command.Configure _ _ _ => ok none
+  | Command.CreateTeam _ _ => ok none
+  | Command.UpdateTeam _ _ => ok none
+  | Command.DeleteTeam _ => ok none
+  | Command.SetTeamModels _ _ => ok none
+  | Command.CreateKey _ _ => ok none
+  | Command.UpdateKey _ _ => ok none
+  | Command.DeleteKey _ => ok none
+  | Command.SetKeyModels _ _ => ok none
+  | Command.ResetKeySpend _ => ok none
+  | Command.UpsertDeployment _ _ => ok none
+  | Command.DeleteDeployment _ => ok none
+  | Command.Dump => ok none
+  | Command.Admit model _ _ _ =>
+    let v ← alloc.vec.CloneVec.clone core.clone.CloneU8 model
+    let names ←
+      alloc.vec.Vec.push (alloc.vec.Vec.new (alloc.vec.Vec Std.U8)) v
+    let v1 ← caller_keys a
+    let v2 ←
+      plan_of v1 (alloc.vec.Vec.new Std.U64) (alloc.vec.Vec.new Std.U64) names
+        false false
+    ok (some v2)
+  | Command.Settle reservation _ _ _ =>
+    let res ← alloc.vec.Vec.push (alloc.vec.Vec.new Std.U64) reservation
+    let v ← caller_keys a
+    let v1 ←
+      plan_of v (alloc.vec.Vec.new Std.U64) res (alloc.vec.Vec.new
+        (alloc.vec.Vec Std.U8)) false false
+    ok (some v1)
+  | Command.Expire reservation =>
+    let res ← alloc.vec.Vec.push (alloc.vec.Vec.new Std.U64) reservation
+    let v ← caller_keys a
+    let v1 ←
+      plan_of v (alloc.vec.Vec.new Std.U64) res (alloc.vec.Vec.new
+        (alloc.vec.Vec Std.U8)) false false
+    ok (some v1)
+  | Command.KeyInfo id =>
+    let keys ← caller_keys a
+    let keys1 ← alloc.vec.Vec.push keys id
+    let v ←
+      plan_of keys1 (alloc.vec.Vec.new Std.U64) (alloc.vec.Vec.new Std.U64)
+        (alloc.vec.Vec.new (alloc.vec.Vec Std.U8)) false false
+    ok (some v)
+  | Command.TeamInfo id =>
+    let teams ← alloc.vec.Vec.push (alloc.vec.Vec.new Std.U64) id
+    let v ← caller_keys a
+    let v1 ←
+      plan_of v teams (alloc.vec.Vec.new Std.U64) (alloc.vec.Vec.new
+        (alloc.vec.Vec Std.U8)) false false
+    ok (some v1)
+  | Command.ListModels =>
+    let v ← caller_keys a
+    let v1 ←
+      plan_of v (alloc.vec.Vec.new Std.U64) (alloc.vec.Vec.new Std.U64)
+        (alloc.vec.Vec.new (alloc.vec.Vec Std.U8)) false true
+    ok (some v1)
+  | Command.Batch items => let v ← batch_plan items
+                           ok (some v)
 
 /-- [gateway_kernel::{gateway_kernel::Reservation}::TABLE]
     Source: '/cargo/registry/src/index.crates.io-1949cf8c6b5b557f/h5i-app-schema-0.1.3/src/lib.rs', lines 135:12-135:60
@@ -4520,7 +5067,7 @@ def Settings.sql_put (self : Settings) : Result h5i_app_sql.Write := do
   ok (h5i_app_sql.Write.Put Settings.TABLE Settings.KEY_LEN v)
 
 /-- [gateway_kernel::sql_write]:
-    Source: 'kernel/src/lib.rs', lines 1706:0-1725:1 -/
+    Source: 'kernel/src/lib.rs', lines 1955:0-1974:1 -/
 def sql_write
   (w : Write) (out : alloc.vec.Vec h5i_app_sql.Write) :
   Result (alloc.vec.Vec h5i_app_sql.Write)
