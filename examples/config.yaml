@@ -1,0 +1,45 @@
+# A LiteLLM-style config for h5i-gateway.
+#   h5i-gateway --config examples/config.yaml
+model_list:
+  - model_name: gpt-4o
+    litellm_params:
+      model: openai/gpt-4o
+      api_key: os.environ/OPENAI_API_KEY
+      rpm: 500
+      order: 1
+  - model_name: gpt-4o
+    litellm_params:
+      model: azure/gpt-4o-prod
+      api_base: os.environ/AZURE_API_BASE
+      api_key: os.environ/AZURE_API_KEY
+      api_version: "2024-10-21"
+      order: 2
+  - model_name: claude-sonnet
+    litellm_params:
+      model: anthropic/claude-3-5-sonnet-20241022
+      api_key: os.environ/ANTHROPIC_API_KEY
+  - model_name: gemini-flash
+    litellm_params:
+      model: gemini/gemini-1.5-flash
+      api_key: os.environ/GEMINI_API_KEY
+  # Prices are looked up in LiteLLM's price table, or set per deployment (USD per token).
+  - model_name: local-llama
+    litellm_params:
+      model: hosted_vllm/meta-llama/Llama-3.1-8B-Instruct
+      api_base: http://localhost:8000/v1
+      input_cost_per_token: 0.0000001
+      output_cost_per_token: 0.0000002
+
+router_settings:
+  num_retries: 2          # further deployments of a group after a retryable failure
+  allowed_fails: 3        # retryable failures per minute before a deployment cools down
+  cooldown_time: 30       # seconds
+  timeout: 600
+  fallbacks:
+    - gpt-4o: ["claude-sonnet"]
+
+general_settings:
+  master_key: os.environ/LITELLM_MASTER_KEY
+  # database_url: os.environ/DATABASE_URL   # PostgreSQL; omit to keep state in memory
+  # spend_logs: https://example.com/hooks/spend   # or "log" (default)
+  default_max_tokens: 4096

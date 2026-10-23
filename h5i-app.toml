@@ -1,4 +1,4 @@
-# Read by `h5i app` (extract, check, prove, mutate, doctor).
+# Read by `h5i app` (extract, check, prove, mutate, lint, doctor).
 
 [extract]
 crate = "kernel"
@@ -7,4 +7,84 @@ schema = true
 include = ["h5i_app_sql"]
 
 [check]
-theorems = []
+# Must exist and use only the standard axioms (every theorem in a hand-written
+# module is gated as well).
+theorems = [
+  "gateway_kernel.Theorems.authorized",
+  "gateway_kernel.Theorems.admit_sound",
+  "gateway_kernel.Theorems.admit_complete",
+  "gateway_kernel.Theorems.reachable_inv",
+  "gateway_kernel.Theorems.manage_needs_admin",
+  "gateway_kernel.Theorems.key_confined",
+  "gateway_kernel.Theorems.budget_never_exceeded",
+  "gateway_kernel.Theorems.settle_logged",
+  "gateway_kernel.Theorems.emit_origin",
+  "gateway_kernel.Commands.transition_total",
+  "gateway_kernel.Helpers.route_spec",
+  "gateway_kernel.Helpers.cost_spec",
+  "gateway_kernel.Apply.apply_spec",
+  "gateway_kernel.Storage.pg_stored",
+  "gateway_kernel.Storage.db_inv",
+  "gateway_kernel.ReadOnly.sound",
+]
+
+# Bugs the proofs must reject (`h5i app mutate`).
+[[mutant]]
+name = "budget_ignores_reservations"
+old = "sat_add(sat_add(spend, reserved), amount) <= max_budget"
+new = "sat_add(spend, amount) <= max_budget"
+
+[[mutant]]
+name = "rate_limit_off_by_one"
+old = "requests < rpm && tokens < tpm"
+new = "requests <= rpm && tokens < tpm"
+
+[[mutant]]
+name = "cooldown_ignored"
+old = "now < d.cooldown_until"
+new = "now < 0"
+
+[[mutant]]
+name = "settle_charges_reservation"
+old = "k2.spend = sat_add(k2.spend, c);"
+new = "k2.spend = sat_add(k2.spend, r.amount);"
+
+[[mutant]]
+name = "any_key_settles_any_reservation"
+old = "(!a.master && r.key_id == a.key) || is_admin(a, s)"
+new = "!a.master || is_admin(a, s)"
+
+[[mutant]]
+name = "routing_prefers_high_priority"
+old = "p1 < p2 ||"
+new = "p1 > p2 ||"
+
+[[mutant]]
+name = "expiry_off_by_one"
+old = "if now >= k.expires_at {"
+new = "if now > k.expires_at {"
+
+[[mutant]]
+name = "parallel_off_by_one"
+old = "in_flight(&s.reservations, k.id) >= k.max_parallel"
+new = "in_flight(&s.reservations, k.id) > k.max_parallel"
+
+[[mutant]]
+name = "team_grants_ignored"
+old = "team_may(&s.team_models, team.id, model)"
+new = "true"
+
+[[mutant]]
+name = "budget_reset_late"
+old = "if k.budget_duration != 0 && now >= k.budget_reset_at {"
+new = "if k.budget_duration != 0 && now > k.budget_reset_at {"
+
+[[mutant]]
+name = "model_access_unchecked"
+old = "if !may_call(s, &k, &team, model) {"
+new = "if false {"
+
+[[mutant]]
+name = "cooldown_threshold_off_by_one"
+old = "if fails > allowed_fails {"
+new = "if fails >= allowed_fails {"

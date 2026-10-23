@@ -22,6 +22,9 @@
 //! so $2.50 per million tokens is 2500. A limit of `UNLIMITED` (`u64::MAX`)
 //! never refuses. Times are Unix seconds, from the engine's clock.
 
+// The Aeneas subset: `&Vec` parameters, index loops, explicit matches.
+#![allow(clippy::ptr_arg, clippy::needless_range_loop, clippy::manual_map, clippy::question_mark, clippy::single_match, clippy::collapsible_if, clippy::collapsible_else_if, clippy::needless_return, clippy::collapsible_match, clippy::vec_init_then_push, clippy::match_like_matches_macro)]
+
 /// Who is calling. The shell builds it from a verified credential and the
 /// engine stamps `now`; no field comes from the request body.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]

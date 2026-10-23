@@ -1,0 +1,37 @@
+[package]
+name = "gateway-server"
+description = "h5i-ai-gateway: an OpenAI-compatible LLM gateway (a Rust port of the LiteLLM proxy) on h5i-app"
+edition.workspace = true
+license.workspace = true
+version.workspace = true
+publish = false
+
+[[bin]]
+name = "h5i-gateway"
+path = "src/main.rs"
+
+[dependencies]
+gateway-kernel.workspace = true
+gateway-providers = { path = "../gateway-providers" }
+h5i-app-core.workspace = true
+h5i-app-http.workspace = true
+h5i-app-pg.workspace = true
+h5i-app-json.workspace = true
+h5i-app-sql.workspace = true
+axum = "0.8"
+tokio = { version = "1", features = ["macros", "rt-multi-thread", "time", "signal", "net", "sync"] }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+serde_yaml = "0.9"
+futures = "0.3"
+bytes = "1"
+reqwest = { version = "0.13", default-features = false, features = ["rustls", "json"] }
+tokio-postgres = "0.7"
+thiserror = "2"
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+uuid = { version = "1", features = ["v4"] }
+
+[dev-dependencies]
+tower = { version = "0.5", features = ["util"] }
+http-body-util = "0.1"
