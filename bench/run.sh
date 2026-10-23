@@ -16,24 +16,12 @@ LITELLM_COMMIT=f2118fc7670ba3fa736d9b8f4deef9077a45a720
 LITELLM_RUST_DIR=${LITELLM_RUST_DIR:-/dev/shm/h5i-gw/litellm/litellm-rust}
 RESULTS=$ROOT/bench/results
 mkdir -p "$SCRATCH/logs" "$RESULTS"
-for tool in cargo docker taskset python3 git patch; do
+for tool in cargo docker taskset python3 git; do
   command -v "$tool" >/dev/null || { echo "missing $tool" >&2; exit 1; }
 done
 
 echo "== building h5i-gateway and the bench tools (release)"
 cargo build --release --manifest-path "$ROOT/Cargo.toml" -p gateway-server -p gateway-bench
-
-echo "== building h5i-gateway with bench/patches/h5i-tcp-nodelay.patch"
-rm -rf "$SCRATCH/h5i-nodelay" && mkdir -p "$SCRATCH/h5i-nodelay"
-git -C "$ROOT" archive HEAD | tar -x -C "$SCRATCH/h5i-nodelay"
-if patch -s -p1 -d "$SCRATCH/h5i-nodelay" --dry-run <"$ROOT/bench/patches/h5i-tcp-nodelay.patch" >/dev/null 2>&1; then
-  patch -s -p1 -d "$SCRATCH/h5i-nodelay" <"$ROOT/bench/patches/h5i-tcp-nodelay.patch"
-  CARGO_TARGET_DIR=$SCRATCH/nodelay-target cargo build --release \
-    --manifest-path "$SCRATCH/h5i-nodelay/Cargo.toml" -p gateway-server
-else
-  echo "   patch does not apply (already fixed?): skipping h5i-nodelay"
-  rm -f "$SCRATCH/nodelay-target/release/h5i-gateway"
-fi
 
 echo "== building LiteLLM's Rust gateway ($LITELLM_COMMIT)"
 if [ ! -f "$LITELLM_RUST_DIR/Cargo.toml" ]; then

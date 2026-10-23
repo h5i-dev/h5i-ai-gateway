@@ -84,6 +84,9 @@ pub struct GeneralSettings {
     pub reservation_ttl: Option<u64>,
     /// `log`, or a URL that receives each spend log as a JSON POST.
     pub spend_logs: Option<String>,
+    /// Admissions and settlements committed per PostgreSQL transaction
+    /// (group commit); 1 commits each alone. Default 256.
+    pub batch_max: Option<usize>,
     /// `max_tokens` assumed for a request that sets none and whose model has
     /// no known output limit.
     pub default_max_tokens: Option<u64>,

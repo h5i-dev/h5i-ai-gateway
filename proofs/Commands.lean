@@ -1,4 +1,5 @@
 import Helpers
+import Apply
 /-!
 # What each command does
 
@@ -708,17 +709,263 @@ theorem team_info_spec (a : Principal) (s : Snapshot) (id : U64) :
     team_info a s id ⦃ res => ∀ ws rep, res = .Ok (ws, rep) → ws.val = [] ⦄ := by
   unfold team_info; step*
 
+/-! ## Batches
+
+`batch` runs each item through `run_item` (which is `transition` on the
+item's command, `run_item_eq`) on the state so far, appends its writes, and
+commits `compact` of them: the writes no later write to the same row
+supersedes (`compactL`). `batch_ok` reads the loop backwards (partial
+correctness, with `Apply.apply_ok`), so it needs no size bound. -/
+
+/-- The row a write targets (`target`): its table and key; a spend log targets none. -/
+def tgt : Write → Option (U64 × U64 × U64)
+  | .SetSettings _ => some (0#u64, 0#u64, 0#u64)
+  | .PutTeam x => some (1#u64, x.id, 0#u64)
+  | .DelTeam id => some (1#u64, id, 0#u64)
+  | .PutKey x => some (2#u64, x.id, 0#u64)
+  | .DelKey id => some (2#u64, id, 0#u64)
+  | .PutModel x => some (3#u64, x.id, 0#u64)
+  | .PutDeployment x => some (4#u64, x.id, 0#u64)
+  | .DelDeployment id => some (4#u64, id, 0#u64)
+  | .PutKeyModel x => some (5#u64, x.key, x.model)
+  | .DelKeyModel k m => some (5#u64, k, m)
+  | .PutTeamModel x => some (6#u64, x.team, x.model)
+  | .DelTeamModel t m => some (6#u64, t, m)
+  | .PutUsage x => some (7#u64, x.scope, x.id)
+  | .PutReservation x => some (8#u64, x.id, 0#u64)
+  | .DelReservation id => some (8#u64, id, 0#u64)
+  | .Emit _ => none
+
+/-- A later write in `rest` targets the row `w` targets. -/
+def overwrittenL (w : Write) (rest : List Write) : Bool :=
+  match tgt w with
+  | none => false
+  | some t => rest.any (fun w' => decide (tgt w' = some t))
+
+/-- `compact`: the writes no later write to the same row supersedes, in order;
+every spend log stays. -/
+def compactL : List Write → List Write
+  | [] => []
+  | w :: rest => if overwrittenL w rest then compactL rest else w :: compactL rest
+
+theorem target_eq (w : Write) : target w = ok (tgt w) := by
+  cases w <;> rfl
+
+@[step] theorem target_spec (w : Write) : target w ⦃ o => o = tgt w ⦄ := by
+  rw [target_eq]; simp
+
+theorem tgt_ne {w : Write} {o : Option (U64 × U64 × U64)} {u1 u2 u3 t1 t2 t3 : U64} (ho : o = tgt w)
+    (hu : o = some (u1, u2, u3)) (hn : ¬(u1.val = t1.val ∧ u2.val = t2.val ∧ u3.val = t3.val)) :
+    ¬ decide (tgt w = some (t1, t2, t3)) = true := by
+  intro he; simp only [decide_eq_true_eq] at he; rw [← ho, hu] at he
+  simp only [Option.some.injEq, Prod.mk.injEq] at he
+  obtain ⟨rfl, rfl, rfl⟩ := he; exact hn ⟨rfl, rfl, rfl⟩
+
+theorem overwritten_loop_spec (ws : alloc.vec.Vec Write) (t : U64 × U64 × U64) (j : Usize) (hj : j.val ≤ ws.val.length) :
+    overwritten_loop ws t j ⦃ b => b = (ws.val.drop j.val).any (fun w' => decide (tgt w' = some t)) ⦄ := by
+  unfold overwritten_loop
+  apply WP.spec_mono (loop_search ws.val (fun w' => decide (tgt w' = some t)) (fun b : Bool => b)
+    (fun _ _ => true) false _ ?_ j hj)
+  · intro b hb; rw [hb, searchFrom_const]; split <;> simp_all
+  · intro i hi
+    unfold overwritten_loop.body
+    obtain ⟨t1, t2, t3⟩ := t
+    step*
+    all_goals (try subst w_post)
+    all_goals first
+      | (right; exact ⟨by scalar_tac, rfl⟩)
+      | (exact ⟨by scalar_tac, by simp_all, j1_post⟩)
+      | (obtain ⟨u1, u2, u3⟩ := u
+         repeat' split
+         all_goals step*
+         · left; exact ⟨by scalar_tac, by simp_all, rfl⟩
+         all_goals exact ⟨by scalar_tac, tgt_ne o_post ‹o = some _› (by simp_all), j1_post⟩)
+
+theorem overwritten_spec (ws : alloc.vec.Vec Write) (i : Usize) (hi : i.val < ws.val.length) :
+    overwritten ws i ⦃ b => b = overwrittenL ws.val[i.val] (ws.val.drop (i.val + 1)) ⦄ := by
+  unfold overwritten overwrittenL
+  step*
+  subst w_post; rw [← o_post, ‹o = some t›]
+  apply WP.spec_mono (overwritten_loop_spec ws t j (by scalar_tac))
+  intro b hb; rw [hb, j_post]
+
+theorem compactL_drop (l : List Write) (i : Nat) (hi : i < l.length) :
+    compactL (l.drop i) = (if overwrittenL l[i] (l.drop (i + 1)) then [] else [l[i]]) ++ compactL (l.drop (i + 1)) := by
+  rw [List.drop_eq_getElem_cons hi, compactL]; split <;> simp
+
+/-- `compact` computes `compactL` (and never fails). -/
+theorem compact_spec (ws : alloc.vec.Vec Write) : compact ws ⦃ out => out.val = compactL ws.val ⦄ := by
+  unfold compact compact_loop
+  apply loop_idx_spec _ (fun x => x.2) ws.val.length
+    (fun x => x.1.val ++ compactL (ws.val.drop x.2.val) = compactL ws.val ∧ x.1.val.length ≤ x.2.val) _ ?_ _
+    (by simp) (by simp)
+  rintro ⟨out, i⟩ ⟨hI, hlen⟩ hi
+  simp only at hI hlen hi
+  unfold compact_loop.body
+  simp only
+  split
+  · rename_i hlt
+    have hlt' : i.val < ws.val.length := by scalar_tac
+    apply WP.spec_bind (overwritten_spec ws i hlt')
+    intro b hb
+    dsimp only
+    split
+    · step*
+      refine ⟨?_, by omega, by omega, by omega⟩
+      rw [← hI, compactL_drop _ _ hlt', i2_post]; simp_all
+    · step*
+      subst x_post
+      rw [Apply.write_clone]; simp only [bind_ok]
+      apply WP.spec_bind (alloc.vec.Vec.push_spec out _ (by
+        have : ws.val.length ≤ Usize.max := ws.property
+        omega))
+      intro o1 ho1
+      step*
+      refine ⟨?_, by simp [ho1]; omega, by omega, by omega⟩
+      rw [← hI, compactL_drop _ _ hlt', i2_post, ho1]; simp_all
+  · simp only [WP.spec_ok]
+    rw [← hI, List.drop_eq_nil_of_le (by scalar_tac)]; simp [compactL]
+
+theorem append_spec (ws w : alloc.vec.Vec Write) (h : ws.val.length + w.val.length ≤ Usize.max) :
+    append ws w ⦃ r => r.val = ws.val ++ w.val ⦄ := by
+  unfold append append_loop
+  apply loop_idx_spec _ (fun x => x.2) w.val.length
+    (fun x => x.1.val = ws.val ++ w.val.take x.2.val) _ ?_ _ (by simp) (by simp)
+  rintro ⟨acc, i⟩ hI hi
+  simp only at hI hi
+  unfold append_loop.body
+  simp only
+  split
+  · have hlt : i.val < w.val.length := by scalar_tac
+    step*
+    rw [Apply.write_clone]; simp only [bind_ok]
+    apply WP.spec_bind (alloc.vec.Vec.push_spec acc _ (by rw [hI]; simp only [List.length_append, List.length_take]; omega))
+    intro ws1 hws1
+    step*
+    refine ⟨?_, by omega, by omega⟩
+    rw [hws1, hI, i2_post, List.take_add_one, List.getElem?_eq_getElem hlt, w1_post]
+    simp
+  · simp only [WP.spec_ok]
+    rw [hI, List.take_of_length_le (by scalar_tac)]
+
+theorem append_ok {ws w r : alloc.vec.Vec Write} (h : append ws w = ok r) : r.val = ws.val ++ w.val := by
+  unfold append append_loop at h
+  refine loop_idx_ok _ (fun x => x.2) w.val.length
+    (fun x => x.1.val = ws.val ++ w.val.take x.2.val) (fun r => r.val = ws.val ++ w.val) ?_ _ _ (by simp) (by simp) h
+  rintro ⟨acc, i⟩ r hI hi hr
+  simp only at hI hi hr
+  unfold append_loop.body at hr
+  h5i_invert hr
+  · obtain ⟨hlt, rfl⟩ := Apply.index_slice_ok' hw1
+    rw [Apply.write_clone] at hw2; simp only [ok.injEq] at hw2; subst hw2
+    have hi2' := add_ok_val hi2
+    refine ⟨?_, by simp [hi2'], by simp [hi2']; omega⟩
+    rw [Apply.push_ok hws1, hI, hi2', show (1#usize : Usize).val = 1 from rfl, List.take_add_one,
+      List.getElem?_eq_getElem hlt]
+    simp
+  · simp only
+    rw [hI, List.take_of_length_le (by scalar_tac)]
+
+theorem outcome_of_eq (r : Reply) : outcome_of r = ok (outcomeOf r) := by
+  cases r <;> rfl
+
+theorem run_item_eq (a : Principal) (s : Snapshot) (it : BatchItem) :
+    run_item a s it = transition (itemPrincipal a it) s (itemCmd it) := by
+  obtain ⟨k, m, op⟩ := it
+  cases op <;> simp [run_item, item_principal, transition, itemPrincipal, itemCmd]
+
+/-- A successful batch: the caller is the master key, and the batch ran its
+items one after another (`RunItems`), committing `compactL` of their writes. -/
+theorem batch_ok {a : Principal} {s : Snapshot} {items : alloc.vec.Vec BatchItem} {ws : alloc.vec.Vec Write} {rep : Reply}
+    (h : batch a s items = ok (.Ok (ws, rep))) :
+    a.master = true ∧ ∃ (W : List Write) (outs : alloc.vec.Vec ItemOutcome), rep = .Batch outs ∧
+      RunItems a (Snapshot.toSt s) items.val W outs.val ∧ ws.val = compactL W := by
+  unfold batch at h
+  split at h
+  · rename_i hm
+    refine ⟨hm, ?_⟩
+    rw [gateway_kernel.Schema.Snapshot.clone_eq] at h
+    simp only [bind_ok] at h
+    obtain ⟨⟨W, outs⟩, hl, h⟩ := bind_eq_ok.1 h
+    obtain ⟨v, hv, h⟩ := bind_eq_ok.1 h
+    simp only [ok.injEq, core.result.Result.Ok.injEq, Prod.mk.injEq] at h
+    obtain ⟨rfl, rfl⟩ := h
+    refine ⟨W.val, outs, rfl, ?_, ?_⟩
+    swap
+    · exact post_of_ok (P := fun out => out.val = compactL W.val) (compact_spec W) hv
+    unfold batch_loop at hl
+    refine loop_idx_ok _ (fun x => x.2.2.2) items.val.length
+      (fun x => ∀ W' O', RunItems a (Snapshot.toSt x.1) (items.val.drop x.2.2.2.val) W' O' →
+        RunItems a (Snapshot.toSt s) items.val (x.2.1.val ++ W') (x.2.2.1.val ++ O'))
+      (fun y => RunItems a (Snapshot.toSt s) items.val y.1.val y.2.val) ?_ _ _ (by simp) (by simp) hl
+    rintro ⟨cur, acc, os, i⟩ r hI hi hr
+    simp only at hI hi hr
+    unfold batch_loop.body at hr
+    h5i_invert hr
+    · obtain ⟨hlt, rfl⟩ := Apply.index_slice_ok' hbi
+      have hrun : transition (itemPrincipal a items.val[i.val]) cur (itemCmd items.val[i.val]) = ok r_1 := by
+        rw [← run_item_eq]; exact hr_1
+      have hdrop := List.drop_eq_getElem_cons hlt
+      rcases r_1 with ⟨w, r1⟩ | e
+      · change (do
+          let cur2 ← apply cur w
+          let ws2 ← append acc w
+          let io ← outcome_of r1
+          let outs2 ← os.push io
+          ok (cur2, ws2, outs2)) = ok x at hx
+        h5i_invert hx
+        change (do let i5 ← i + 1#usize; ok (ControlFlow.cont (cur2, ws2, outs2, i5))) = ok r at hr
+        h5i_invert hr
+        have hi5' := add_ok_val hi5
+        refine ⟨?_, by simp [hi5'], by simp [hi5']; omega⟩
+        intro W' O' hW
+        have h1 := Apply.apply_ok hcur2
+        have h2 := append_ok hws2
+        rw [outcome_of_eq] at hio; simp only [ok.injEq] at hio; subst hio
+        have h3 := Apply.push_ok houts2
+        simp only
+        rw [h2, h3, List.append_assoc, List.append_assoc, List.singleton_append]
+        apply hI
+        rw [hdrop]
+        refine RunItems.done cur w r1 rfl hrun ?_
+        rw [← h1]
+        simpa [hi5'] using hW
+      · h5i_invert hx
+        change (do let i5 ← i + 1#usize; ok (ControlFlow.cont (cur, acc, outs2, i5))) = ok r at hr
+        h5i_invert hr
+        have hi5' := add_ok_val hi5
+        refine ⟨?_, by simp [hi5'], by simp [hi5']; omega⟩
+        intro W' O' hW
+        have h3 := Apply.push_ok houts2
+        simp only
+        rw [h3, List.append_assoc, List.singleton_append]
+        apply hI
+        rw [hdrop]
+        refine RunItems.refused cur e rfl hrun ?_
+        simpa [hi5'] using hW
+    · simp only
+      have := hI [] [] (by rw [List.drop_eq_nil_of_le (by scalar_tac)]; exact .nil)
+      simpa using this
+  · simp at h
+
 /-! ## Who reaches management -/
 
-/-- The management commands: all but the six a key may run. -/
+/-- The management commands: all but the six a key may run. `Batch` is one
+(only the master key may run it), although `transition` hands it to `batch`
+rather than `manage` (`ViaManage`). -/
 def IsManage : Command → Prop
   | .Admit .. | .Settle .. | .Expire .. | .KeyInfo .. | .TeamInfo .. | .ListModels => False
   | _ => True
 
+/-- The commands `transition` hands to `manage` once the caller is an admin. -/
+def ViaManage : Command → Prop
+  | .Admit .. | .Settle .. | .Expire .. | .KeyInfo .. | .TeamInfo .. | .ListModels | .Batch .. => False
+  | _ => True
+
 theorem manage_of {a : Principal} {s : Snapshot} {c : Command} {res}
-    (h : transition a s c = ok res) (hc : IsManage c) (hr : ∀ e, res ≠ .Err e ∨ e ≠ .Forbidden) :
+    (h : transition a s c = ok res) (hc : ViaManage c) (hr : ∀ e, res ≠ .Err e ∨ e ≠ .Forbidden) :
     IsAdmin (Snapshot.toSt s) a ∧ manage a s c = ok res := by
-  cases c <;> simp only [IsManage] at hc <;> simp only [transition] at h <;>
+  cases c <;> simp only [ViaManage] at hc <;> simp only [transition] at h <;>
   · obtain ⟨b, hb, h⟩ := bind_eq_ok.1 h
     have hb' := post_of_ok (is_admin_spec a s) hb
     split at h
@@ -1088,6 +1335,8 @@ def Effect (s : Snapshot) (a : Principal) : Command → List Write → Reply →
   | .KeyInfo _, ws, _ => ws = []
   | .TeamInfo _, ws, _ => ws = []
   | .ListModels, ws, _ => ws = []
+  | .Batch items, ws, rep => a.master = true ∧ ∃ (W : List Write) (outs : alloc.vec.Vec ItemOutcome),
+      rep = .Batch outs ∧ RunItems a (Snapshot.toSt s) items.val W outs.val ∧ ws = compactL W
   | c, ws, rep => IsAdmin (Snapshot.toSt s) a ∧ ManageEffect s a c ws rep
 
 theorem dump_eq (a : Principal) (s : Snapshot) :
@@ -1106,6 +1355,7 @@ theorem transition_effect {a : Principal} {s : Snapshot} {c : Command} {ws : all
   | KeyInfo id => exact post_of_ok (key_info_spec a s id) h ws rep rfl
   | TeamInfo id => exact post_of_ok (team_info_spec a s id) h ws rep rfl
   | ListModels => exact list_models_ok h
+  | Batch items => simp only [transition] at h; exact batch_ok h
   | Configure af cs ttl =>
     obtain ⟨hadm, hm⟩ := manage_of h trivial hr
     exact ⟨hadm, post_of_ok (configure_spec s af cs ttl) hm ws rep rfl⟩
@@ -1149,9 +1399,122 @@ theorem transition_effect {a : Principal} {s : Snapshot} {c : Command} {ws : all
     obtain ⟨rfl, rfl⟩ := hm
     exact ⟨hadm, rfl, rfl⟩
 
+/-- Rows in a state's keyed tables (`Snapshot.size` on lists). -/
+def stSize (st : St) : Nat :=
+  st.teams.length + st.keys.length + st.models.length + st.deployments.length + st.keyModels.length +
+    st.teamModels.length + st.usage.length + st.reservations.length
+
+theorem size_toSt (s : Snapshot) : gateway_kernel.Schema.Snapshot.size s = stSize (Snapshot.toSt s) := by
+  simp [gateway_kernel.Schema.Snapshot.size, stSize, Snapshot.toSt, alloc.vec.Vec.length]
+
+theorem stSize_applyWrite (st : St) (w : Write) : stSize (applyWrite st w) ≤ stSize st + 1 := by
+  cases w <;> simp only [applyWrite, stSize] <;> grind [upsert_length, List.length_filter_le]
+
+theorem stSize_applyAll (st : St) (ws : List Write) : stSize (applyAll st ws) ≤ stSize st + ws.length := by
+  induction ws generalizing st with
+  | nil => simp [applyAll]
+  | cons w ws ih =>
+    have h1 := ih (applyWrite st w)
+    have h2 := stSize_applyWrite st w
+    simp only [applyAll, List.foldl_cons, List.length_cons] at *
+    omega
+
+/-- A successful item writes at most eight writes (a settlement with a key,
+a team and a retryable failure). -/
+theorem item_len {a : Principal} {s : Snapshot} {it : BatchItem} {w : alloc.vec.Vec Write} {r : Reply}
+    (h : transition a s (itemCmd it) = ok (.Ok (w, r))) : w.val.length ≤ 8 := by
+  have he := transition_effect h
+  obtain ⟨k, m, op⟩ := it
+  cases op with
+  | Admit nm pt mt ex =>
+    obtain ⟨_, -, hmas, hkey⟩ := he
+    cases hma : a.master
+    · obtain ⟨_, t, _, _, _, _, _, _, tw, -, -, -, -, -, htw, -, hw⟩ := hkey hma
+      rw [hw]
+      cases t with
+      | none => simp only [TeamWrites] at htw; subst htw; simp
+      | some team => obtain ⟨_, _, -, -, rfl⟩ := htw; simp
+    · obtain ⟨_, _, _, _, -, -, -, -, -, hw⟩ := hmas hma
+      rw [hw]; simp
+  | Settle rid pt ct st =>
+    obtain ⟨_, _, _, kw, tw, _, dw, -, -, -, -, -, hkw, htw, -, hdw, hw⟩ := he
+    rw [hw]
+    rcases hkw with ⟨-, rfl⟩ | ⟨_, _, _, _, -, -, -, -, -, rfl⟩ <;>
+    rcases htw with ⟨-, rfl⟩ | ⟨_, _, _, _, -, -, -, -, -, rfl⟩ <;>
+    rcases hdw with ⟨-, rfl⟩ | ⟨_, _, -, -, -, rfl⟩ <;> simp
+
+@[step] theorem outcome_of_spec (r : Reply) : outcome_of r ⦃ o => o = outcomeOf r ⦄ := by
+  rw [outcome_of_eq]; simp
+
+attribute [local step] Apply.apply_spec append_spec
+
+theorem item_spec (a : Principal) (s : Snapshot) (it : BatchItem) :
+    run_item a s it ⦃ res => ∀ w r, res = .Ok (w, r) → w.val.length ≤ 8 ⦄ := by
+  rw [run_item_eq]
+  obtain ⟨res, hres⟩ : ∃ res, transition (itemPrincipal a it) s (itemCmd it) = ok res := by
+    obtain ⟨k, m, op⟩ := it
+    cases op with
+    | Admit nm pt mt ex => exact ok_of (admit_spec _ s nm pt mt ex)
+    | Settle rid pt ct st => exact ok_of (settle_spec _ s rid pt ct st)
+  rw [hres]
+  simp only [WP.spec_ok]
+  intro w r hr; subst hr; exact item_len hres
+
+/-- `batch` never fails on a snapshot and a batch that leave room in every
+vector: each item writes at most 8 writes and each write adds at most one row. -/
+theorem batch_total (a : Principal) (s : Snapshot) (items : alloc.vec.Vec BatchItem)
+    (hf : gateway_kernel.Schema.Snapshot.size s + 8 * items.val.length < Usize.max) : ∃ r, batch a s items = ok r := by
+  apply ok_of (P := fun _ => True)
+  unfold batch
+  split
+  · rw [gateway_kernel.Schema.Snapshot.clone_eq]
+    simp only [bind_ok]
+    have hn : items.val.length ≤ Usize.max := items.property
+    have hl : batch_loop a.org a.key a.master a.now items s (alloc.vec.Vec.new Write)
+        (alloc.vec.Vec.new ItemOutcome) 0#usize ⦃ _ => True ⦄ := by
+      unfold batch_loop
+      apply loop_idx_spec _ (fun x => x.2.2.2) items.val.length
+        (fun x => gateway_kernel.Schema.Snapshot.size x.1 ≤ gateway_kernel.Schema.Snapshot.size s + 8 * x.2.2.2.val ∧ x.2.1.val.length ≤ 8 * x.2.2.2.val ∧
+          x.2.2.1.val.length = x.2.2.2.val) _ ?_ _ (by simp) (by simp)
+      rintro ⟨cur, acc, os, i⟩ ⟨h1, h2, h3⟩ hi
+      simp only at h1 h2 h3 hi
+      unfold batch_loop.body
+      simp only
+      split
+      · rename_i hlt
+        have hlt' : i.val < items.val.length := by scalar_tac
+        step*
+        apply WP.spec_bind (item_spec _ cur _)
+        intro res hres
+        cases res with
+        | Ok p =>
+          obtain ⟨w, r1⟩ := p
+          have hw := hres w r1 rfl
+          have hsz : gateway_kernel.Schema.Snapshot.size cur + w.length < Usize.max := by
+            simp only [alloc.vec.Vec.length]; omega
+          step*
+          refine ⟨?_, ?_, ?_, by omega, by omega⟩
+          · rw [size_toSt, ‹Snapshot.toSt _ = applyAll (Snapshot.toSt cur) _›]
+            have := stSize_applyAll (Snapshot.toSt cur) w.val
+            rw [size_toSt] at h1; omega
+          · rw [‹(_ : alloc.vec.Vec Write).val = acc.val ++ w.val›]; simp; omega
+          · rw [‹(_ : alloc.vec.Vec ItemOutcome).val = os.val ++ _›]; simp; omega
+        | Err e =>
+          step*
+          refine ⟨by omega, by omega, ?_, by omega, by omega⟩
+          rw [‹(_ : alloc.vec.Vec ItemOutcome).val = os.val ++ _›]; simp; omega
+      · simp
+    obtain ⟨⟨W, outs⟩, hW⟩ := ok_of hl
+    obtain ⟨v, hv⟩ := ok_of (compact_spec W)
+    simp [hW, hv]
+  · simp
+
 /-- The write list of a management command with model lists fits in a vector
-(`Usize.max` entries). Every successful run satisfies this (`fits_of_ok`), and
-it is the only way the kernel can fail: see `transition_total`. -/
+(`Usize.max` entries), and a batch leaves room in every vector. Every
+successful run of a command but `Batch` satisfies this (`fits_of_ok`), and it
+is the only way the kernel can fail: see `transition_total`. For `Batch`, the
+bound only excludes snapshots and batches too large to exist in memory (each
+item writes at most 8 rows; a `BatchItem` takes more than 8 bytes). -/
 def Fits (s : Snapshot) : Command → Prop
   | .CreateTeam _ names => names.val.length + 1 < Usize.max
   | .CreateKey _ names => names.val.length + 1 < Usize.max
@@ -1159,13 +1522,14 @@ def Fits (s : Snapshot) : Command → Prop
   | .DeleteKey id => (s.key_models.val.filter (fun g => g.key = id)).length < Usize.max
   | .SetTeamModels id names => (s.team_models.val.filter (fun g => g.team = id)).length + names.val.length ≤ Usize.max
   | .SetKeyModels id names => (s.key_models.val.filter (fun g => g.key = id)).length + names.val.length ≤ Usize.max
+  | .Batch items => gateway_kernel.Schema.Snapshot.size s + 8 * items.val.length < Usize.max
   | _ => True
 
-theorem total_manage {a : Principal} {s : Snapshot} {c : Command} (hc : IsManage c) (hm : manage a s c ⦃ _ => True ⦄) :
+theorem total_manage {a : Principal} {s : Snapshot} {c : Command} (hc : ViaManage c) (hm : manage a s c ⦃ _ => True ⦄) :
     ∃ r, transition a s c = ok r := by
   obtain ⟨b, hb⟩ := ok_of (is_admin_spec a s)
   obtain ⟨r, hr⟩ := ok_of hm
-  cases c <;> simp only [IsManage] at hc <;> simp only [transition, hb] <;>
+  cases c <;> simp only [ViaManage] at hc <;> simp only [transition, hb] <;>
   · cases b
     · exact ⟨.Err .Forbidden, by simp⟩
     · exact ⟨r, by simpa using hr⟩
@@ -1192,6 +1556,7 @@ theorem transition_total (a : Principal) (s : Snapshot) (c : Command) (hf : Fits
     apply ok_of (P := fun _ => True)
     unfold list_models
     h5i_steps
+  | Batch items => simp only [transition]; exact batch_total a s items hf
   | Configure af cs ttl => exact total_manage trivial (by simp only [manage]; exact triv (configure_spec ..))
   | CreateTeam spec names => exact total_manage trivial (by simp only [manage]; exact triv (create_team_spec a s spec names hf))
   | UpdateTeam id p => exact total_manage trivial (by simp only [manage]; exact triv (update_team_spec ..))
@@ -1206,13 +1571,17 @@ theorem transition_total (a : Principal) (s : Snapshot) (c : Command) (hf : Fits
   | DeleteDeployment id => exact total_manage trivial (by simp only [manage]; exact triv (delete_deployment_spec ..))
   | Dump => exact total_manage trivial (by rw [dump_eq]; simp)
 
-/-- Every successful run fits in a vector, so `transition_total`'s hypothesis
-excludes only inputs on which the kernel cannot succeed. -/
+/-- Every successful run of a command but `Batch` fits in a vector, so
+`transition_total`'s hypothesis excludes only inputs on which the kernel
+cannot succeed. (A batch whose items are refused succeeds on any snapshot,
+so its size bound is not implied by success; see `Fits`.) -/
 theorem fits_of_ok {a : Principal} {s : Snapshot} {c : Command} {ws : alloc.vec.Vec Write} {rep : Reply}
-    (h : transition a s c = ok (.Ok (ws, rep))) : Fits s c := by
+    (h : transition a s c = ok (.Ok (ws, rep))) (hb : ∀ items, c ≠ .Batch items) : Fits s c := by
   have hr : ∀ e, (core.result.Result.Ok (ws, rep) : core.result.Result _ Error) ≠ .Err e ∨ e ≠ .Forbidden :=
     fun e => .inl (by simp)
   cases c <;> simp only [Fits] <;> first
+    | exact absurd rfl (hb _)
+
     | trivial
     | (obtain ⟨-, hm⟩ := manage_of h trivial hr; simp only [manage] at hm
        first | exact create_team_fits hm | exact create_key_fits hm | exact delete_team_fits hm | exact delete_key_fits hm | exact set_team_models_fits hm | exact set_key_models_fits hm)

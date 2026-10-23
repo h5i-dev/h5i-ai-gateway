@@ -8,7 +8,7 @@ use gateway_kernel as k;
 use h5i_app_core::{Executed, Executor, Kernel, ReplyCodec, TenantId, Timestamp};
 use h5i_app_pg::{DbError, Store, Tx, outbox};
 use std::collections::HashMap;
-use std::sync::Mutex;
+use std::sync::{Arc, Mutex};
 
 /// Marker type the framework's traits hang off.
 pub struct Gateway;
@@ -71,10 +71,16 @@ impl Store<Gateway> for GatewayStore {
     // exactly when the charge it records commits.
     async fn write(tx: &Tx<'_>, t: TenantId, ws: &Vec<k::Write>) -> Result<(), DbError> {
         schema_store(tx, t, ws).await?;
-        for w in ws {
-            if let k::Write::Emit(log) = w {
-                outbox::enqueue(tx, t, SPEND_LOGS, &crate::spend::payload(t, log)).await?;
-            }
+        // One outbox row for all the commit's spend logs, in order.
+        let logs: Vec<&k::SpendLog> = ws
+            .iter()
+            .filter_map(|w| match w {
+                k::Write::Emit(log) => Some(log),
+                _ => None,
+            })
+            .collect();
+        if !logs.is_empty() {
+            outbox::enqueue(tx, t, SPEND_LOGS, &crate::spend::payload(t, logs)).await?;
         }
         Ok(())
     }
@@ -151,7 +157,8 @@ impl Executor<Gateway> for MemoryExecutor {
 
 /// The engine behind the gateway: PostgreSQL, or memory for development.
 pub enum Backend {
-    Postgres(h5i_app_pg::Engine<Gateway, GatewayStore>),
+    /// PostgreSQL, with admissions and settlements group-committed by the batcher.
+    Postgres(Arc<h5i_app_pg::Engine<Gateway, GatewayStore>>, Option<crate::batcher::Batcher>),
     Memory(MemoryExecutor),
 }
 
@@ -162,10 +169,21 @@ pub enum Backend {
 pub struct Unavailable(pub String);
 
 impl Backend {
+    /// PostgreSQL; `batch_max > 1` group-commits up to that many admissions
+    /// and settlements per transaction.
+    pub fn postgres(engine: h5i_app_pg::Engine<Gateway, GatewayStore>, batch_max: usize) -> Self {
+        let engine = Arc::new(engine);
+        let batcher = (batch_max > 1).then(|| crate::batcher::Batcher::new(engine.clone(), batch_max));
+        Backend::Postgres(engine, batcher)
+    }
+
     /// Run a command: the kernel's reply or refusal, or `Unavailable`.
     pub async fn run(&self, actor: &k::Principal, cmd: &k::Command) -> Result<Result<k::Reply, k::Error>, Unavailable> {
         match self {
-            Backend::Postgres(e) => e.execute(actor, cmd).await.map_err(|e| Unavailable(e.to_string())),
+            Backend::Postgres(e, batcher) => match (batcher, crate::batcher::Batcher::item(actor, cmd)) {
+                (Some(b), Some(item)) => b.run(actor.org, item).await,
+                _ => e.execute(actor, cmd).await.map_err(|e| Unavailable(e.to_string())),
+            },
             Backend::Memory(m) => Ok(m.run(actor, cmd)),
         }
     }

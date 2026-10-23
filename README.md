@@ -57,7 +57,8 @@ reservation TTL.
 
 `proofs/Spec.lean` is the file to review: it restates the policy on lists and
 natural numbers (prices, `Within`, `AdmitByKey`, `Best`, `IsAdmin`,
-`KeyMayWrite`, `Inv`, `Honest`). The theorems are about the Rust code as
+`KeyMayWrite`, `Inv`, `Honest`, and for the master key's group commit
+`Batch`: `RunItems`, `BatchHonest`, `Keyed`, `Equiv`). The theorems are about the Rust code as
 Aeneas translates it; `h5i app prove` extracts the kernel, builds the proofs
 and gates them (no `sorry`, `native_decide` or axioms beyond `propext`,
 `Classical.choice`, `Quot.sound`).
@@ -66,24 +67,27 @@ and gates them (no `sorry`, `native_decide` or axioms beyond `propext`,
 |---|---|
 | `Theorems.admit_sound` | an admitted call by a key satisfies the whole policy `AdmitByKey`: the key exists, is unblocked and unexpired; its team exists and is unblocked; key and team may call the model; key and team RPM/TPM and the key's parallel limit have room; the deployment is `Best` (eligible and preferred by no eligible one); the reserved amount is the worst-case `price`; and it fits within key and team budgets on top of spend (after any budget-period reset) and outstanding reservations |
 | `Theorems.admit_complete` | conversely, every call the policy allows is admitted, on exactly that deployment, reserving exactly that amount (in reachable states, while ids remain) |
-| `Theorems.budget_never_exceeded` | in every state reached by honest steps, every key's and team's spend plus outstanding reservations stays within its budget, however requests interleave. Honest excludes exactly two steps that can overrun a budget: a provider reporting more tokens than the call reserved, and an admin lowering a budget below what is spent |
+| `Theorems.budget_never_exceeded` | in every state reached by honest steps, every key's and team's spend plus outstanding reservations stays within its budget, however requests interleave. Honest excludes exactly two steps that can overrun a budget: a provider reporting more tokens than the call reserved, and an admin lowering a budget below what is spent. In a `Batch`, honesty (`BatchHonest`) asks it of every `Settle` item at the state in which that item runs (after the earlier items) |
 | `Theorems.key_confined` | a key that is not an admin never changes any key's or team's limits, blocks, grants or roles; it writes only its own key's and team's spend, its own new reservations, usage counters, the id counter, deployment health and spend logs |
 | `Theorems.authorized` | the same as a universal `H5iAppLib.WritesAuthorized` theorem over every actor, state and command |
 | `Theorems.manage_needs_admin` | every management command succeeds only for the master key or an active admin key |
-| `Theorems.reachable_inv` | every reachable state has unique ids per table, fresh ids, and teams for all keys' team references |
-| `Theorems.settle_logged`, `emit_origin` | a settlement emits exactly one spend log, for its reservation, with the cost it charged; every spend log comes from a settlement or (at cost 0) an expiry |
+| `Theorems.reachable_inv` | every reachable state has unique ids per table, fresh ids, and teams for all keys' team references (`reachable_keyed`: every table, usage and grants included, has unique keys) |
+| `Theorems.settle_logged`, `emit_origin` | a settlement emits exactly one spend log, for its reservation, with the cost it charged; every spend log comes from a settlement, (at cost 0) an expiry, or a batch's `Settle` item `i` that succeeded, for its reservation, with the cost of outcome `i` |
+| `Theorems.batch_sequential` | a successful `Batch` (master key only) is exactly the sequential run of its items (`Spec.RunItems`): each item, as its own key, on the state the earlier successful items left, was refused (writing nothing) or succeeded with the outcome it reports; the batch commits `compactL` of the items' writes in order, which sends the same spend logs in the same order and, with unique keys per table, reaches the same rows up to their order in each table (`compact_equiv`, `Spec.Equiv`) |
+| `Theorems.batch_complete`, `batch_admit_sound` | conversely, a master-key batch that fits in memory succeeds with exactly the run of its items; every `Admitted` outcome satisfies `AdmitByKey` (or `Best` for the master key) at the state its item ran in |
 | `Helpers.route_spec` | routing returns an eligible deployment no eligible deployment is preferred to, or none exactly when none is eligible |
 | `Helpers.cost_spec`, … | each helper (saturating cost, budget check, windows, lookups, budget resets, cooldowns) agrees with its specification |
-| `Commands.transition_total` | the kernel never panics, overflows or indexes out of bounds (for inputs whose vectors fit in memory) |
+| `Commands.transition_total` | the kernel never panics, overflows or indexes out of bounds (for inputs whose vectors fit in memory; for a batch, the snapshot's rows plus 8 per item fit in a vector) |
 | `Apply.apply_spec`, `Storage.pg_stored`, `Storage.db_inv` | committing a write set computes `Spec.applyAll`, and PostgreSQL holds and loads back exactly that state (h5i-app's store theorem) |
 | `ReadOnly.sound` | `Dump`, `KeyInfo`, `TeamInfo` and `ListModels` never write, so they may run without a write transaction |
-| `Scenarios.*` | concrete runs of the extracted code: routing by priority, exclusion and cooldown, budgets counting reservations, rate-limit windows, settlement charging the actual cost once, refusals |
+| `Scenarios.*` | concrete runs of the extracted code: routing by priority, exclusion and cooldown, budgets counting reservations, rate-limit windows, settlement charging the actual cost once, refusals, a batch whose second admission is refused only because of the first one's reservation |
 
-`h5i app mutate` injects twelve bugs listed in `h5i-app.toml` (budget
+`h5i app mutate` injects fourteen bugs listed in `h5i-app.toml` (budget
 ignoring reservations, off-by-one rate limits, expiry, parallel and cooldown
 thresholds, ignored cooldowns, ignored model grants, inverted routing,
 charging the reservation instead of the cost, letting any key settle any
-reservation, late budget resets); each must break a proof.
+reservation, late budget resets, batch items running on the original
+state, compaction merging spend logs); each must break a proof.
 
 ### What is trusted
 

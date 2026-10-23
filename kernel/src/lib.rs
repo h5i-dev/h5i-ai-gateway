@@ -1617,7 +1617,66 @@ fn batch(a: &Principal, s: &Snapshot, items: &Vec<BatchItem>) -> Outcome {
         }
         i += 1;
     }
-    Ok((ws, Reply::Batch(outs)))
+    Ok((compact(&ws), Reply::Batch(outs)))
+}
+
+/// The row a write targets, as (table, key, key); a spend log targets none.
+pub fn target(w: &Write) -> Option<(u64, u64, u64)> {
+    match w {
+        Write::SetSettings(_) => Some((0, 0, 0)),
+        Write::PutTeam(x) => Some((1, x.id, 0)),
+        Write::DelTeam(id) => Some((1, *id, 0)),
+        Write::PutKey(x) => Some((2, x.id, 0)),
+        Write::DelKey(id) => Some((2, *id, 0)),
+        Write::PutModel(x) => Some((3, x.id, 0)),
+        Write::PutDeployment(x) => Some((4, x.id, 0)),
+        Write::DelDeployment(id) => Some((4, *id, 0)),
+        Write::PutKeyModel(x) => Some((5, x.key, x.model)),
+        Write::DelKeyModel(k, m) => Some((5, *k, *m)),
+        Write::PutTeamModel(x) => Some((6, x.team, x.model)),
+        Write::DelTeamModel(t, m) => Some((6, *t, *m)),
+        Write::PutUsage(x) => Some((7, x.scope, x.id)),
+        Write::PutReservation(x) => Some((8, x.id, 0)),
+        Write::DelReservation(id) => Some((8, *id, 0)),
+        Write::Emit(_) => None,
+    }
+}
+
+/// Some write after position `i` targets the same row as `ws[i]`.
+fn overwritten(ws: &Vec<Write>, i: usize) -> bool {
+    let t = match target(&ws[i]) {
+        Some(t) => t,
+        None => return false,
+    };
+    let mut j = i + 1;
+    while j < ws.len() {
+        match target(&ws[j]) {
+            Some(u) => {
+                if u.0 == t.0 && u.1 == t.1 && u.2 == t.2 {
+                    return true;
+                }
+            }
+            None => {}
+        }
+        j += 1;
+    }
+    false
+}
+
+/// The writes without those a later write to the same row supersedes; spend
+/// logs all stay, in order. With unique keys per table (`Spec.Inv`) it
+/// commits the same rows, up to their order in a table, in fewer statements:
+/// a batch of admissions by one key updates its key and usage rows once.
+pub fn compact(ws: &Vec<Write>) -> Vec<Write> {
+    let mut out = Vec::new();
+    let mut i = 0;
+    while i < ws.len() {
+        if !overwritten(ws, i) {
+            out.push(ws[i].clone());
+        }
+        i += 1;
+    }
+    out
 }
 
 /// What one write does to the state; `schema!` builds `apply` from it.
@@ -1891,6 +1950,34 @@ mod tests {
         ok(&s, &MASTER, settle);
     }
 
+    /// Rows in key order: compaction may reorder rows within a table.
+    fn normalized(mut s: Snapshot) -> Snapshot {
+        s.keys.sort_by_key(|x| x.id);
+        s.teams.sort_by_key(|x| x.id);
+        s.usage.sort_by_key(|x| (x.scope, x.id));
+        s.reservations.sort_by_key(|x| x.id);
+        s
+    }
+
+    #[test]
+    fn compaction_keeps_the_last_write_per_row_and_every_spend_log() {
+        let (s, k) = setup(UNLIMITED);
+        let admit = BatchItem {
+            key: k,
+            master: false,
+            op: BatchOp::Admit { model: b"gpt".to_vec(), prompt_tokens: 1, max_tokens: 1, exclude: Vec::new() },
+        };
+        let (ws, _) = transition(&MASTER, &s, &Command::Batch { items: vec![admit.clone(); 10] }).unwrap();
+        // One key row, one key and one deployment usage row, ten reservations, one counter.
+        assert_eq!(ws.len(), 14);
+        assert_eq!(ws.iter().filter(|w| matches!(w, Write::PutReservation(_))).count(), 10);
+        let usage = ws.iter().find_map(|w| match w {
+            Write::PutUsage(u) if u.scope == SCOPE_KEY => Some(*u),
+            _ => None,
+        });
+        assert_eq!(usage.unwrap().requests, 10);
+    }
+
     #[test]
     fn a_batch_runs_its_items_in_order() {
         let (s, k) = setup(120_000);
@@ -1926,7 +2013,7 @@ mod tests {
             )
             .0;
         }
-        assert_eq!(s2, seq);
+        assert_eq!(normalized(s2.clone()), normalized(seq));
         // Settling in a batch charges like `Settle`.
         let res = match outs[0] {
             ItemOutcome::Admitted { reservation, .. } => reservation,

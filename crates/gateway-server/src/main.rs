@@ -97,7 +97,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             let registry = HashMap::from([(SPEND_LOGS, sink.clone())]);
             let dispatcher = engine.dispatcher(registry, Deliverer::default(), DispatchConfig::default());
             let reader = SpendReader::connect(&url).await?;
-            (Backend::Postgres(engine), Some(Arc::new(reader)), Some(dispatcher))
+            (Backend::postgres(engine, gs.batch_max.unwrap_or(256)), Some(Arc::new(reader)), Some(dispatcher))
         }
         None => {
             tracing::warn!("no database_url: keys, budgets and spend live in memory and are lost on restart");

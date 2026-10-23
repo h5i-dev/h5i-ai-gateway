@@ -612,7 +612,7 @@ pub async fn liveliness() -> Json<Value> {
 pub async fn readiness(State(st): State<AppState>) -> Json<Value> {
     Json(json!({
         "status": "healthy",
-        "db": if matches!(*st.backend, Backend::Postgres(_)) { "connected" } else { "Not connected" },
+        "db": if matches!(*st.backend, Backend::Postgres(..)) { "connected" } else { "Not connected" },
         "litellm_version": concat!("h5i-ai-gateway ", env!("CARGO_PKG_VERSION")),
     }))
 }

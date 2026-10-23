@@ -52,6 +52,7 @@ SCENARIO_PATH = {
     "stream": "/v1/chat/completions",
     "embeddings": "/v1/embeddings",
     "db": "/v1/chat/completions",
+    "dbhost": "/v1/chat/completions",
 }
 
 
@@ -177,12 +178,11 @@ def start_system(system, args, db_url=None):
         return None
     cfg = os.path.join(args.scratch, f"config-{system}.yaml")
     port = str(GATEWAY_PORT)
-    if system in ("h5i", "h5i-nodelay"):
+    if system == "h5i":
         with open(cfg, "w") as f:
             f.write(litellm_style_config(db_url, production=False))
         env = {"RUST_LOG": "warn"}
-        binary = args.h5i_bin if system == "h5i" else args.h5i_nodelay_bin
-        argv = [binary, "--config", cfg, "--host", "127.0.0.1", "--port", port]
+        argv = [args.h5i_bin, "--config", cfg, "--host", "127.0.0.1", "--port", port]
     elif system == "litellm":
         with open(cfg, "w") as f:
             f.write(litellm_style_config(db_url, production=True))
@@ -241,30 +241,43 @@ def make_virtual_key(system):
 # ---------------------------------------------------------------- postgres
 
 
+PG_PSQL_PORT = "5432"
+
+
 def docker(*a, check=True, capture=False):
     return subprocess.run(["docker", *a], check=check, capture_output=capture, text=True)
 
 
-def start_postgres():
+# Database scenarios and how the gateway reaches PostgreSQL: through Docker's
+# port forwarding (docker-proxy, a userspace hop per round trip) or on the
+# host network (loopback, as with a database on the same host or LAN).
+DB_SCENARIOS = {"db": "forward", "dbhost": "host"}
+
+
+def start_postgres(network="forward"):
     docker("rm", "-f", PG_CONTAINER, check=False, capture=True)
+    net = ["--network", "host"] if network == "host" else ["-p", f"127.0.0.1:{PG_PORT}:5432"]
+    port = ["-c", f"port={PG_PORT}", "-c", "listen_addresses=127.0.0.1"] if network == "host" else []
     docker(
         "run", "--rm", "-d", "--name", PG_CONTAINER,
         "--cpuset-cpus", CORES["db"],
-        "-p", f"127.0.0.1:{PG_PORT}:5432",
+        *net,
         "--tmpfs", "/var/lib/postgresql/data:rw,size=8g",
         "--shm-size", "1g",
         "-e", "POSTGRES_USER=bench", "-e", "POSTGRES_PASSWORD=bench", "-e", "POSTGRES_DB=bench",
-        PG_IMAGE, "-c", "max_connections=500", "-c", "shared_buffers=1GB",
+        PG_IMAGE, "-c", "max_connections=500", "-c", "shared_buffers=1GB", *port,
         capture=True,
     )
+    global PG_PSQL_PORT
+    PG_PSQL_PORT = str(PG_PORT) if network == "host" else "5432"
     for _ in range(120):
         r = docker("exec", PG_CONTAINER, "pg_isready", "-U", "bench", "-h", "127.0.0.1",
-                   check=False, capture=True)
+                   "-p", PG_PSQL_PORT, check=False, capture=True)
         if r.returncode == 0:
             # The entrypoint restarts the server once after initdb.
             time.sleep(2)
             r = docker("exec", PG_CONTAINER, "pg_isready", "-U", "bench", "-h", "127.0.0.1",
-                       check=False, capture=True)
+                       "-p", PG_PSQL_PORT, check=False, capture=True)
             if r.returncode == 0:
                 return
         time.sleep(1)
@@ -277,7 +290,8 @@ def postgres_pid():
 
 
 def fresh_database(name):
-    psql = ["exec", PG_CONTAINER, "psql", "-U", "bench", "-d", "bench", "-v", "ON_ERROR_STOP=1", "-c"]
+    psql = ["exec", PG_CONTAINER, "psql", "-U", "bench", "-d", "bench", "-h", "127.0.0.1", "-p", PG_PSQL_PORT,
+            "-v", "ON_ERROR_STOP=1", "-c"]
     docker(*psql, f"DROP DATABASE IF EXISTS {name} WITH (FORCE)", capture=True)
     docker(*psql, f"CREATE DATABASE {name}", capture=True)
     return f"postgresql://bench:bench@127.0.0.1:{PG_PORT}/{name}"
@@ -346,7 +360,7 @@ def run_point(args, profile, system, scenario, conc, key, watch):
     argv = [
         "taskset", "-c", CORES["loadgen"], args.loadgen_bin,
         "--url", base + SCENARIO_PATH[scenario],
-        "--scenario", "chat" if scenario == "db" else scenario,
+        "--scenario", "chat" if scenario in DB_SCENARIOS else scenario,
         "--key", key,
         "--concurrency", str(conc),
         "--duration", str(args.duration),
@@ -384,9 +398,9 @@ def run_point(args, profile, system, scenario, conc, key, watch):
 
 def main():
     ap = argparse.ArgumentParser()
-    ap.add_argument("--systems", default="direct,h5i,h5i-nodelay,litellm,litellm-rust")
+    ap.add_argument("--systems", default="direct,h5i,litellm,litellm-rust")
     ap.add_argument("--profiles", default="lat0,real")
-    ap.add_argument("--scenarios", default="chat,stream,embeddings,db")
+    ap.add_argument("--scenarios", default="chat,stream,embeddings,db,dbhost")
     ap.add_argument("--concurrency", default="1,16,64,256")
     ap.add_argument("--db-concurrency", default="1,16,64,256")
     ap.add_argument("--duration", type=float, default=10)
@@ -399,15 +413,10 @@ def main():
     ap.add_argument("--target", default=os.environ.get("CARGO_TARGET_DIR", "/dev/shm/h5i-gw-target-bench"))
     ap.add_argument("--litellm-rust-bin",
                     help="default: <scratch>/litellm-rust-target/release/litellm-gateway")
-    ap.add_argument("--h5i-nodelay-bin",
-                    help="h5i-gateway built with bench/patches/h5i-tcp-nodelay.patch "
-                         "(default: <scratch>/nodelay-target/release/h5i-gateway)")
     ap.add_argument("--h5i-bin", help="h5i-gateway binary (default: <target>/release/h5i-gateway)")
     args = ap.parse_args()
     args.litellm_rust_bin = args.litellm_rust_bin or os.path.join(
         args.scratch, "litellm-rust-target", "release", "litellm-gateway")
-    args.h5i_nodelay_bin = args.h5i_nodelay_bin or os.path.join(
-        args.scratch, "nodelay-target", "release", "h5i-gateway")
     args.h5i_bin = args.h5i_bin or os.path.join(args.target, "release", "h5i-gateway")
     args.loadgen_bin = os.path.join(args.target, "release", "loadgen")
     args.mock_bin = os.path.join(args.target, "release", "mock-upstream")
@@ -416,7 +425,7 @@ def main():
     os.makedirs(args.logdir, exist_ok=True)
 
     systems = args.systems.split(",")
-    for name, binary in (("litellm-rust", args.litellm_rust_bin), ("h5i-nodelay", args.h5i_nodelay_bin)):
+    for name, binary in (("litellm-rust", args.litellm_rust_bin),):
         if name in systems and not os.path.exists(binary):
             log(f"{name} binary {binary} missing: skipping it")
             systems.remove(name)
@@ -426,10 +435,8 @@ def main():
     # What each system supports (see bench/README.md).
     supports = {
         "direct": {"chat", "stream", "embeddings"},
-        "h5i": {"chat", "stream", "embeddings", "db"},
-        # h5i with TCP_NODELAY on accepted sockets (bench/patches/h5i-tcp-nodelay.patch).
-        "h5i-nodelay": {"chat", "stream", "embeddings"},
-        "litellm": {"chat", "stream", "embeddings", "db"},
+        "h5i": {"chat", "stream", "embeddings", "db", "dbhost"},
+        "litellm": {"chat", "stream", "embeddings", "db", "dbhost"},
         # Chat only: streaming and /v1/embeddings return 501, and no database support.
         "litellm-rust": {"chat"},
     }
@@ -457,7 +464,7 @@ def main():
                        {"model": CHAT_MODEL, "messages": [{"role": "user", "content": "ping"}]})
             log(f"profile {profile}: mock upstream {settings}")
 
-            nodb = [s for s in scenarios if s != "db"]
+            nodb = [s for s in scenarios if s not in DB_SCENARIOS]
             for system in systems:
                 todo = [s for s in nodb if s in supports[system]]
                 if not todo:
@@ -476,13 +483,14 @@ def main():
                     gw.stop()
                     procs.remove(gw)
 
-            db_systems = [s for s in systems if "db" in supports[s] and s != "direct"]
-            if "db" in scenarios and db_systems:
-                if not pg_started:
-                    start_postgres()
-                    pg_started = True
+            for db_scenario, network in DB_SCENARIOS.items():
+                db_systems = [s for s in systems if db_scenario in supports[s] and s != "direct"]
+                if db_scenario not in scenarios or not db_systems:
+                    continue
+                start_postgres(network)
+                pg_started = True
                 for system in db_systems:
-                    name = f"bench_{system.replace('-', '_')}_{profile}"
+                    name = f"bench_{system.replace('-', '_')}_{profile}_{db_scenario}"
                     url = fresh_database(name)
                     log(f"{profile}/{system}: starting with PostgreSQL ({name})")
                     gw = start_system(system, args, db_url=url)
@@ -497,11 +505,11 @@ def main():
                         raise RuntimeError(f"{system} virtual key call: {status} {data[:300]!r}")
                     watch = {"gateway": gw.pid, "upstream": mock.pid, "db": postgres_pid()}
                     for c in db_concs:
-                        run_point(args, profile, system, "db", c, key, watch)
+                        run_point(args, profile, system, db_scenario, c, key, watch)
                     # What the gateway recorded for the key (LiteLLM writes spend in batches).
                     status, data = http("GET", f"http://127.0.0.1:{GATEWAY_PORT}/key/info?key={key}",
                                         None, MASTER_KEY, 30)
-                    info = os.path.join(args.out, "raw", profile, f"{system}-db-keyinfo.json")
+                    info = os.path.join(args.out, "raw", profile, f"{system}-{db_scenario}-keyinfo.json")
                     with open(info, "w") as f:
                         json.dump({"status": status, "body": data.decode(errors="replace")}, f, indent=2)
                     gw.stop()

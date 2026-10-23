@@ -189,9 +189,10 @@ async fn store_agrees_with_apply_and_the_outbox_holds_the_spend_logs() {
     tokio::spawn(conn);
     let rows = client.query("SELECT payload FROM h5i_outbox WHERE tenant_id = $1 ORDER BY id", &[&(org as i64)]).await.unwrap();
     let logs = logs.lock().unwrap().clone();
-    assert_eq!(rows.len(), logs.len());
-    for (row, log) in rows.iter().zip(logs.iter()) {
-        let v: serde_json::Value = serde_json::from_slice(row.get::<_, &[u8]>(0)).unwrap();
+    // One outbox row per committing command, holding its logs in order.
+    let stored: Vec<serde_json::Value> = rows.iter().flat_map(|row| spend::logs_of(row.get::<_, &[u8]>(0))).collect();
+    assert_eq!(stored.len(), logs.len());
+    for (v, log) in stored.iter().zip(logs.iter()) {
         assert_eq!(v["request_id"], log.reservation.to_string());
         assert_eq!(v["spend_nano_usd"], log.cost);
     }
@@ -271,4 +272,75 @@ async fn concurrent_admissions_never_overcommit_a_budget() {
     assert_eq!(admitted, 7);
     let s = pg.snapshot(TenantId(org)).await.unwrap();
     assert_eq!(k::reserved_by_key(&s.reservations, key), 140_000);
+}
+
+#[tokio::test]
+async fn group_commit_answers_like_single_commands_in_fewer_transactions() {
+    use gateway_server::kernel::Backend;
+    use std::sync::atomic::Ordering;
+    let Some(url) = url() else { return };
+    let engine = Engine::<Gateway, GatewayStore>::new(pool(&with_schema(&url, "gateway_test").unwrap(), 16).unwrap(), EngineConfig::default().database_time());
+    engine.install_schema().await.unwrap();
+    let backend = Arc::new(Backend::postgres(engine, 256));
+    let org = fresh_org();
+    let master = k::Principal { org, key: 0, master: true, now: 0 };
+    let dep = k::DeploymentSpec { id: 1, input_cost: 1_000, output_cost: 1_000, rpm: k::UNLIMITED, tpm: k::UNLIMITED, priority: 0, enabled: true };
+    backend.run(&master, &k::Command::UpsertDeployment { model: b"m".to_vec(), spec: dep }).await.unwrap().unwrap();
+    // Each call reserves 20_000; the budget covers 7 of them.
+    let spec = k::KeySpec {
+        team: 0,
+        user: 1,
+        max_budget: 150_000,
+        rpm: k::UNLIMITED,
+        tpm: k::UNLIMITED,
+        max_parallel: k::UNLIMITED,
+        expires_at: k::UNLIMITED,
+        budget_duration: 0,
+        admin: false,
+        all_models: true,
+    };
+    let key = match backend.run(&master, &k::Command::CreateKey { spec, models: vec![] }).await.unwrap().unwrap() {
+        k::Reply::Created(id) => id,
+        r => panic!("{r:?}"),
+    };
+    let actor = k::Principal { org, key, master: false, now: 0 };
+    let Backend::Postgres(engine, _) = &*backend else { unreachable!() };
+    let before = engine.stats.commits.load(Ordering::Relaxed);
+    let admits: Vec<_> = (0..64)
+        .map(|_| {
+            let backend = backend.clone();
+            tokio::spawn(async move {
+                let cmd = k::Command::Admit { model: b"m".to_vec(), prompt_tokens: 10, max_tokens: 10, exclude: vec![] };
+                backend.run(&actor, &cmd).await.unwrap()
+            })
+        })
+        .collect();
+    let mut reservations = Vec::new();
+    for t in admits {
+        match t.await.unwrap() {
+            Ok(k::Reply::Admitted { reservation, .. }) => reservations.push(reservation),
+            Err(k::Error::KeyBudgetExceeded) => {}
+            other => panic!("{other:?}"),
+        }
+    }
+    assert_eq!(reservations.len(), 7);
+    let transactions = engine.stats.commits.load(Ordering::Relaxed) - before;
+    assert!(transactions < 64, "64 admissions took {transactions} transactions");
+    // Settlements batch too, and each charges its own cost once.
+    let settles: Vec<_> = reservations
+        .iter()
+        .map(|&reservation| {
+            let backend = backend.clone();
+            tokio::spawn(async move {
+                let cmd = k::Command::Settle { reservation, prompt_tokens: 10, completion_tokens: 5, status: k::CallStatus::Success };
+                backend.run(&actor, &cmd).await.unwrap()
+            })
+        })
+        .collect();
+    for t in settles {
+        assert_eq!(t.await.unwrap(), Ok(k::Reply::Settled { cost: 15_000 }));
+    }
+    let s = engine.snapshot(TenantId(org)).await.unwrap();
+    assert_eq!(k::find_key(&s.keys, key).unwrap().spend, 7 * 15_000);
+    assert!(s.reservations.is_empty());
 }

@@ -19,6 +19,11 @@ theorems = [
   "gateway_kernel.Theorems.budget_never_exceeded",
   "gateway_kernel.Theorems.settle_logged",
   "gateway_kernel.Theorems.emit_origin",
+  "gateway_kernel.Theorems.batch_sequential",
+  "gateway_kernel.Theorems.batch_complete",
+  "gateway_kernel.Theorems.batch_admit_sound",
+  "gateway_kernel.Theorems.compact_equiv",
+  "gateway_kernel.Theorems.reachable_keyed",
   "gateway_kernel.Commands.transition_total",
   "gateway_kernel.Helpers.route_spec",
   "gateway_kernel.Helpers.cost_spec",
@@ -88,3 +93,13 @@ new = "if false {"
 name = "cooldown_threshold_off_by_one"
 old = "if fails > allowed_fails {"
 new = "if fails >= allowed_fails {"
+
+[[mutant]]
+name = "batch_items_see_original_state"
+old = "match run_item(a, &cur, &items[i]) {"
+new = "match run_item(a, s, &items[i]) {"
+
+[[mutant]]
+name = "compaction_merges_spend_logs"
+old = "Write::Emit(_) => None,"
+new = "Write::Emit(_) => Some((9, 0, 0)),"

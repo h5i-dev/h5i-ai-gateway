@@ -60,9 +60,20 @@ pub fn json(tenant: TenantId, log: &SpendLog) -> Value {
     })
 }
 
-/// The outbox payload of a spend log.
-pub fn payload(tenant: TenantId, log: &SpendLog) -> Vec<u8> {
-    serde_json::to_vec(&json(tenant, log)).unwrap_or_default()
+/// The outbox payload of the spend logs one commit emits: a JSON array, so a
+/// batch of settlements costs one outbox row rather than one per log.
+pub fn payload<'a>(tenant: TenantId, logs: impl IntoIterator<Item = &'a SpendLog>) -> Vec<u8> {
+    let logs: Vec<Value> = logs.into_iter().map(|log| json(tenant, log)).collect();
+    serde_json::to_vec(&logs).unwrap_or_default()
+}
+
+/// The spend logs in an outbox payload (an array, or a single object).
+pub fn logs_of(payload: &[u8]) -> Vec<Value> {
+    match serde_json::from_slice(payload) {
+        Ok(Value::Array(v)) => v,
+        Ok(v @ Value::Object(_)) => vec![v],
+        _ => Vec::new(),
+    }
 }
 
 /// Where the dispatcher sends spend logs.
@@ -70,7 +81,8 @@ pub fn payload(tenant: TenantId, log: &SpendLog) -> Vec<u8> {
 pub enum Sink {
     /// One `tracing` event per log.
     Log,
-    /// POST the JSON with an `Idempotency-Key` header (deliveries repeat on retry).
+    /// POST each commit's logs as a JSON array, with an `Idempotency-Key`
+    /// header (deliveries repeat on retry).
     Webhook(String),
 }
 
@@ -83,7 +95,9 @@ impl Deliver<Sink> for Deliverer {
     async fn deliver(&self, sink: &Sink, d: &Delivery) -> Result<(), String> {
         match sink {
             Sink::Log => {
-                tracing::info!(target: "spend", key = %d.key, payload = %String::from_utf8_lossy(&d.payload), "spend log");
+                for log in logs_of(&d.payload) {
+                    tracing::info!(target: "spend", key = %d.key, payload = %log, "spend log");
+                }
                 Ok(())
             }
             Sink::Webhook(url) => {
@@ -192,7 +206,10 @@ impl SpendReader {
                 let int = |v: Option<u64>| v.map(|v| v.min(i64::MAX as u64) as i64);
                 let rows = client
                     .query(
-                        "SELECT o.payload FROM h5i_outbox o, LATERAL (SELECT convert_from(o.payload, 'UTF8')::jsonb AS j) p
+                        "SELECT p.j::text FROM h5i_outbox o,
+                           LATERAL (SELECT convert_from(o.payload, 'UTF8')::jsonb AS doc) d,
+                           LATERAL jsonb_array_elements(CASE WHEN jsonb_typeof(d.doc) = 'array' THEN d.doc ELSE jsonb_build_array(d.doc) END)
+                             WITH ORDINALITY AS p(j, n)
                          WHERE o.tenant_id = $1 AND o.dest = $2
                            AND ($4::text IS NULL OR p.j->>'api_key' = $4)
                            AND ($5::text IS NULL OR p.j->>'team_id' = $5)
@@ -200,7 +217,7 @@ impl SpendReader {
                            AND ($7::text IS NULL OR p.j->>'status' = $7)
                            AND ($8::bigint IS NULL OR (p.j->>'endTime')::bigint >= $8)
                            AND ($9::bigint IS NULL OR (p.j->>'endTime')::bigint < $9)
-                         ORDER BY o.id DESC LIMIT $3",
+                         ORDER BY o.id DESC, p.n DESC LIMIT $3",
                         &[
                             &(tenant.0 as i64),
                             &(crate::kernel::SPEND_LOGS as i64),
@@ -214,7 +231,7 @@ impl SpendReader {
                         ],
                     )
                     .await?;
-                Ok(rows.iter().filter_map(|r| serde_json::from_slice(r.get::<_, &[u8]>(0)).ok()).collect())
+                Ok(rows.iter().filter_map(|r| serde_json::from_str(r.get::<_, &str>(0)).ok()).collect())
             }
         }
     }

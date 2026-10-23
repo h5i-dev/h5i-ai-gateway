@@ -188,6 +188,73 @@ inductive Reachable : St → Prop
   | step {a s c ws r} : Reachable (Snapshot.toSt s) → transition a s c = .ok (.Ok (ws, r)) →
       Reachable (applyAll (Snapshot.toSt s) ws.val)
 
+/-! ## Batches
+
+`Batch` (master key only) runs a list of `Admit`/`Settle` items, each as its
+own key, in order, each on the state the previous successful items left.
+`RunItems` is that sequential run, stated with the kernel's own `transition`
+on the single command each item stands for; `Theorems.batch_sequential`
+shows a successful `Batch` is exactly such a run. -/
+
+/-- The principal an item of a batch runs as: the item's key, the batch's
+tenant and clock. -/
+def itemPrincipal (a : Principal) (it : BatchItem) : Principal := { a with key := it.key, master := it.master }
+
+/-- The single command an item of a batch stands for. -/
+def itemCmd (it : BatchItem) : Command :=
+  match it.op with
+  | .Admit m pt mt ex => .Admit m pt mt ex
+  | .Settle r pt ct status => .Settle r pt ct status
+
+/-- What an item that succeeded got (`Admit` and `Settle` reply nothing else
+than `Admitted` and `Settled`). -/
+def outcomeOf : Reply → ItemOutcome
+  | .Admitted r d amt => .Admitted r d amt
+  | .Settled c => .Settled c
+  | _ => .Refused .Forbidden
+
+/-- `RunItems a st items ws outs`: running `items` one after another from
+state `st` makes the writes `ws` (concatenated in order) and the outcomes
+`outs` (one per item). An item runs as `itemPrincipal a it` on the current
+state (a snapshot `s` holding it): if `transition` refuses it with `e`, it
+writes nothing, its outcome is `Refused e` and the state stays; if it
+succeeds with writes `w` and reply `r`, its outcome is `outcomeOf r` and the
+next item runs on `applyAll st w`. The final state is `applyAll st ws`. -/
+inductive RunItems (a : Principal) : St → List BatchItem → List Write → List ItemOutcome → Prop
+  | nil {st} : RunItems a st [] [] []
+  | refused {st it items ws outs} (s : Snapshot) (e : Error) : Snapshot.toSt s = st →
+      transition (itemPrincipal a it) s (itemCmd it) = .ok (.Err e) →
+      RunItems a st items ws outs → RunItems a st (it :: items) ws (.Refused e :: outs)
+  | done {st it items ws outs} (s : Snapshot) (w : alloc.vec.Vec Write) (r : Reply) : Snapshot.toSt s = st →
+      transition (itemPrincipal a it) s (itemCmd it) = .ok (.Ok (w, r)) →
+      RunItems a (applyAll st w.val) items ws outs →
+      RunItems a st (it :: items) (w.val ++ ws) (outcomeOf r :: outs)
+
+/-- Every table holds at most one row per key. -/
+structure Keyed (st : St) : Prop where
+  teams : (st.teams.map (·.id)).Nodup
+  keys : (st.keys.map (·.id)).Nodup
+  models : (st.models.map (·.id)).Nodup
+  deployments : (st.deployments.map (·.id)).Nodup
+  keyModels : (st.keyModels.map (fun g => (g.key, g.model))).Nodup
+  teamModels : (st.teamModels.map (fun g => (g.team, g.model))).Nodup
+  usage : (st.usage.map (fun u => (u.scope, u.id))).Nodup
+  reservations : (st.reservations.map (·.id)).Nodup
+
+/-- The same rows, up to their order in each table (as the storage layer,
+`Storage.app.Equiv`). A batch commits its writes without those a later write
+to the same row supersedes, which reaches an `Equiv` state. -/
+structure Equiv (st st' : St) : Prop where
+  settings : st.settings = st'.settings
+  teams : st.teams.Perm st'.teams
+  keys : st.keys.Perm st'.keys
+  models : st.models.Perm st'.models
+  deployments : st.deployments.Perm st'.deployments
+  keyModels : st.keyModels.Perm st'.keyModels
+  teamModels : st.teamModels.Perm st'.teamModels
+  usage : st.usage.Perm st'.usage
+  reservations : st.reservations.Perm st'.reservations
+
 /-! ## Invariants
 
 Structural facts every reachable state satisfies: ids are unique within
@@ -213,7 +280,7 @@ The kernel reserves a call's worst-case cost when it admits the call, and
 charges the actual cost when it settles. Budgets can therefore only be
 overrun by a provider that reports more tokens than the call reserved, or
 by an admin who lowers a budget below what is already spent. `Honest`
-excludes exactly those two steps. -/
+excludes exactly those two steps (also inside a batch). -/
 
 /-- The key's and the team's budgets hold what they spent plus what they reserved. -/
 def KeyWithin (st : St) (k : Key) : Prop :=
@@ -222,24 +289,43 @@ def KeyWithin (st : St) (k : Key) : Prop :=
 def TeamWithin (st : St) (t : Team) : Prop :=
   Within t.spend.val (reservedTeam st t.id.val) 0 t.max_budget.val
 
-/-- A step that cannot overrun a budget: a settlement charges at most what
-its reservation held, and a new budget covers what is spent and reserved. -/
-def Honest (st : St) : Command → Prop
-  | .Settle rid prompt completion _ =>
-    ∀ r, findReservation st rid.val = some r →
-      price r.input_cost.val r.output_cost.val prompt.val completion.val ≤ r.amount.val
+/-- A settlement of reservation `rid` for `prompt` and `completion` tokens
+charges at most what the reservation held. -/
+def SettleHonest (st : St) (rid prompt completion : U64) : Prop :=
+  ∀ r, findReservation st rid.val = some r →
+    price r.input_cost.val r.output_cost.val prompt.val completion.val ≤ r.amount.val
+
+/-- Every `Settle` item of a batch run by `a` is honest at the state in which
+it runs: the state after the items before it, as `RunItems` runs them. -/
+def BatchHonest (a : Principal) : St → List BatchItem → Prop
+  | _, [] => True
+  | st, it :: items =>
+    (match it.op with
+      | .Settle rid prompt completion _ => SettleHonest st rid prompt completion
+      | .Admit .. => True) ∧
+    (∀ s e, Snapshot.toSt s = st → transition (itemPrincipal a it) s (itemCmd it) = .ok (.Err e) →
+      BatchHonest a st items) ∧
+    (∀ s w r, Snapshot.toSt s = st → transition (itemPrincipal a it) s (itemCmd it) = .ok (.Ok (w, r)) →
+      BatchHonest a (applyAll st w.val) items)
+
+/-- A step by `a` that cannot overrun a budget: a settlement charges at most
+what its reservation held, a new budget covers what is spent and reserved,
+and every settlement in a batch is honest where it runs. -/
+def Honest (st : St) (a : Principal) : Command → Prop
+  | .Settle rid prompt completion _ => SettleHonest st rid prompt completion
   | .UpdateKey id patch =>
     ∀ v k, patch.max_budget = some v → findKey st id.val = some k →
       Within k.spend.val (reservedKey st id.val) 0 v.val
   | .UpdateTeam id patch =>
     ∀ v t, patch.max_budget = some v → findTeam st id.val = some t →
       Within t.spend.val (reservedTeam st id.val) 0 v.val
+  | .Batch items => BatchHonest a st items.val
   | _ => True
 
 /-- The states reachable by honest steps. -/
 inductive ReachableHonest : St → Prop
   | init : ReachableHonest init
-  | step {a s c ws r} : ReachableHonest (Snapshot.toSt s) → Honest (Snapshot.toSt s) c →
+  | step {a s c ws r} : ReachableHonest (Snapshot.toSt s) → Honest (Snapshot.toSt s) a c →
       transition a s c = .ok (.Ok (ws, r)) → ReachableHonest (applyAll (Snapshot.toSt s) ws.val)
 
 /-! ## What a key can do without being an admin -/

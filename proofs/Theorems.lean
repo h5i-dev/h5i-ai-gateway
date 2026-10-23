@@ -298,9 +298,293 @@ theorem grants_append {l1 l2 : List Write} (h1 : ∀ w ∈ l1, IsGrant w) (h2 : 
 
 theorem applyAll_nil (st : St) : applyAll st [] = st := rfl
 
-/-- Successful commands keep the invariant. -/
-theorem inv_preserved (a : Principal) (s : Snapshot) (c : Command) ws r
-    (hinv : Inv (Snapshot.toSt s)) (h : transition a s c = ok (.Ok (ws, r))) :
+/-! ## Compaction
+
+A batch commits `compactL` of its items' writes. In a table whose rows have
+unique keys, a row ends up as the last write to it left it, so dropping the
+writes a later write to the same row supersedes reaches the same rows (up to
+their order in the table). -/
+
+/-- The spend logs a write list sends to the outbox. -/
+def emits (ws : List Write) : List SpendLog := ws.filterMap (fun w => match w with | .Emit l => some l | _ => none)
+
+/-- The last write in `ws` to row `t`. -/
+def lastW (t : U64 × U64 × U64) (ws : List Write) : Option Write := ws.reverse.find? (fun w => tgt w = some t)
+
+theorem lastW_snoc (t : U64 × U64 × U64) (ws : List Write) (w : Write) :
+    lastW t (ws ++ [w]) = if tgt w = some t then some w else lastW t ws := by
+  by_cases h : tgt w = some t <;> simp [lastW, h]
+
+theorem lastW_cons (t : U64 × U64 × U64) (w : Write) (ws : List Write) :
+    lastW t (w :: ws) = (lastW t ws).or (if tgt w = some t then some w else none) := by
+  unfold lastW
+  rw [List.reverse_cons, List.find?_append]
+  by_cases h : tgt w = some t <;> simp [h]
+
+theorem lastW_compact (t : U64 × U64 × U64) (ws : List Write) : lastW t (compactL ws) = lastW t ws := by
+  induction ws with
+  | nil => rfl
+  | cons w rest ih =>
+    unfold compactL
+    split
+    · rename_i hov
+      rw [ih, lastW_cons]
+      unfold overwrittenL at hov
+      split at hov
+      · simp at hov
+      · rename_i u hu
+        obtain ⟨w', hw', ht'⟩ := List.any_eq_true.1 hov
+        simp only [decide_eq_true_eq] at ht'
+        by_cases htu : u = t
+        · subst htu
+          have : (lastW u rest).isSome := by
+            unfold lastW
+            rw [List.find?_isSome]
+            exact ⟨w', List.mem_reverse.2 hw', by simp [ht']⟩
+          obtain ⟨x, hx⟩ := Option.isSome_iff_exists.1 this
+          simp [hx]
+        · simp [hu, htu]
+    · rw [lastW_cons, ih, lastW_cons]
+
+theorem emits_compact (ws : List Write) : emits (compactL ws) = emits ws := by
+  induction ws with
+  | nil => rfl
+  | cons w rest ih =>
+    unfold compactL
+    split
+    · rename_i hov
+      rw [ih]
+      cases w <;> simp_all [emits, overwrittenL, tgt]
+    · simp only [emits, List.filterMap_cons] at ih ⊢; rw [ih]
+
+theorem compactL_sublist (ws : List Write) : (compactL ws).Sublist ws := by
+  induction ws with
+  | nil => exact .slnil
+  | cons w rest ih =>
+    unfold compactL
+    split
+    · exact ih.cons w
+    · exact ih.cons_cons w
+
+section Table
+variable {α κ : Type} [DecidableEq κ] (tbl : St → List α) (kf : α → κ) (enc : κ → U64 × U64 × U64)
+  (isPut : Write → Option α) (isDel : Write → Option κ)
+
+/-- How the writes act on one table: a put upserts its row, a delete drops
+its key, every other write leaves the table alone and targets no row of it. -/
+structure TableOps : Prop where
+  enc_inj : ∀ a b, enc a = enc b → a = b
+  put : ∀ st w x, isPut w = some x → tbl (applyWrite st w) = upsert kf x (tbl st) ∧ tgt w = some (enc (kf x))
+  del : ∀ st w k, isDel w = some k → isPut w = none ∧
+    tbl (applyWrite st w) = (tbl st).filter (fun y => kf y ≠ k) ∧ tgt w = some (enc k)
+  other : ∀ st w, isPut w = none → isDel w = none → tbl (applyWrite st w) = tbl st ∧ ∀ k, tgt w ≠ some (enc k)
+
+variable {tbl kf enc isPut isDel}
+
+theorem table_mem (ho : TableOps tbl kf enc isPut isDel) (st : St) (hn : ((tbl st).map kf).Nodup) (ws : List Write) :
+    ((tbl (applyAll st ws)).map kf).Nodup ∧ ∀ x, (x ∈ tbl (applyAll st ws) ↔
+      match lastW (enc (kf x)) ws with
+      | none => x ∈ tbl st
+      | some w => isPut w = some x) := by
+  induction ws using List.reverseRecOn with
+  | nil => exact ⟨hn, fun x => by simp [lastW, applyAll]⟩
+  | append_singleton ws w ih =>
+    obtain ⟨ihn, ihm⟩ := ih
+    have happ : applyAll st (ws ++ [w]) = applyWrite (applyAll st ws) w := by
+      simp [applyAll, List.foldl_append]
+    rw [happ]
+    cases hp : isPut w with
+    | some y =>
+      obtain ⟨he, ht⟩ := ho.put (applyAll st ws) w y hp
+      rw [he]
+      refine ⟨nodup_upsert _ _ ihn, fun x => ?_⟩
+      rw [mem_upsert_iff ihn, lastW_snoc]
+      by_cases hk : kf x = kf y
+      · rw [if_pos (by rw [ht, hk])]
+        simp only [hp, Option.some.injEq]
+        constructor
+        · rintro (rfl | ⟨-, h⟩)
+          · rfl
+          · exact absurd hk h
+        · rintro rfl; exact .inl rfl
+      · rw [if_neg (fun h => hk (ho.enc_inj _ _ (Option.some.inj (ht.symm.trans h))).symm), ← ihm x]
+        constructor
+        · rintro (rfl | ⟨h, -⟩)
+          · exact absurd rfl hk
+          · exact h
+        · intro h; exact .inr ⟨h, hk⟩
+    | none =>
+      cases hd : isDel w with
+      | some k =>
+        obtain ⟨-, he, ht⟩ := ho.del (applyAll st ws) w k hd
+        rw [he]
+        refine ⟨nodup_map_filter _ _ _ ihn, fun x => ?_⟩
+        rw [List.mem_filter, lastW_snoc]
+        by_cases hk : kf x = k
+        · rw [if_pos (by rw [ht, hk])]
+          simp [hp, hk]
+        · rw [if_neg (fun h => hk (ho.enc_inj _ _ (Option.some.inj (ht.symm.trans h))).symm), ← ihm x]
+          simp [hk]
+      | none =>
+        obtain ⟨he, ht⟩ := ho.other (applyAll st ws) w hp hd
+        rw [he]
+        refine ⟨ihn, fun x => ?_⟩
+        rw [lastW_snoc, if_neg (ht _), ihm x]
+
+/-- In a table with unique keys, compacting the writes reaches the same rows. -/
+theorem table_perm (ho : TableOps tbl kf enc isPut isDel) (st : St) (hn : ((tbl st).map kf).Nodup) (ws : List Write) :
+    (tbl (applyAll st (compactL ws))).Perm (tbl (applyAll st ws)) := by
+  obtain ⟨h1, m1⟩ := table_mem ho st hn (compactL ws)
+  obtain ⟨h2, m2⟩ := table_mem ho st hn ws
+  refine (List.perm_ext_iff_of_nodup h1.of_map h2.of_map).2 fun x => ?_
+  rw [m1, m2, lastW_compact]
+
+theorem table_nodup (ho : TableOps tbl kf enc isPut isDel) (st : St) (hn : ((tbl st).map kf).Nodup) (ws : List Write) :
+    ((tbl (applyAll st ws)).map kf).Nodup := (table_mem ho st hn ws).1
+
+end Table
+
+theorem teamOps : TableOps St.teams (fun y : Team => y.id) (fun k : U64 => (1#u64, k, 0#u64))
+    (fun w => match w with | .PutTeam x => some x | _ => none) (fun w => match w with | .DelTeam id => some id | _ => none) := by
+  refine ⟨?_, ?_, ?_, ?_⟩
+  · intro a b h; simp only [Prod.mk.injEq] at h; first | exact h.2.1 | exact Prod.ext h.2.1 h.2.2
+  · intro st w x h; cases w <;> simp_all [applyWrite, tgt]
+  · intro st w k h; cases w <;> simp_all [applyWrite, tgt] <;>
+      (subst h; congr 1; funext g; apply Bool.eq_iff_iff.2; simp)
+  · intro st w h1 h2; cases w <;> simp_all [applyWrite, tgt]
+
+theorem keyOps : TableOps St.keys (fun y : Key => y.id) (fun k : U64 => (2#u64, k, 0#u64))
+    (fun w => match w with | .PutKey x => some x | _ => none) (fun w => match w with | .DelKey id => some id | _ => none) := by
+  refine ⟨?_, ?_, ?_, ?_⟩
+  · intro a b h; simp only [Prod.mk.injEq] at h; first | exact h.2.1 | exact Prod.ext h.2.1 h.2.2
+  · intro st w x h; cases w <;> simp_all [applyWrite, tgt]
+  · intro st w k h; cases w <;> simp_all [applyWrite, tgt] <;>
+      (subst h; congr 1; funext g; apply Bool.eq_iff_iff.2; simp)
+  · intro st w h1 h2; cases w <;> simp_all [applyWrite, tgt]
+
+theorem modelOps : TableOps St.models (fun y : Model => y.id) (fun k : U64 => (3#u64, k, 0#u64))
+    (fun w => match w with | .PutModel x => some x | _ => none) (fun _ => (none : Option (U64))) := by
+  refine ⟨?_, ?_, ?_, ?_⟩
+  · intro a b h; simp only [Prod.mk.injEq] at h; first | exact h.2.1 | exact Prod.ext h.2.1 h.2.2
+  · intro st w x h; cases w <;> simp_all [applyWrite, tgt]
+  · intro st w k h; cases w <;> simp_all [applyWrite, tgt] <;>
+      (subst h; congr 1; funext g; apply Bool.eq_iff_iff.2; simp)
+  · intro st w h1 h2; cases w <;> simp_all [applyWrite, tgt]
+
+theorem deploymentOps : TableOps St.deployments (fun y : Deployment => y.id) (fun k : U64 => (4#u64, k, 0#u64))
+    (fun w => match w with | .PutDeployment x => some x | _ => none) (fun w => match w with | .DelDeployment id => some id | _ => none) := by
+  refine ⟨?_, ?_, ?_, ?_⟩
+  · intro a b h; simp only [Prod.mk.injEq] at h; first | exact h.2.1 | exact Prod.ext h.2.1 h.2.2
+  · intro st w x h; cases w <;> simp_all [applyWrite, tgt]
+  · intro st w k h; cases w <;> simp_all [applyWrite, tgt] <;>
+      (subst h; congr 1; funext g; apply Bool.eq_iff_iff.2; simp)
+  · intro st w h1 h2; cases w <;> simp_all [applyWrite, tgt]
+
+theorem keyModelOps : TableOps St.keyModels (fun g : KeyModel => (g.key, g.model)) (fun k : U64 × U64 => (5#u64, k.1, k.2))
+    (fun w => match w with | .PutKeyModel x => some x | _ => none) (fun w => match w with | .DelKeyModel k m => some (k, m) | _ => none) := by
+  refine ⟨?_, ?_, ?_, ?_⟩
+  · intro a b h; simp only [Prod.mk.injEq] at h; first | exact h.2.1 | exact Prod.ext h.2.1 h.2.2
+  · intro st w x h; cases w <;> simp_all [applyWrite, tgt]
+  · intro st w k h; cases w <;> simp_all [applyWrite, tgt] <;>
+      (subst h; congr 1; funext g; apply Bool.eq_iff_iff.2; simp)
+  · intro st w h1 h2; cases w <;> simp_all [applyWrite, tgt]
+
+theorem teamModelOps : TableOps St.teamModels (fun g : TeamModel => (g.team, g.model)) (fun k : U64 × U64 => (6#u64, k.1, k.2))
+    (fun w => match w with | .PutTeamModel x => some x | _ => none) (fun w => match w with | .DelTeamModel t m => some (t, m) | _ => none) := by
+  refine ⟨?_, ?_, ?_, ?_⟩
+  · intro a b h; simp only [Prod.mk.injEq] at h; first | exact h.2.1 | exact Prod.ext h.2.1 h.2.2
+  · intro st w x h; cases w <;> simp_all [applyWrite, tgt]
+  · intro st w k h; cases w <;> simp_all [applyWrite, tgt] <;>
+      (subst h; congr 1; funext g; apply Bool.eq_iff_iff.2; simp)
+  · intro st w h1 h2; cases w <;> simp_all [applyWrite, tgt]
+
+theorem usageOps : TableOps St.usage (fun u : Usage => (u.scope, u.id)) (fun k : U64 × U64 => (7#u64, k.1, k.2))
+    (fun w => match w with | .PutUsage x => some x | _ => none) (fun _ => (none : Option (U64 × U64))) := by
+  refine ⟨?_, ?_, ?_, ?_⟩
+  · intro a b h; simp only [Prod.mk.injEq] at h; first | exact h.2.1 | exact Prod.ext h.2.1 h.2.2
+  · intro st w x h; cases w <;> simp_all [applyWrite, tgt]
+  · intro st w k h; cases w <;> simp_all [applyWrite, tgt] <;>
+      (subst h; congr 1; funext g; apply Bool.eq_iff_iff.2; simp)
+  · intro st w h1 h2; cases w <;> simp_all [applyWrite, tgt]
+
+theorem reservationOps : TableOps St.reservations (fun y : Reservation => y.id) (fun k : U64 => (8#u64, k, 0#u64))
+    (fun w => match w with | .PutReservation x => some x | _ => none) (fun w => match w with | .DelReservation id => some id | _ => none) := by
+  refine ⟨?_, ?_, ?_, ?_⟩
+  · intro a b h; simp only [Prod.mk.injEq] at h; first | exact h.2.1 | exact Prod.ext h.2.1 h.2.2
+  · intro st w x h; cases w <;> simp_all [applyWrite, tgt]
+  · intro st w k h; cases w <;> simp_all [applyWrite, tgt] <;>
+      (subst h; congr 1; funext g; apply Bool.eq_iff_iff.2; simp)
+  · intro st w h1 h2; cases w <;> simp_all [applyWrite, tgt]
+
+theorem settings_applyAll (st : St) (ws : List Write) :
+    (applyAll st ws).settings = match lastW (0#u64, 0#u64, 0#u64) ws with
+      | some (.SetSettings x) => x
+      | _ => st.settings := by
+  induction ws using List.reverseRecOn with
+  | nil => simp [lastW, applyAll]
+  | append_singleton ws w ih =>
+    have happ : applyAll st (ws ++ [w]) = applyWrite (applyAll st ws) w := by
+      simp [applyAll, List.foldl_append]
+    rw [happ, lastW_snoc]
+    by_cases ht : tgt w = some (0#u64, 0#u64, 0#u64)
+    · rw [if_pos ht]
+      cases w <;> simp_all [tgt, applyWrite]
+    · rw [if_neg ht, ← ih]
+      cases w <;> simp_all [tgt, applyWrite]
+
+/-- With unique keys in every table, a batch's compacted writes reach the same
+rows as its writes (up to their order in each table), and send the same
+spend logs in the same order. -/
+theorem compact_equiv (st : St) (ws : List Write) (hk : Keyed st) :
+    Equiv (applyAll st (compactL ws)) (applyAll st ws) ∧ emits (compactL ws) = emits ws :=
+  ⟨⟨by rw [settings_applyAll, settings_applyAll, lastW_compact],
+    table_perm teamOps st hk.teams ws, table_perm keyOps st hk.keys ws,
+    table_perm modelOps st hk.models ws, table_perm deploymentOps st hk.deployments ws,
+    table_perm keyModelOps st hk.keyModels ws, table_perm teamModelOps st hk.teamModels ws,
+    table_perm usageOps st hk.usage ws, table_perm reservationOps st hk.reservations ws⟩, emits_compact ws⟩
+
+/-- Every write keeps keys unique in every table. -/
+theorem keyed_applyAll {st : St} (hk : Keyed st) (ws : List Write) : Keyed (applyAll st ws) :=
+  ⟨table_nodup teamOps st hk.teams ws, table_nodup keyOps st hk.keys ws,
+    table_nodup modelOps st hk.models ws, table_nodup deploymentOps st hk.deployments ws,
+    table_nodup keyModelOps st hk.keyModels ws, table_nodup teamModelOps st hk.teamModels ws,
+    table_nodup usageOps st hk.usage ws, table_nodup reservationOps st hk.reservations ws⟩
+
+/-- Every reachable state has unique keys in every table. -/
+theorem reachable_keyed {st : St} (h : Reachable st) : Keyed st := by
+  induction h with
+  | init => constructor <;> simp [init]
+  | step _ _ ih => exact keyed_applyAll ih _
+
+/-- `Inv` only looks at the settings and five tables, as sets of rows. -/
+theorem inv_of_perm {st st' : St} (hi : Inv st) (hs : st'.settings = st.settings) (hk : st'.keys.Perm st.keys)
+    (ht : st'.teams.Perm st.teams) (hm : st'.models.Perm st.models) (hd : st'.deployments.Perm st.deployments)
+    (hr : st'.reservations.Perm st.reservations) : Inv st' := by
+  obtain ⟨h1, h2, h3, h4, h5, h6, h7, h8, h9, h10⟩ := hi
+  refine ⟨(hk.map _).nodup_iff.2 h1, (ht.map _).nodup_iff.2 h2, (hm.map _).nodup_iff.2 h3,
+    (hd.map _).nodup_iff.2 h4, (hr.map _).nodup_iff.2 h5, ?_, ?_, ?_, ?_, ?_⟩
+  · intro k hk'; rw [hs]; exact h6 k (hk.mem_iff.1 hk')
+  · intro t ht'; rw [hs]; exact h7 t (ht.mem_iff.1 ht')
+  · intro m hm'; rw [hs]; exact h8 m (hm.mem_iff.1 hm')
+  · intro r hr'; rw [hs]; exact h9 r (hr.mem_iff.1 hr')
+  · intro k hk' h0
+    obtain ⟨t, ht', he⟩ := h10 k (hk.mem_iff.1 hk') h0
+    exact ⟨t, ht.mem_iff.2 ht', he⟩
+
+/-- Compacting keeps `Inv`: it only needs unique keys in the tables `Inv` constrains. -/
+theorem compact_inv {st : St} {ws : List Write} (hi : Inv st) (h : Inv (applyAll st ws)) :
+    Inv (applyAll st (compactL ws)) :=
+  inv_of_perm h (by rw [settings_applyAll, settings_applyAll, lastW_compact])
+    (table_perm keyOps st hi.keys_nodup ws) (table_perm teamOps st hi.teams_nodup ws)
+    (table_perm modelOps st hi.models_nodup ws) (table_perm deploymentOps st hi.deployments_nodup ws)
+    (table_perm reservationOps st hi.reservations_nodup ws)
+
+theorem itemCmd_ne_batch (it : BatchItem) (items : alloc.vec.Vec BatchItem) : itemCmd it ≠ .Batch items := by
+  obtain ⟨_, _, op⟩ := it; cases op <;> simp [itemCmd]
+
+/-- Successful commands other than `Batch` keep the invariant. -/
+theorem inv_preserved_cmd (a : Principal) (s : Snapshot) (c : Command) ws r
+    (hinv : Inv (Snapshot.toSt s)) (h : transition a s c = ok (.Ok (ws, r))) (hb : ∀ items, c ≠ .Batch items) :
     Inv (applyAll (Snapshot.toSt s) ws.val) := by
   have he := transition_effect h
   generalize ws.val = l at he ⊢
@@ -466,6 +750,29 @@ theorem inv_preserved (a : Principal) (s : Snapshot) (c : Command) ws r
   | DeleteDeployment id =>
     obtain ⟨-, d, -, -, rfl⟩ := he
     exact inv_del_deployment hinv id
+  | Batch items => exact absurd rfl (hb items)
+
+/-- A sequential run of batch items keeps the invariant. -/
+theorem runItems_inv {a : Principal} {st : St} {items : List BatchItem} {W : List Write} {outs : List ItemOutcome}
+    (h : RunItems a st items W outs) (hi : Inv st) : Inv (applyAll st W) := by
+  induction h with
+  | nil => exact hi
+  | refused s e hs ht hr ih => exact ih hi
+  | done s w r hs ht hr ih =>
+    subst hs
+    rw [applyAll_append]
+    exact ih (inv_preserved_cmd _ s _ w r hi ht (itemCmd_ne_batch _))
+
+/-- Successful commands keep the invariant. A batch reaches the end of the
+sequential run of its items up to row order (`compact_inv`). -/
+theorem inv_preserved (a : Principal) (s : Snapshot) (c : Command) ws r
+    (hinv : Inv (Snapshot.toSt s)) (h : transition a s c = ok (.Ok (ws, r))) :
+    Inv (applyAll (Snapshot.toSt s) ws.val) := by
+  cases c with
+  | Batch items =>
+    obtain ⟨-, W, outs, -, hrun, hws⟩ := transition_effect h
+    rw [hws]; exact compact_inv hinv (runItems_inv hrun hinv)
+  | _ => exact inv_preserved_cmd a s _ ws r hinv h (by intro _ h; cases h)
 
 theorem init_inv : Inv init := by
   constructor <;> simp [init]
@@ -479,10 +786,15 @@ theorem reachable_inv {st : St} (h : Reachable st) : Inv st := by
 /-! ## Authorization and confinement -/
 
 /-- Every management command (all but `Admit`, `Settle`, `Expire`, `KeyInfo`,
-`TeamInfo` and `ListModels`) succeeds only for an admin. -/
+`TeamInfo` and `ListModels`, so including `Batch`) succeeds only for an admin
+(`Batch` only for the master key). -/
 theorem manage_needs_admin (a : Principal) (s : Snapshot) (c : Command) ws r (hc : IsManage c)
-    (h : transition a s c = ok (.Ok (ws, r))) : IsAdmin (Snapshot.toSt s) a :=
-  (manage_of h hc (fun e => .inl (by simp))).1
+    (h : transition a s c = ok (.Ok (ws, r))) : IsAdmin (Snapshot.toSt s) a := by
+  cases c with
+  | Batch items => exact .inl (transition_effect h).1
+  | _ => first
+    | exact absurd hc id
+    | exact (manage_of h trivial (fun e => .inl (by simp))).1
 
 theorem findReservation_fresh {st : St} (hi : Inv st) {n : Nat} (hn : st.settings.next_id.val < n) :
     findReservation st n = none := by
@@ -604,6 +916,7 @@ theorem key_confined (a : Principal) (s : Snapshot) (c : Command) ws r
   | KeyInfo _ => subst he; intro w hw; cases hw
   | TeamInfo _ => subst he; intro w hw; cases hw
   | ListModels => subst he; intro w hw; cases hw
+  | Batch items => exact absurd (Or.inl he.1) hna
   | _ => exact absurd he.1 hna
 
 /-! ## Budgets
@@ -733,10 +1046,11 @@ theorem settle_teams_ok {teams : List Team} {res : List Reservation} (hb : ∀ t
     unfold TOK at *; rw [hT, hTm]; unfold sumT at *; omega
   · exact (hb t' ht'm).mono (sumT_filter_le _ _ _)
 
-/-- An honest successful step keeps every key and team within budget. -/
-theorem budget_step (a : Principal) (s : Snapshot) (c : Command) ws r
-    (hinv : Inv (Snapshot.toSt s)) (hb : BudgetOK (Snapshot.toSt s)) (hh : Honest (Snapshot.toSt s) c)
-    (h : transition a s c = ok (.Ok (ws, r))) : BudgetOK (applyAll (Snapshot.toSt s) ws.val) := by
+/-- An honest successful step other than `Batch` keeps every key and team within budget. -/
+theorem budget_step_cmd (a : Principal) (s : Snapshot) (c : Command) ws r
+    (hinv : Inv (Snapshot.toSt s)) (hb : BudgetOK (Snapshot.toSt s)) (hh : Honest (Snapshot.toSt s) a c)
+    (h : transition a s c = ok (.Ok (ws, r))) (hbat : ∀ items, c ≠ .Batch items) :
+    BudgetOK (applyAll (Snapshot.toSt s) ws.val) := by
   have he := transition_effect h
   generalize ws.val = l at he ⊢
   cases c with
@@ -960,6 +1274,59 @@ theorem budget_step (a : Principal) (s : Snapshot) (c : Command) ws r
   | DeleteDeployment id =>
     obtain ⟨-, d, -, -, rfl⟩ := he
     exact hb
+  | Batch items => exact absurd rfl (hbat items)
+
+/-- `BudgetOK` looks at keys, teams and reservations as sets of rows. -/
+theorem budget_of_perm {st st' : St} (hb : BudgetOK st) (hk : st'.keys.Perm st.keys) (ht : st'.teams.Perm st.teams)
+    (hr : st'.reservations.Perm st.reservations) : BudgetOK st' := by
+  refine ⟨fun k hk' => ?_, fun t ht' => ?_⟩
+  · have h := hb.1 k (hk.mem_iff.1 hk')
+    have : sumK st'.reservations k.id.val = sumK st.reservations k.id.val :=
+      ((hr.filter _).map _).sum_eq
+    unfold KOK at *; rw [this]; exact h
+  · have h := hb.2 t (ht.mem_iff.1 ht')
+    have : sumT st'.reservations t.id.val = sumT st.reservations t.id.val :=
+      ((hr.filter _).map _).sum_eq
+    unfold TOK at *; rw [this]; exact h
+
+theorem compact_budget {st : St} {ws : List Write} (hi : Inv st) (h : BudgetOK (applyAll st ws)) :
+    BudgetOK (applyAll st (compactL ws)) :=
+  budget_of_perm h (table_perm keyOps st hi.keys_nodup ws) (table_perm teamOps st hi.teams_nodup ws)
+    (table_perm reservationOps st hi.reservations_nodup ws)
+
+theorem item_honest {st : St} {p : Principal} {it : BatchItem}
+    (h : match it.op with
+      | .Settle rid prompt completion _ => SettleHonest st rid prompt completion
+      | .Admit .. => True) : Honest st p (itemCmd it) := by
+  obtain ⟨_, _, op⟩ := it
+  cases op <;> simp_all [itemCmd, Honest]
+
+/-- A sequential run of batch items whose settlements are honest where they
+run keeps every key and team within budget. -/
+theorem runItems_budget {a : Principal} {st : St} {items : List BatchItem} {W : List Write} {outs : List ItemOutcome}
+    (h : RunItems a st items W outs) (hi : Inv st) (hb : BudgetOK st) (hh : BatchHonest a st items) :
+    BudgetOK (applyAll st W) := by
+  induction h with
+  | nil => exact hb
+  | refused s e hs ht hr ih =>
+    simp only [BatchHonest] at hh
+    exact ih hi hb (hh.2.1 s e hs ht)
+  | done s w r hs ht hr ih =>
+    subst hs
+    simp only [BatchHonest] at hh
+    rw [applyAll_append]
+    exact ih (inv_preserved_cmd _ s _ w r hi ht (itemCmd_ne_batch _))
+      (budget_step_cmd _ s _ w r hi hb (item_honest hh.1) ht (itemCmd_ne_batch _)) (hh.2.2 s w r rfl ht)
+
+/-- An honest successful step keeps every key and team within budget. -/
+theorem budget_step (a : Principal) (s : Snapshot) (c : Command) ws r
+    (hinv : Inv (Snapshot.toSt s)) (hb : BudgetOK (Snapshot.toSt s)) (hh : Honest (Snapshot.toSt s) a c)
+    (h : transition a s c = ok (.Ok (ws, r))) : BudgetOK (applyAll (Snapshot.toSt s) ws.val) := by
+  cases c with
+  | Batch items =>
+    obtain ⟨-, W, outs, -, hrun, hws⟩ := transition_effect h
+    rw [hws]; exact compact_budget hinv (runItems_budget hrun hinv hb hh)
+  | _ => exact budget_step_cmd a s _ ws r hinv hb hh h (by intro _ h; cases h)
 
 theorem reachable_of_honest {st : St} (h : ReachableHonest st) : Reachable st := by
   induction h with
@@ -980,9 +1347,6 @@ theorem budget_never_exceeded {st : St} (h : ReachableHonest st) :
 
 /-! ## Spend logs -/
 
-/-- The spend logs a write list sends to the outbox. -/
-def emits (ws : List Write) : List SpendLog := ws.filterMap (fun w => match w with | .Emit l => some l | _ => none)
-
 /-- A successful `Settle` emits exactly one spend log: for its reservation,
 with the cost it replies. -/
 theorem settle_logged (a : Principal) (s : Snapshot) (rid pt ct : U64) (status : CallStatus) ws r
@@ -997,11 +1361,10 @@ theorem settle_logged (a : Principal) (s : Snapshot) (rid pt ct : U64) (status :
   rcases hdw with ⟨-, rfl⟩ | ⟨dd, dd', -, -, -, rfl⟩ <;>
   simp [emits]
 
-/-- Every spend log comes from a `Settle` (for its reservation, with the cost
-it replies) or an `Expire` (for its reservation, with cost 0 and status
-`Expired`). -/
-theorem emit_origin (a : Principal) (s : Snapshot) (c : Command) ws r
-    (h : transition a s c = ok (.Ok (ws, r))) (log : SpendLog) (hl : .Emit log ∈ ws.val) :
+/-- `emit_origin` for every command but `Batch`. -/
+theorem emit_origin_cmd (a : Principal) (s : Snapshot) (c : Command) ws r
+    (h : transition a s c = ok (.Ok (ws, r))) (log : SpendLog) (hl : .Emit log ∈ ws.val)
+    (hbat : ∀ items, c ≠ .Batch items) :
     (∃ rid pt ct status cost, c = .Settle rid pt ct status ∧ r = .Settled cost ∧ log.reservation = rid ∧
       log.cost = cost) ∨
     (∃ rid, c = .Expire rid ∧ r = .Settled 0#u64 ∧ log.reservation = rid ∧ log.cost = 0#u64 ∧
@@ -1050,6 +1413,87 @@ theorem emit_origin (a : Principal) (s : Snapshot) (c : Command) ws r
     obtain ⟨-, m, pre, -, hpre, rfl⟩ := he
     rcases hpre with ⟨-, rfl⟩ | ⟨-, -, rfl⟩ <;> simp at hl
   | DeleteDeployment x1 => obtain ⟨-, d, -, -, rfl⟩ := he; simp at hl
+  | Batch items => exact absurd rfl (hbat items)
+
+/-- A spend log written by a batch item comes from a `Settle` item, for its
+reservation, with the cost it replied. -/
+theorem emit_item {p : Principal} {s : Snapshot} {it : BatchItem} {w : alloc.vec.Vec Write} {r : Reply}
+    (h : transition p s (itemCmd it) = ok (.Ok (w, r))) (log : SpendLog) (hl : .Emit log ∈ w.val) :
+    ∃ rid pt ct status cost, it.op = .Settle rid pt ct status ∧ r = .Settled cost ∧ log.reservation = rid ∧
+      log.cost = cost := by
+  rcases emit_origin_cmd p s _ w r h log hl (itemCmd_ne_batch it) with
+    ⟨rid, pt, ct, status, cost, hc, hr, h1, h2⟩ | ⟨rid, hc, -⟩
+  · obtain ⟨_, _, op⟩ := it
+    cases op with
+    | Admit => simp [itemCmd] at hc
+    | Settle => simp only [itemCmd, Command.Settle.injEq] at hc; obtain ⟨rfl, rfl, rfl, rfl⟩ := hc
+                exact ⟨_, _, _, _, cost, rfl, hr, h1, h2⟩
+  · obtain ⟨_, _, op⟩ := it
+    cases op <;> simp [itemCmd] at hc
+
+/-- Every spend log of a sequential run of batch items comes from a `Settle`
+item that succeeded: item `i`, whose outcome `i` is `Settled` with the log's cost. -/
+theorem runItems_emits {a : Principal} {st : St} {items : List BatchItem} {W : List Write} {outs : List ItemOutcome}
+    (h : RunItems a st items W outs) (log : SpendLog) (hl : .Emit log ∈ W) :
+    ∃ (i : Nat) (it : BatchItem) (rid pt ct : U64) (status : CallStatus) (cost : U64), items[i]? = some it ∧ it.op = .Settle rid pt ct status ∧
+      outs[i]? = some (.Settled cost) ∧ log.reservation = rid ∧ log.cost = cost := by
+  induction h with
+  | nil => cases hl
+  | refused s e hs ht hr ih =>
+    obtain ⟨i, it, rid, pt, ct, status, cost, h1, h2, h3, h4, h5⟩ := ih hl
+    exact ⟨i + 1, it, rid, pt, ct, status, cost, by simpa using h1, h2, by simpa using h3, h4, h5⟩
+  | done s w r hs ht hr ih =>
+    rcases List.mem_append.1 hl with hl | hl
+    · obtain ⟨rid, pt, ct, status, cost, h1, h2, h3, h4⟩ := emit_item ht log hl
+      subst h2
+      exact ⟨0, _, rid, pt, ct, status, cost, rfl, h1, rfl, h3, h4⟩
+    · obtain ⟨i, it, rid, pt, ct, status, cost, h1, h2, h3, h4, h5⟩ := ih hl
+      exact ⟨i + 1, it, rid, pt, ct, status, cost, by simpa using h1, h2, by simpa using h3, h4, h5⟩
+
+/-- Every spend log comes from a `Settle` (for its reservation, with the cost
+it replies), an `Expire` (for its reservation, with cost 0 and status
+`Expired`), or a `Settle` item `i` of a batch that succeeded (for that item's
+reservation, with the cost of its outcome `i`). -/
+theorem emit_origin (a : Principal) (s : Snapshot) (c : Command) ws r
+    (h : transition a s c = ok (.Ok (ws, r))) (log : SpendLog) (hl : .Emit log ∈ ws.val) :
+    (∃ rid pt ct status cost, c = .Settle rid pt ct status ∧ r = .Settled cost ∧ log.reservation = rid ∧
+      log.cost = cost) ∨
+    (∃ rid, c = .Expire rid ∧ r = .Settled 0#u64 ∧ log.reservation = rid ∧ log.cost = 0#u64 ∧
+      log.status = .Expired) ∨
+    (∃ (items : alloc.vec.Vec BatchItem) (outs : alloc.vec.Vec ItemOutcome), c = .Batch items ∧ r = .Batch outs ∧
+      ∃ (i : Nat) (it : BatchItem) (rid pt ct : U64) (status : CallStatus) (cost : U64), items.val[i]? = some it ∧
+        it.op = .Settle rid pt ct status ∧ outs.val[i]? = some (.Settled cost) ∧
+        log.reservation = rid ∧ log.cost = cost) := by
+  cases c with
+  | Batch items =>
+    obtain ⟨-, W, outs, hr, hrun, hws⟩ := transition_effect h
+    rw [hws] at hl
+    exact .inr (.inr ⟨items, outs, rfl, hr, runItems_emits hrun log ((compactL_sublist W).subset hl)⟩)
+  | _ =>
+    rcases emit_origin_cmd a s _ ws r h log hl (by intro _ h; cases h) with h1 | h2
+    · exact .inl h1
+    · exact .inr (.inl h2)
+
+/-! ## Batches -/
+
+/-- A successful `Batch` is exactly the sequential run of its items: the
+caller is the master key, the reply lists one outcome per item, and there is
+a run `RunItems` from the snapshot's state in which each item, as its own
+principal on the state the earlier successful items left, was refused
+(writing nothing) or succeeded with the outcome it got, the run's writes `W`
+being the items' writes in order. The batch commits `compactL W`: the
+writes no later write to the same row supersedes, which sends the same spend
+logs in the same order and, with unique keys per table (every reachable
+state, `reachable_keyed`), reaches the same rows as `W` up to their order in
+each table. -/
+theorem batch_sequential (a : Principal) (s : Snapshot) (items : alloc.vec.Vec BatchItem) ws r
+    (h : transition a s (.Batch items) = ok (.Ok (ws, r))) :
+    a.master = true ∧ ∃ (W : List Write) (outs : alloc.vec.Vec ItemOutcome), r = .Batch outs ∧
+      RunItems a (Snapshot.toSt s) items.val W outs.val ∧ ws.val = compactL W ∧ emits ws.val = emits W ∧
+      (Keyed (Snapshot.toSt s) → Equiv (applyAll (Snapshot.toSt s) ws.val) (applyAll (Snapshot.toSt s) W)) := by
+  obtain ⟨hm, W, outs, hr, hrun, hws⟩ := transition_effect h
+  refine ⟨hm, W, outs, hr, hrun, hws, by rw [hws, emits_compact], fun hk => ?_⟩
+  rw [hws]; exact (compact_equiv _ W hk).1
 
 /-! ## Universal authorization
 
@@ -1068,5 +1512,136 @@ theorem authorized :
   by_cases ha : IsAdmin (Snapshot.toSt s) a
   · exact .inl ha
   · exact .inr fun hinv => key_confined a s c ws r ha hinv h w hw
+
+theorem outcomeOf_admitted {r : Reply} {rid d amt : U64} (h : outcomeOf r = .Admitted rid d amt) :
+    r = .Admitted rid d amt := by
+  cases r <;> simp_all [outcomeOf]
+
+/-- Each item of a run that was admitted ran, as its own principal, on the
+state the items before it left (a run of the items before it), and its
+`transition` replied with that admission. -/
+theorem runItems_admitted {a : Principal} {st : St} {items : List BatchItem} {W : List Write}
+    {outs : List ItemOutcome} (h : RunItems a st items W outs) (i : Nat) (rid d amt : U64)
+    (ho : outs[i]? = some (.Admitted rid d amt)) :
+    ∃ (it : BatchItem) (Wpre : List Write) (si : Snapshot) (w : alloc.vec.Vec Write), items[i]? = some it ∧
+      RunItems a st (items.take i) Wpre (outs.take i) ∧ Snapshot.toSt si = applyAll st Wpre ∧
+      transition (itemPrincipal a it) si (itemCmd it) = ok (.Ok (w, .Admitted rid d amt)) := by
+  induction h generalizing i with
+  | nil => simp at ho
+  | refused s e hs ht hr ih =>
+    cases i with
+    | zero => simp at ho
+    | succ i =>
+      obtain ⟨it, Wpre, si, w, h1, h2, h3, h4⟩ := ih i (by simpa using ho)
+      exact ⟨it, Wpre, si, w, by simpa using h1, by simpa using RunItems.refused s e hs ht h2, h3, h4⟩
+  | done s w r hs ht hr ih =>
+    cases i with
+    | zero =>
+      simp only [List.getElem?_cons_zero, Option.some.injEq] at ho
+      have := outcomeOf_admitted ho; subst this
+      exact ⟨_, [], s, w, rfl, by simpa using RunItems.nil, by simpa [applyAll] using hs, ht⟩
+    | succ i =>
+      obtain ⟨it, Wpre, si, w', h1, h2, h3, h4⟩ := ih i (by simpa using ho)
+      refine ⟨it, w.val ++ Wpre, si, w', by simpa using h1, by simpa using RunItems.done s w r hs ht h2, ?_, h4⟩
+      rw [h3, applyAll_append]
+
+/-- `admit_sound` for batches: every `Admitted` outcome `i` of a successful
+batch comes from an `Admit` item that ran on the state the items before it
+left (`Wpre`, the writes of a run of those items), and by a key, the whole
+policy `AdmitByKey` held there for the item's principal, with the reported
+deployment and amount; by the master key, the deployment is `Best`. -/
+theorem batch_admit_sound (a : Principal) (s : Snapshot) (items : alloc.vec.Vec BatchItem) ws
+    (outs : alloc.vec.Vec ItemOutcome) (h : transition a s (.Batch items) = ok (.Ok (ws, .Batch outs)))
+    (i : Nat) (rid d amt : U64) (ho : outs.val[i]? = some (.Admitted rid d amt)) :
+    ∃ (it : BatchItem) (Wpre : List Write) (si : Snapshot), items.val[i]? = some it ∧
+      RunItems a (Snapshot.toSt s) (items.val.take i) Wpre (outs.val.take i) ∧
+      Snapshot.toSt si = applyAll (Snapshot.toSt s) Wpre ∧
+      ∃ (nm : alloc.vec.Vec U8) (pt mt : U64) (ex : alloc.vec.Vec U64) (m : U64), it.op = .Admit nm pt mt ex ∧
+        findModel (Snapshot.toSt si) nm.val = some m.val ∧
+        (it.master = false → ∃ (k : Key) (t : Option Team) (dep : Deployment),
+          AdmitByKey (Snapshot.toSt si) (itemPrincipal a it) m.val pt.val mt.val (ex.val.map (·.val)) k t dep amt.val ∧
+          rid.val = si.settings.next_id.val + 1 ∧ d = dep.id) ∧
+        (it.master = true → ∃ dep : Deployment, Best (Snapshot.toSt si) a.now.val m.val (ex.val.map (·.val)) dep ∧
+          amt.val = price dep.input_cost.val dep.output_cost.val pt.val mt.val ∧
+          rid.val = si.settings.next_id.val + 1 ∧ d = dep.id) := by
+  obtain ⟨-, W, outs', hr, hrun, -⟩ := batch_sequential a s items ws _ h
+  simp only [Reply.Batch.injEq] at hr; subst hr
+  obtain ⟨it, Wpre, si, w, h1, h2, h3, h4⟩ := runItems_admitted hrun i rid d amt ho
+  refine ⟨it, Wpre, si, h1, h2, h3, ?_⟩
+  obtain ⟨k0, m0, op⟩ := it
+  cases op with
+  | Settle rid' pt ct st =>
+    have := transition_effect h4
+    obtain ⟨_, _, _, _, _, _, _, -, -, -, -, hrep, -⟩ := this
+    cases hrep
+  | Admit nm pt mt ex =>
+    obtain ⟨m, hm, hkey, hmas⟩ := admit_sound _ si nm pt mt ex w _ h4
+    refine ⟨nm, pt, mt, ex, m, rfl, hm, fun hf => ?_, fun ht => ?_⟩
+    · obtain ⟨k, t, dep, rid', amt', hA, hid, hr⟩ := hkey hf
+      simp only [Reply.Admitted.injEq] at hr; obtain ⟨rfl, rfl, rfl⟩ := hr
+      exact ⟨k, t, dep, hA, hid, rfl⟩
+    · obtain ⟨dep, rid', amt', hb, hamt, hid, hr⟩ := hmas ht
+      simp only [Reply.Admitted.injEq] at hr; obtain ⟨rfl, rfl, rfl⟩ := hr
+      exact ⟨dep, hb, hamt, hid, rfl⟩
+
+theorem toSt_inj {s s' : Snapshot} (h : Snapshot.toSt s = Snapshot.toSt s') : s = s' := by
+  obtain ⟨st, t, k, m, d, km, tm, u, r⟩ := s
+  obtain ⟨st', t', k', m', d', km', tm', u', r'⟩ := s'
+  simp only [Snapshot.toSt, St.mk.injEq] at h
+  obtain ⟨h1, h2, h3, h4, h5, h6, h7, h8, h9⟩ := h
+  subst h1
+  congr 1 <;> apply alloc.vec.Vec.ext <;> assumption
+
+/-- A sequential run is determined by its start and its items. -/
+theorem runItems_det {a : Principal} {st : St} {items : List BatchItem} {W W' : List Write}
+    {outs outs' : List ItemOutcome} (h : RunItems a st items W outs) (h' : RunItems a st items W' outs') :
+    W = W' ∧ outs = outs' := by
+  induction h generalizing W' outs' with
+  | nil => cases h'; exact ⟨rfl, rfl⟩
+  | refused s e hs ht hr ih =>
+    cases h' with
+    | refused s' e' hs' ht' hr' =>
+      have := toSt_inj (hs.trans hs'.symm); subst this
+      rw [ht] at ht'; simp only [ok.injEq, core.result.Result.Err.injEq] at ht'; subst ht'
+      obtain ⟨rfl, rfl⟩ := ih hr'; exact ⟨rfl, rfl⟩
+    | done s' w' r' hs' ht' hr' =>
+      have := toSt_inj (hs.trans hs'.symm); subst this
+      rw [ht] at ht'; simp at ht'
+  | done s w r hs ht hr ih =>
+    cases h' with
+    | refused s' e' hs' ht' hr' =>
+      have := toSt_inj (hs.trans hs'.symm); subst this
+      rw [ht] at ht'; simp at ht'
+    | done s' w' r' hs' ht' hr' =>
+      have := toSt_inj (hs.trans hs'.symm); subst this
+      rw [ht] at ht'; simp only [ok.injEq, core.result.Result.Ok.injEq, Prod.mk.injEq] at ht'
+      obtain ⟨rfl, rfl⟩ := ht'
+      obtain ⟨rfl, rfl⟩ := ih hr'; exact ⟨rfl, rfl⟩
+
+theorem batch_master_ok {a : Principal} {s : Snapshot} {items : alloc.vec.Vec BatchItem} {res}
+    (hm : a.master = true) (h : batch a s items = ok res) : ∃ ws rep, res = .Ok (ws, rep) := by
+  unfold batch at h
+  rw [if_pos hm, gateway_kernel.Schema.Snapshot.clone_eq] at h
+  simp only [bind_ok] at h
+  obtain ⟨⟨W, outs⟩, -, h⟩ := bind_eq_ok.1 h
+  obtain ⟨v, -, h⟩ := bind_eq_ok.1 h
+  simp only [ok.injEq] at h
+  exact ⟨v, _, h.symm⟩
+
+/-- Conversely, a batch by the master key that leaves room in every vector
+(`Commands.Fits`) succeeds with exactly the run of its items: given a
+sequential run of the items, the batch replies with its outcomes and commits
+`compactL` of its writes. -/
+theorem batch_complete (a : Principal) (s : Snapshot) (items : alloc.vec.Vec BatchItem) (W : List Write)
+    (outs : List ItemOutcome) (hm : a.master = true) (hf : Fits s (.Batch items))
+    (hrun : RunItems a (Snapshot.toSt s) items.val W outs) :
+    ∃ (ws : alloc.vec.Vec Write) (outs' : alloc.vec.Vec ItemOutcome),
+      transition a s (.Batch items) = ok (.Ok (ws, .Batch outs')) ∧ ws.val = compactL W ∧ outs'.val = outs := by
+  obtain ⟨res, hres⟩ := transition_total a s _ hf
+  obtain ⟨ws, rep, rfl⟩ := batch_master_ok hm (by simpa only [transition] using hres)
+  obtain ⟨-, W', outs', hr, hrun', hws, -⟩ := batch_sequential a s items ws rep hres
+  obtain ⟨rfl, rfl⟩ := runItems_det hrun hrun'
+  subst hr
+  exact ⟨ws, outs', hres, hws, rfl⟩
 
 end gateway_kernel.Theorems

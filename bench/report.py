@@ -4,7 +4,7 @@
     python3 bench/report.py bench/results
 
 Standard library only. Charts follow a fixed categorical order (h5i blue,
-LiteLLM orange, LiteLLM Rust aqua, h5i+nodelay yellow; the direct upstream
+LiteLLM orange, LiteLLM Rust aqua; the direct upstream
 baseline is neutral gray), log-scaled y axes for throughput and latency, a
 legend plus direct end labels, and native SVG tooltips (<title>) on every
 point. Light and dark variants come from one file via prefers-color-scheme.
@@ -17,18 +17,16 @@ import os
 import sys
 from html import escape
 
-SYSTEMS = ["direct", "h5i", "h5i-nodelay", "litellm", "litellm-rust"]
+SYSTEMS = ["direct", "h5i", "litellm", "litellm-rust"]
 NAMES = {
     "direct": "direct upstream (baseline)",
     "h5i": "h5i-gateway",
-    "h5i-nodelay": "h5i-gateway + TCP_NODELAY patch",
     "litellm": "LiteLLM Python proxy",
     "litellm-rust": "LiteLLM Rust gateway (WIP)",
 }
 SHORT = {
     "direct": "direct",
     "h5i": "h5i",
-    "h5i-nodelay": "h5i+nodelay",
     "litellm": "LiteLLM",
     "litellm-rust": "LiteLLM Rust",
 }
@@ -38,7 +36,6 @@ VAR = {
     "h5i": "--series-1",
     "litellm": "--series-2",
     "litellm-rust": "--series-3",
-    "h5i-nodelay": "--series-4",
 }
 SCENARIOS = ["chat", "stream", "embeddings", "db"]
 SCENARIO_TITLE = {

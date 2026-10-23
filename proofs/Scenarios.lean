@@ -1,4 +1,4 @@
-import Helpers
+import Theorems
 /-!
 # Scenarios
 
@@ -13,6 +13,7 @@ The id counter is at 10, so the next id is 11. Calls are made at time 1000,
 in rate-limit window 16.
 -/
 open Aeneas Aeneas.Std Result gateway_kernel gateway_kernel.Spec gateway_kernel.Helpers H5iAppLib
+open gateway_kernel.Commands (compactL Fits)
 
 namespace gateway_kernel.Scenarios
 
@@ -321,5 +322,92 @@ theorem blocked_and_expired :
   · apply ok_of_spec
     gw_admit [sExpiring]
 
+
+/-! ## 10. A batch runs its items in order -/
+
+/-- Key 2 has a budget of 80000 and spent nothing. -/
+def sB : Snapshot := snap [key 2#u64 80000#u64] [d100, d101] [] []
+
+/-- Reservation 11, for the first admission below. -/
+def res11 : Reservation := ⟨11#u64, 2#u64, 0#u64, 100#u64, 1#u64, 1000#u64, 2000#u64, 50000#u64, 1000#u64⟩
+
+/-- `sB` after the first admission: 50000 reserved, the counters count it. -/
+def sB1 : Snapshot :=
+  { snap [key 2#u64 80000#u64] [d100, d101] [⟨0#u64, 2#u64, 16#u64, 1#u64, 0#u64⟩, ⟨2#u64, 100#u64, 16#u64, 1#u64, 0#u64⟩]
+      [res11] with settings := ⟨11#u64, 1#u64, 30#u64, 600#u64⟩ }
+
+def admitItem : BatchItem := ⟨2#u64, false, .Admit gpt 10#u64 20#u64 (vecOf [])⟩
+def settleItem : BatchItem := ⟨2#u64, false, .Settle 11#u64 10#u64 5#u64 .Success⟩
+
+/-- Two admissions of up to 50000 by key 2, then the settlement of the first
+for 10 prompt and 5 completion tokens. -/
+def itemsB : alloc.vec.Vec BatchItem := vecOf [admitItem, admitItem, settleItem]
+
+/-- The settlement's writes, on `sB1`. -/
+def settleWrites11 : List Write :=
+  [.DelReservation 11#u64, .PutKey { key 2#u64 80000#u64 with spend := 20000#u64 },
+    .PutUsage ⟨0#u64, 2#u64, 16#u64, 1#u64, 15#u64⟩, .PutUsage ⟨2#u64, 100#u64, 16#u64, 1#u64, 15#u64⟩,
+    .Emit ⟨11#u64, 2#u64, 0#u64, 100#u64, 1#u64, 10#u64, 5#u64, 20000#u64, 1000#u64, .Success⟩]
+
+theorem item_admit : itemPrincipal (master 1000#u64) admitItem = asKey 2#u64 1000#u64 ∧
+    itemCmd admitItem = .Admit gpt 10#u64 20#u64 (vecOf []) := ⟨rfl, rfl⟩
+
+theorem item_settle : itemPrincipal (master 1000#u64) settleItem = asKey 2#u64 1000#u64 ∧
+    itemCmd settleItem = .Settle 11#u64 10#u64 5#u64 .Success := ⟨rfl, rfl⟩
+
+theorem batch_first_admit :
+    ∃ ws, transition (asKey 2#u64 1000#u64) sB (.Admit gpt 10#u64 20#u64 (vecOf [])) =
+        ok (.Ok (ws, .Admitted 11#u64 100#u64 50000#u64)) ∧
+      ws.val = admitWrites (key 2#u64 80000#u64) 100#u64 50000#u64 := by
+  apply ok_of_spec
+  gw_admit [sB]
+
+theorem batch_first_applies :
+    applyAll (Snapshot.toSt sB) (admitWrites (key 2#u64 80000#u64) 100#u64 50000#u64) = Snapshot.toSt sB1 := by
+  simp [applyAll, applyWrite, admitWrites, sB, sB1, snap, Snapshot.toSt, vecOf, upsert, res11, key, settings0]
+
+/-- On `sB1` the same call would bring key 2's reservations to 100000. -/
+theorem batch_second_refused :
+    transition (asKey 2#u64 1000#u64) sB1 (.Admit gpt 10#u64 20#u64 (vecOf [])) = ok (.Err .KeyBudgetExceeded) := by
+  apply err_of_spec
+  gw_admit [sB1, res11]
+
+theorem batch_settle :
+    ∃ ws, transition (asKey 2#u64 1000#u64) sB1 (.Settle 11#u64 10#u64 5#u64 .Success) =
+        ok (.Ok (ws, .Settled 20000#u64)) ∧ ws.val = settleWrites11 := by
+  apply ok_of_spec
+  gw_settle [sB1, res11, settleWrites11]
+
+/-- The batch by the master key runs the items in order: the first admission
+reserves 50000 as reservation 11; the second is refused, only because of the
+first one's reservation (alone, it fits: scenario 4); the settlement, which
+needs reservation 11 to exist, charges 20000. Compaction commits the counter,
+the key row and each usage row once, drops the reservation's creation (its
+deletion supersedes it), and keeps the spend log. -/
+theorem batch_in_order :
+    ∃ ws, transition (master 1000#u64) sB (.Batch itemsB) =
+        ok (.Ok (ws, .Batch (vecOf [.Admitted 11#u64 100#u64 50000#u64, .Refused .KeyBudgetExceeded, .Settled 20000#u64]))) ∧
+      ws.val = [.SetSettings ⟨11#u64, 1#u64, 30#u64, 600#u64⟩] ++ settleWrites11 := by
+  obtain ⟨w1, h1, hw1⟩ := batch_first_admit
+  obtain ⟨w3, h3, hw3⟩ := batch_settle
+  have hs1 : Snapshot.toSt sB1 = applyAll (Snapshot.toSt sB) w1.val := by rw [hw1, batch_first_applies]
+  have hrun : RunItems (master 1000#u64) (Snapshot.toSt sB) itemsB.val (w1.val ++ (w3.val ++ []))
+      [.Admitted 11#u64 100#u64 50000#u64, .Refused .KeyBudgetExceeded, .Settled 20000#u64] := by
+    refine .done sB w1 _ rfl (by rw [item_admit.1, item_admit.2]; exact h1) ?_
+    refine .refused sB1 _ hs1 (by rw [item_admit.1, item_admit.2]; exact batch_second_refused) ?_
+    refine .done sB1 w3 _ hs1 (by rw [item_settle.1, item_settle.2]; exact h3) ?_
+    exact .nil
+  have hf : Fits sB (.Batch itemsB) := by
+    show gateway_kernel.Schema.Snapshot.size sB + 8 * itemsB.val.length < Usize.max
+    have := usize_max_ge
+    simp [gateway_kernel.Schema.Snapshot.size, sB, snap, itemsB, vecOf, alloc.vec.Vec.length] at *
+    omega
+  obtain ⟨ws, outs, h, hws, houts⟩ := gateway_kernel.Theorems.batch_complete _ _ _ _ _ rfl hf hrun
+  refine ⟨ws, ?_, ?_⟩
+  · have : outs = vecOf [.Admitted 11#u64 100#u64 50000#u64, .Refused .KeyBudgetExceeded, .Settled 20000#u64] :=
+      alloc.vec.Vec.ext _ _ (by rw [houts]; rfl)
+    rw [← this]; exact h
+  · rw [hws, hw1, hw3]
+    simp [compactL, Commands.overwrittenL, Commands.tgt, admitWrites, settleWrites11, key]
 
 end gateway_kernel.Scenarios

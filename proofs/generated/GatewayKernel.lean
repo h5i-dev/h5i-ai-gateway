@@ -3661,7 +3661,7 @@ def Team.put
   Team.put_loop v x 0#usize
 
 /-- [gateway_kernel::apply_write]:
-    Source: 'kernel/src/lib.rs', lines 1624:0-1644:1 -/
+    Source: 'kernel/src/lib.rs', lines 1683:0-1703:1 -/
 def apply_write (s : Snapshot) (w : Write) : Result Snapshot := do
   match w with
   | Write.SetSettings x => ok { s with settings := x }
@@ -3741,6 +3741,131 @@ def apply_loop
 def apply (snap : Snapshot) (ws : alloc.vec.Vec Write) : Result Snapshot := do
   let s ← Snapshot.Insts.CoreCloneClone.clone snap
   apply_loop ws s 0#usize
+
+/-- [gateway_kernel::target]:
+    Source: 'kernel/src/lib.rs', lines 1624:0-1643:1
+    Visibility: public -/
+def target (w : Write) : Result (Option (Std.U64 × Std.U64 × Std.U64)) := do
+  match w with
+  | Write.SetSettings _ => ok (some (0#u64, 0#u64, 0#u64))
+  | Write.PutTeam x => ok (some (1#u64, x.id, 0#u64))
+  | Write.DelTeam id => ok (some (1#u64, id, 0#u64))
+  | Write.PutKey x => ok (some (2#u64, x.id, 0#u64))
+  | Write.DelKey id => ok (some (2#u64, id, 0#u64))
+  | Write.PutModel x => ok (some (3#u64, x.id, 0#u64))
+  | Write.PutDeployment x => ok (some (4#u64, x.id, 0#u64))
+  | Write.DelDeployment id => ok (some (4#u64, id, 0#u64))
+  | Write.PutKeyModel x => ok (some (5#u64, x.key, x.model))
+  | Write.DelKeyModel k m => ok (some (5#u64, k, m))
+  | Write.PutTeamModel x => ok (some (6#u64, x.team, x.model))
+  | Write.DelTeamModel t m => ok (some (6#u64, t, m))
+  | Write.PutUsage x => ok (some (7#u64, x.scope, x.id))
+  | Write.PutReservation x => ok (some (8#u64, x.id, 0#u64))
+  | Write.DelReservation id => ok (some (8#u64, id, 0#u64))
+  | Write.Emit _ => ok none
+
+/-- [gateway_kernel::overwritten]: loop body 0:
+    Source: 'kernel/src/lib.rs', lines 1652:4-1664:1 -/
+@[rust_loop_body]
+def overwritten_loop.body
+  (ws : alloc.vec.Vec Write) (t : (Std.U64 × Std.U64 × Std.U64))
+  (j : Std.Usize) :
+  Result (ControlFlow Std.Usize Bool)
+  := do
+  let i := alloc.vec.Vec.len ws
+  if j < i
+  then
+    let w ←
+      alloc.vec.Vec.index (core.slice.index.SliceIndexUsizeSlice Write) ws j
+    let o ← target w
+    match o with
+    | none => let j1 ← j + 1#usize
+              ok (cont j1)
+    | some u =>
+      let (i1, i2, i3) := u
+      let (i4, i5, i6) := t
+      if i1 = i4
+      then
+        if i2 = i5
+        then
+          if i3 = i6
+          then ok (done true)
+          else let j1 ← j + 1#usize
+               ok (cont j1)
+        else let j1 ← j + 1#usize
+             ok (cont j1)
+      else let j1 ← j + 1#usize
+           ok (cont j1)
+  else ok (done false)
+
+/-- [gateway_kernel::overwritten]: loop 0:
+    Source: 'kernel/src/lib.rs', lines 1652:4-1664:1 -/
+@[rust_loop]
+def overwritten_loop
+  (ws : alloc.vec.Vec Write) (t : (Std.U64 × Std.U64 × Std.U64))
+  (j : Std.Usize) :
+  Result Bool
+  := do
+  loop
+    (fun j1 => overwritten_loop.body ws t j1)
+    j
+
+/-- [gateway_kernel::overwritten]:
+    Source: 'kernel/src/lib.rs', lines 1646:0-1664:1 -/
+def overwritten (ws : alloc.vec.Vec Write) (i : Std.Usize) : Result Bool := do
+  let w ←
+    alloc.vec.Vec.index (core.slice.index.SliceIndexUsizeSlice Write) ws i
+  let o ← target w
+  match o with
+  | none => ok false
+  | some t => let j ← i + 1#usize
+              overwritten_loop ws t j
+
+/-- [gateway_kernel::compact]: loop body 0:
+    Source: 'kernel/src/lib.rs', lines 1673:4-1678:5
+    Visibility: public -/
+@[rust_loop_body]
+def compact_loop.body
+  (ws : alloc.vec.Vec Write) (out : alloc.vec.Vec Write) (i : Std.Usize) :
+  Result (ControlFlow ((alloc.vec.Vec Write) × Std.Usize) (alloc.vec.Vec
+    Write))
+  := do
+  let i1 := alloc.vec.Vec.len ws
+  if i < i1
+  then
+    let b ← overwritten ws i
+    let out1 ←
+      if b
+      then ok out
+      else
+        do
+        let w ←
+          alloc.vec.Vec.index (core.slice.index.SliceIndexUsizeSlice Write) ws
+            i
+        let w1 ← Write.Insts.CoreCloneClone.clone w
+        alloc.vec.Vec.push out w1
+    let i2 ← i + 1#usize
+    ok (cont (out1, i2))
+  else ok (done out)
+
+/-- [gateway_kernel::compact]: loop 0:
+    Source: 'kernel/src/lib.rs', lines 1673:4-1678:5
+    Visibility: public -/
+@[rust_loop]
+def compact_loop
+  (ws : alloc.vec.Vec Write) (out : alloc.vec.Vec Write) (i : Std.Usize) :
+  Result (alloc.vec.Vec Write)
+  := do
+  loop
+    (fun (out1, i1) => compact_loop.body ws out1 i1)
+    (out, i)
+
+/-- [gateway_kernel::compact]:
+    Source: 'kernel/src/lib.rs', lines 1670:0-1680:1
+    Visibility: public -/
+@[reducible]
+def compact (ws : alloc.vec.Vec Write) : Result (alloc.vec.Vec Write) := do
+  compact_loop ws (alloc.vec.Vec.new Write) 0#usize
 
 /-- [gateway_kernel::append]: loop body 0:
     Source: 'kernel/src/lib.rs', lines 1592:4-1595:5 -/
@@ -3877,7 +4002,8 @@ def batch
     let (ws, outs) ←
       batch_loop a.org a.key a.master a.now items cur (alloc.vec.Vec.new Write)
         (alloc.vec.Vec.new ItemOutcome) 0#usize
-    ok (core.result.Result.Ok (ws, Reply.Batch outs))
+    let v ← compact ws
+    ok (core.result.Result.Ok (v, Reply.Batch outs))
   else ok (core.result.Result.Err Error.Forbidden)
 
 /-- [gateway_kernel::manage]:
@@ -4394,7 +4520,7 @@ def Settings.sql_put (self : Settings) : Result h5i_app_sql.Write := do
   ok (h5i_app_sql.Write.Put Settings.TABLE Settings.KEY_LEN v)
 
 /-- [gateway_kernel::sql_write]:
-    Source: 'kernel/src/lib.rs', lines 1647:0-1666:1 -/
+    Source: 'kernel/src/lib.rs', lines 1706:0-1725:1 -/
 def sql_write
   (w : Write) (out : alloc.vec.Vec h5i_app_sql.Write) :
   Result (alloc.vec.Vec h5i_app_sql.Write)
