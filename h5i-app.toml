@@ -1,0 +1,10 @@
+# Read by `h5i app` (extract, check, prove, mutate, doctor).
+
+[extract]
+crate = "kernel"
+start-from = ["transition", "apply", "sql_writes", "read_only"]
+schema = true
+include = ["h5i_app_sql"]
+
+[check]
+theorems = []

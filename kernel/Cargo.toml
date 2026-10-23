@@ -1,0 +1,13 @@
+[package]
+name = "gateway-kernel"
+description = "The verified control plane of h5i-ai-gateway: keys, teams, budgets, rate limits, routing and spend"
+edition.workspace = true
+license.workspace = true
+version.workspace = true
+publish = false
+
+# Extracted to Lean by Charon + Aeneas (`h5i app extract`). Only crates that
+# are extracted with it, never I/O.
+[dependencies]
+h5i-app-schema.workspace = true
+h5i-app-sql.workspace = true
