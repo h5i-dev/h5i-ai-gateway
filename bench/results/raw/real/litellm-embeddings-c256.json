@@ -1,0 +1,67 @@
+{
+  "bytes_received": 96627451,
+  "concurrency": 256,
+  "duration_s": 10.0,
+  "error_samples": [],
+  "errors": {},
+  "errors_total": 0,
+  "label": "real/litellm/embeddings",
+  "latency_ms": {
+    "max": 1628.159,
+    "mean": 489.266,
+    "p50": 339.711,
+    "p90": 1083.391,
+    "p99": 1615.871,
+    "p999": 1620.991
+  },
+  "mode": "closed",
+  "processes": {
+    "gateway": {
+      "cpu_cores": 6.78,
+      "cpu_seconds": 68.39,
+      "cpu_us_per_request": 13615.0,
+      "hwm_sum_mb": 5371.0,
+      "pid": 1648799,
+      "processes": 10,
+      "pss_end_mb": 5072.0,
+      "rss_peak_mb": 5371.0
+    },
+    "upstream": {
+      "cpu_cores": 0.1,
+      "cpu_seconds": 0.97,
+      "cpu_us_per_request": 193.0,
+      "hwm_sum_mb": 22.0,
+      "pid": 1645697,
+      "processes": 1,
+      "pss_end_mb": 20.0,
+      "rss_peak_mb": 22.0
+    }
+  },
+  "rate": null,
+  "requests_ok": 5023,
+  "scenario": "embeddings",
+  "stream": false,
+  "throughput_rps": 502.3,
+  "timestamp": 1792761393,
+  "ttfb_ms": null,
+  "url": "http://127.0.0.1:19200/v1/embeddings",
+  "warmup_s": 5.0,
+  "system": "litellm",
+  "profile": "real",
+  "profile_settings": {
+    "latency-ms": 50,
+    "stream-chunks": 20,
+    "chunk-delay-ms": 10
+  },
+  "bench_scenario": "embeddings",
+  "loadavg_before": 4.85,
+  "loadavg_after": 5.49,
+  "cores": {
+    "gateway": "64-71",
+    "loadgen": "72-79",
+    "upstream": "80-87",
+    "db": "88-95"
+  },
+  "machine_busy_cores": 7.0,
+  "other_cpus_busy_cores": 0.11
+}

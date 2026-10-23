@@ -1,0 +1,57 @@
+{
+  "bytes_received": 3751378,
+  "concurrency": 1,
+  "duration_s": 10.0,
+  "error_samples": [],
+  "errors": {},
+  "errors_total": 0,
+  "label": "real/direct/embeddings",
+  "latency_ms": {
+    "max": 51.871,
+    "mean": 51.439,
+    "p50": 51.551,
+    "p90": 51.807,
+    "p99": 51.871,
+    "p999": 51.871
+  },
+  "mode": "closed",
+  "processes": {
+    "upstream": {
+      "cpu_cores": 0.0,
+      "cpu_seconds": 0.05,
+      "cpu_us_per_request": 258.0,
+      "hwm_sum_mb": 16.0,
+      "pid": 1645697,
+      "processes": 1,
+      "pss_end_mb": 14.0,
+      "rss_peak_mb": 16.0
+    }
+  },
+  "rate": null,
+  "requests_ok": 194,
+  "scenario": "embeddings",
+  "stream": false,
+  "throughput_rps": 19.4,
+  "timestamp": 1792760775,
+  "ttfb_ms": null,
+  "url": "http://127.0.0.1:19100/v1/embeddings",
+  "warmup_s": 5.0,
+  "system": "direct",
+  "profile": "real",
+  "profile_settings": {
+    "latency-ms": 50,
+    "stream-chunks": 20,
+    "chunk-delay-ms": 10
+  },
+  "bench_scenario": "embeddings",
+  "loadavg_before": 1.95,
+  "loadavg_after": 1.67,
+  "cores": {
+    "gateway": "64-71",
+    "loadgen": "72-79",
+    "upstream": "80-87",
+    "db": "88-95"
+  },
+  "machine_busy_cores": 0.2,
+  "other_cpus_busy_cores": 0.13
+}

@@ -1,0 +1,55 @@
+<svg xmlns="http://www.w3.org/2000/svg" class="viz" width="760" height="246" viewBox="0 0 760 246" role="img" aria-label="Gateway memory (PSS)">
+
+<style>
+  svg { font-family: system-ui, -apple-system, "Segoe UI", sans-serif; }
+  .viz { --surface:#fcfcfb; --ink:#0b0b0b; --ink2:#52514e; --muted:#898781; --grid:#e1e0d9;
+         --axis:#c3c2b7; --baseline:#898781; --series-1:#2a78d6; --series-2:#eb6834;
+         --series-3:#1baf7a; --series-4:#eda100; }
+  @media (prefers-color-scheme: dark) {
+    .viz { --surface:#1a1a19; --ink:#f0efec; --ink2:#c3c2b7; --muted:#898781; --grid:#2c2c2a;
+           --axis:#383835; --baseline:#898781; --series-1:#3987e5; --series-2:#d95926;
+           --series-3:#199e70; --series-4:#c98500; }
+  }
+  .bg { fill: var(--surface); }
+  .title { fill: var(--ink); font-size: 15px; font-weight: 600; }
+  .subtitle { fill: var(--ink2); font-size: 12px; }
+  .panel { fill: var(--ink); font-size: 13px; font-weight: 600; }
+  .tick { fill: var(--muted); font-size: 11px; font-variant-numeric: tabular-nums; }
+  .label { fill: var(--ink2); font-size: 11px; }
+  .legend { fill: var(--ink2); font-size: 12px; }
+  .grid { stroke: var(--grid); stroke-width: 1; }
+  .axis { stroke: var(--axis); stroke-width: 1; }
+  .line { fill: none; stroke-width: 2; stroke-linejoin: round; stroke-linecap: round; }
+  .dot { stroke: var(--surface); stroke-width: 2; }
+  .hit { fill: transparent; }
+  .hit:hover + .dot, .dot:hover { stroke: var(--ink); }
+</style>
+
+<rect class="bg" width="760" height="246" rx="8"/>
+<text class="title" x="16" y="26">Gateway memory (PSS)</text>
+<text class="subtitle" x="16" y="45">Profile lat0, chat, 64 connections; proportional set size summed over all processes.</text>
+<line class="grid" x1="250.0" x2="250.0" y1="62" y2="212"/>
+<text class="tick" x="250.0" y="226" text-anchor="middle">0</text>
+<line class="grid" x1="346.2" x2="346.2" y1="62" y2="212"/>
+<text class="tick" x="346.2" y="226" text-anchor="middle">1000</text>
+<line class="grid" x1="442.4" x2="442.4" y1="62" y2="212"/>
+<text class="tick" x="442.4" y="226" text-anchor="middle">2000</text>
+<line class="grid" x1="538.7" x2="538.7" y1="62" y2="212"/>
+<text class="tick" x="538.7" y="226" text-anchor="middle">3000</text>
+<line class="grid" x1="634.9" x2="634.9" y1="62" y2="212"/>
+<text class="tick" x="634.9" y="226" text-anchor="middle">4000</text>
+<text class="label" x="460.0" y="240" text-anchor="middle">MB</text>
+<g><title>h5i-gateway: 31 MB</title><path d="M250,70 H252.9828178694158 Q252.9828178694158,70 252.9828178694158,70 V90 Q252.9828178694158,90 252.9828178694158,90 H250 Z" style="fill:var(--series-1)"/></g>
+<text class="legend" x="240" y="84.0" text-anchor="end">h5i-gateway</text>
+<text class="label" x="258.98281786941584" y="84.0">31</text>
+<g><title>h5i-gateway + TCP_NODELAY patch: 31 MB</title><path d="M250,104 H252.9828178694158 Q252.9828178694158,104 252.9828178694158,104 V124 Q252.9828178694158,124 252.9828178694158,124 H250 Z" style="fill:var(--series-4)"/></g>
+<text class="legend" x="240" y="118.0" text-anchor="end">h5i-gateway + TCP_NODELAY patch</text>
+<text class="label" x="258.98281786941584" y="118.0">31</text>
+<g><title>LiteLLM Python proxy: 4365 MB</title><path d="M250,138 H666.0 Q670.0,138 670.0,142 V154 Q670.0,158 666.0,158 H250 Z" style="fill:var(--series-2)"/></g>
+<text class="legend" x="240" y="152.0" text-anchor="end">LiteLLM Python proxy</text>
+<text class="label" x="676.0" y="152.0">4365</text>
+<g><title>LiteLLM Rust gateway (WIP): 23 MB</title><path d="M250,172 H252.213058419244 Q252.213058419244,172 252.213058419244,172 V192 Q252.213058419244,192 252.213058419244,192 H250 Z" style="fill:var(--series-3)"/></g>
+<text class="legend" x="240" y="186.0" text-anchor="end">LiteLLM Rust gateway (WIP)</text>
+<text class="label" x="258.213058419244" y="186.0">23</text>
+<line class="axis" x1="250" x2="250" y1="62" y2="212"/>
+</svg>
