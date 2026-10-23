@@ -21,14 +21,23 @@
 //! environment variable `NAME` (an error if unset). When `api_key` /
 //! `api_base` / `api_version` are absent, the provider's conventional
 //! environment variables are consulted (e.g. `OPENAI_API_KEY`), like LiteLLM.
+//!
+//! Bedrock (`aws_access_key_id`, `aws_secret_access_key`, `aws_session_token`,
+//! `aws_region_name`, `aws_bedrock_runtime_endpoint`, `model_id`) and Vertex
+//! AI (`vertex_project`, `vertex_location`, `vertex_credentials`) settings
+//! are parsed into [`Deployment::cloud`]; see the `bedrock` and `vertex`
+//! provider modules for their resolution rules.
 
 use std::fmt;
 use std::time::Duration;
 
 use serde_json::Value;
 
+use crate::auth::gcp::GcpCredentials;
 use crate::error::ProviderError;
 use crate::pricing::{self, Pricing};
+use crate::providers::bedrock::{self, BedrockConfig};
+use crate::providers::vertex::{self, VertexConfig};
 use crate::types::JsonObject;
 
 /// Default Azure OpenAI `api-version` when neither the deployment nor
@@ -58,6 +67,8 @@ pub(crate) enum Protocol {
     Azure,
     Anthropic,
     Gemini,
+    Bedrock,
+    Vertex,
     Mock,
 }
 
@@ -89,6 +100,10 @@ pub enum Provider {
     Ollama,
     OllamaChat,
     LmStudio,
+    /// Amazon Bedrock (`bedrock/`): Converse API, Titan/Cohere embeddings.
+    Bedrock,
+    /// Google Vertex AI (`vertex_ai/`): Gemini, Claude, text embeddings.
+    VertexAi,
     /// Canned responses without network (`mock/`, `fake/`).
     Mock,
 }
@@ -344,6 +359,29 @@ pub(crate) static PROVIDERS: &[ProviderSpec] = &[
         "",
     ),
     ProviderSpec {
+        provider: Provider::Bedrock,
+        names: &["bedrock"],
+        protocol: Protocol::Bedrock,
+        default_api_base: None,
+        // Read by the Bedrock parser itself (explicit params win over env).
+        api_key_env: &[],
+        api_base_env: &[],
+        requires_api_key: false,
+        stream_usage: false,
+        base_suffix: "",
+    },
+    ProviderSpec {
+        provider: Provider::VertexAi,
+        names: &["vertex_ai", "vertex_ai_beta"],
+        protocol: Protocol::Vertex,
+        default_api_base: None,
+        api_key_env: &[],
+        api_base_env: &[],
+        requires_api_key: false,
+        stream_usage: false,
+        base_suffix: "",
+    },
+    ProviderSpec {
         protocol: Protocol::Mock,
         ..self_hosted(
             openai_compatible(Provider::Mock, &["mock", "fake"], None, &[], &[], true),
@@ -404,7 +442,11 @@ impl Provider {
         }
         pricing::lookup(model)
             .and_then(|p| p.litellm_provider)
-            .and_then(|name| Provider::from_name(&name))
+            .and_then(|name| match name.as_str() {
+                "bedrock_converse" => Some(Provider::Bedrock),
+                n if n.starts_with("vertex_ai") => Some(Provider::VertexAi),
+                n => Provider::from_name(n),
+            })
     }
 
     pub(crate) fn protocol(self) -> Protocol {
@@ -435,6 +477,24 @@ impl Secret {
 impl fmt::Debug for Secret {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.write_str("Secret(***)")
+    }
+}
+
+/// Settings of providers that need more than an API key.
+#[derive(Debug, Clone, PartialEq, Eq)]
+#[non_exhaustive]
+pub enum CloudConfig {
+    Bedrock(BedrockConfig),
+    Vertex(VertexConfig),
+}
+
+impl CloudConfig {
+    /// Vertex AI credentials, if this is a Vertex deployment.
+    pub fn gcp_credentials(&self) -> Option<&GcpCredentials> {
+        match self {
+            CloudConfig::Vertex(v) => Some(&v.credentials),
+            CloudConfig::Bedrock(_) => None,
+        }
     }
 }
 
@@ -473,6 +533,8 @@ pub struct Deployment {
     pub mock_response: Option<String>,
     /// Unrecognised keys (env references resolved), not sent upstream.
     pub extra: JsonObject,
+    /// Bedrock / Vertex AI settings (credentials redacted in `Debug`).
+    pub cloud: Option<CloudConfig>,
 }
 
 impl Deployment {
@@ -501,15 +563,32 @@ impl Deployment {
         let litellm_model = take_string(&mut obj, "model")?
             .ok_or_else(|| ProviderError::config("config", "litellm_params.model is required"))?;
         let explicit = take_string(&mut obj, "custom_llm_provider")?;
-        let (provider, model) = split_model(&litellm_model, explicit.as_deref())?;
+        let (provider, mut model) = split_model(&litellm_model, explicit.as_deref())?;
         let spec = provider.spec();
         let cfg_err = |msg: String| ProviderError::config(provider.name(), msg);
         let from_env = |names: &[&str]| names.iter().find_map(|n| env(n).filter(|v| !v.is_empty()));
 
-        let api_key = take_string(&mut obj, "api_key")?.or_else(|| from_env(spec.api_key_env));
-        let configured_base = match take_string(&mut obj, "api_base")? {
+        let explicit_key = take_string(&mut obj, "api_key")?;
+        let api_key = explicit_key.clone().or_else(|| from_env(spec.api_key_env));
+        let mut configured_base = match take_string(&mut obj, "api_base")? {
             Some(b) => Some(b),
             None => take_string(&mut obj, "base_url")?,
+        };
+        let cloud = match provider.protocol() {
+            Protocol::Bedrock => {
+                let (m, base, cfg) =
+                    bedrock::parse_config(&model, &mut obj, &env, explicit_key, configured_base)?;
+                model = m;
+                configured_base = Some(base);
+                Some(CloudConfig::Bedrock(cfg))
+            }
+            Protocol::Vertex => {
+                let (base, cfg) =
+                    vertex::parse_config(&mut obj, &env, explicit_key, configured_base)?;
+                configured_base = Some(base);
+                Some(CloudConfig::Vertex(cfg))
+            }
+            _ => None,
         };
         let api_base = configured_base
             .or_else(|| from_env(spec.api_base_env))
@@ -595,6 +674,7 @@ impl Deployment {
             order: take_number(&mut obj, "order")?.map(|n| n as i64),
             mock_response: take_string(&mut obj, "mock_response")?,
             extra: obj,
+            cloud,
         })
     }
 
@@ -602,7 +682,10 @@ impl Deployment {
     /// with `input_cost_per_token` / `output_cost_per_token` overrides
     /// applied. `None` if the model is unknown and no override is set.
     pub fn pricing(&self) -> Option<Pricing> {
-        let base = pricing::lookup_with_provider(self.provider.name(), &self.model);
+        let base = match self.provider {
+            Provider::Bedrock => bedrock::pricing(self),
+            _ => pricing::lookup_with_provider(self.provider.name(), &self.model),
+        };
         if self.input_cost_per_token.is_none() && self.output_cost_per_token.is_none() {
             return base;
         }
@@ -700,7 +783,10 @@ fn scalar_string(v: &Value) -> Option<String> {
     }
 }
 
-fn take_string(obj: &mut JsonObject, key: &str) -> Result<Option<String>, ProviderError> {
+pub(crate) fn take_string(
+    obj: &mut JsonObject,
+    key: &str,
+) -> Result<Option<String>, ProviderError> {
     match obj.remove(key) {
         None | Some(Value::Null) => Ok(None),
         Some(v) => scalar_string(&v)
