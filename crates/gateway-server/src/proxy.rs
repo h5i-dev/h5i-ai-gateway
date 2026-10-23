@@ -14,6 +14,13 @@
 //!   the Anthropic Messages and Responses APIs translate to and from it.
 //! - [`Attempts`]: the admission loop itself, for calls that settle later.
 //!
+//! `run_chat` (and so every API translated to it) and the embeddings route
+//! also run the guardrails (`guardrails.rs`) and the response cache
+//! (`cache.rs`): `pre_call` guardrails before admission, `during_call` ones
+//! concurrently with the provider call, `post_call` ones on the response; a
+//! cache hit is admitted and settled at zero tokens without a provider call
+//! ([`admit_cached`]).
+//!
 //! The reservation covers the estimated prompt plus `max_tokens`. When the
 //! client sets no `max_tokens`, the gateway sets one (the model's output
 //! limit, capped by `default_max_tokens`), so a provider that honours it
@@ -24,7 +31,9 @@
 // Failures are finished axum `Response`s, returned as they are.
 #![allow(clippy::result_large_err)]
 
+use crate::cache::{Cache, Controls};
 use crate::error::ApiError;
+use crate::guardrails::{self, APPLIED_HEADER, GuardRun, GuardrailError, Mode, Segment};
 use crate::kernel::Gateway;
 use crate::registry::Deployed;
 use crate::spend::usd;
@@ -38,21 +47,27 @@ use bytes::Bytes;
 use futures::{Stream, StreamExt};
 use gateway_kernel::{CallStatus, Command, Error as Refusal, Principal, Reply};
 use gateway_providers::types::EmbeddingInput;
-use gateway_providers::{ChatChunk, ChatRequest, ChatResponse, EmbeddingRequest, ProviderError, estimate_prompt_tokens};
+use gateway_providers::{ChatChunk, ChatRequest, ChatResponse, EmbeddingRequest, EmbeddingResponse, ProviderError, estimate_prompt_tokens};
 use h5i_app_http::Actor;
-use serde_json::Value;
+use serde_json::{Value, json};
+use std::collections::{BTreeMap, HashMap, VecDeque};
 use std::future::Future;
 use std::pin::Pin;
+use std::sync::Arc;
 use std::task::{Context, Poll};
 use std::time::Duration;
 
 /// Why a call produced no answer: the kernel refused, the provider failed,
-/// or something else went wrong (bad request, database unavailable).
+/// a guardrail blocked it, or something else went wrong (bad request,
+/// database unavailable).
 #[derive(Debug)]
 pub enum Failure {
     Refusal(Refusal),
     Provider(ProviderError),
     Api(ApiError),
+    /// A guardrail blocked the request or response (400,
+    /// `guardrail_violation`), or could not run (500, `guardrail_error`).
+    Guardrail(GuardrailError),
 }
 
 impl Failure {
@@ -62,6 +77,7 @@ impl Failure {
             Failure::Refusal(e) => ApiError::refusal(*e).status,
             Failure::Provider(e) => StatusCode::from_u16(e.status_code()).unwrap_or(StatusCode::BAD_GATEWAY),
             Failure::Api(e) => e.status,
+            Failure::Guardrail(e) => e.status,
         }
     }
 
@@ -71,6 +87,7 @@ impl Failure {
             Failure::Refusal(e) => ApiError::refusal(*e).kind.to_string(),
             Failure::Provider(e) => e.to_openai_body().error.kind.clone().unwrap_or_else(|| "provider_error".into()),
             Failure::Api(e) => e.kind.to_string(),
+            Failure::Guardrail(e) => e.kind.to_string(),
         }
     }
 
@@ -79,6 +96,7 @@ impl Failure {
             Failure::Refusal(e) => ApiError::refusal(*e).message,
             Failure::Provider(e) => e.message().to_string(),
             Failure::Api(e) => e.message.clone(),
+            Failure::Guardrail(e) => format!("{} (guardrail: {})", e.message, e.guardrail),
         }
     }
 
@@ -91,7 +109,14 @@ impl Failure {
                 (status, Json(serde_json::to_value(e.to_openai_body()).unwrap_or(Value::Null))).into_response()
             }
             Failure::Api(e) => e.into_response(),
+            Failure::Guardrail(e) => e.into_response(),
         }
+    }
+}
+
+impl From<GuardrailError> for Failure {
+    fn from(e: GuardrailError) -> Self {
+        Failure::Guardrail(e)
     }
 }
 
@@ -110,6 +135,12 @@ pub struct CallInfo {
     pub fallbacks: usize,
     /// Nano-dollars charged; `None` until a streamed call settles.
     pub cost: Option<u64>,
+    /// The guardrails the call ran (`x-litellm-applied-guardrails`).
+    pub guardrails: Vec<String>,
+    /// The response cache key (`x-litellm-cache-key`), when the call is cacheable.
+    pub cache_key: Option<String>,
+    /// Served from the cache (`x-litellm-cache-hit`).
+    pub cache_hit: bool,
 }
 
 impl CallInfo {
@@ -126,6 +157,13 @@ impl CallInfo {
         put("x-litellm-attempted-fallbacks", self.fallbacks.to_string());
         if let Some(c) = self.cost {
             put("x-litellm-response-cost", usd(c).to_string());
+        }
+        if !self.guardrails.is_empty() {
+            put(APPLIED_HEADER, self.guardrails.join(","));
+        }
+        if let Some(k) = &self.cache_key {
+            put("x-litellm-cache-key", k.clone());
+            put("x-litellm-cache-hit", self.cache_hit.to_string());
         }
         h
     }
@@ -148,6 +186,9 @@ impl Admitted<'_> {
             retries: self.retries,
             fallbacks: self.fallbacks,
             cost,
+            guardrails: Vec::new(),
+            cache_key: None,
+            cache_hit: false,
         }
     }
 }
@@ -315,26 +356,143 @@ pub fn estimate_text(s: &str) -> u64 {
     (s.chars().count() as u64).div_ceil(4)
 }
 
-/// Run a chat completion: reservation sizing, admission, the provider call
-/// (streaming if `req.stream`), retries, fallbacks and settlement.
+/// Admit a call answered from the cache, and settle it at zero tokens at
+/// once: the kernel still checks the key (blocked, expired, model access,
+/// team), its RPM window, parallel limit and budget (reserving nothing), and
+/// records a zero-cost spend log; nothing is charged and no tokens count
+/// against TPM. Rate limits and access therefore apply to hits exactly as to
+/// provider calls.
+pub async fn admit_cached(st: &AppState, actor: Principal, model: &str) -> Result<CallInfo, Failure> {
+    let mut attempts = Attempts::new(st, actor, model, 0, 0);
+    let a = attempts.next().await?;
+    let cost = settle(st, &actor, a.reservation, 0, 0, CallStatus::Success).await;
+    Ok(a.info(cost))
+}
+
+/// The model group a client's model name maps to.
+fn group_of(st: &AppState, model: &str) -> String {
+    st.settings.aliases.get(model).cloned().unwrap_or_else(|| model.to_string())
+}
+
+/// The cache, a response is stored in at the end of a stream.
+type Store = (Arc<Cache>, String, Controls);
+
+/// Run a chat completion: guardrails, reservation sizing, the cache,
+/// admission, the provider call (streaming if `req.stream`), retries,
+/// fallbacks and settlement.
+///
+/// Order: `pre_call` guardrails (a block returns before admission, so it
+/// costs nothing); then, concurrently, the `during_call` guardrails and
+/// either a cache hit (admitted and settled at zero) or the provider call;
+/// then the response is stored in the cache (as the provider returned it),
+/// checked by the `post_call` guardrails, and Presidio's tokens are put back.
+/// A `during_call` or `post_call` block comes after the provider call, which
+/// is settled (charged) as usual.
 pub async fn run_chat(st: &AppState, actor: Principal, mut req: ChatRequest) -> Result<(ChatOutcome, CallInfo), Failure> {
-    let prompt_tokens = estimate_prompt_tokens(&req);
     let model = req.model.clone();
+    let group = group_of(st, &model);
+    let stream = req.stream == Some(true);
+
+    let mut guard = if st.guardrails.is_empty() { st.guardrails.idle() } else { st.guardrails.start(&req.extra, &group, actor.key)? };
+    let mut request_segs = Vec::new();
+    if !guard.is_empty() {
+        request_segs = guardrails::request_segments(&req);
+        if guard.has(Mode::PreCall) {
+            guard.pre_call(&mut request_segs).await?;
+            guardrails::set_request_segments(&mut req, &request_segs);
+        }
+    }
+
+    let prompt_tokens = estimate_prompt_tokens(&req);
     let max_tokens = match req.max_output_tokens() {
         Some(n) => n,
         None => {
             let limit = st.settings.default_max_tokens;
-            let n = st.registry.max_output_tokens(st.settings.aliases.get(&model).unwrap_or(&model)).map_or(limit, |m| m.min(limit));
+            let n = st.registry.max_output_tokens(&group).map_or(limit, |m| m.min(limit));
             req.max_completion_tokens = Some(n);
             n
         }
     };
-    let mut attempts = Attempts::new(st, actor, &model, prompt_tokens, max_tokens);
+
+    let controls = Controls::from_extra(&req.extra);
+    let cache = st.cache.as_ref();
+    let cache_key = cache.and_then(|c| c.chat_key(&group, &req, &controls));
+
+    let main = async {
+        if let (Some(c), Some(k)) = (cache, &cache_key)
+            && let Some(v) = c.get(k, &controls).await
+        {
+            match serde_json::from_value::<ChatResponse>(v) {
+                Ok(resp) => {
+                    let info = admit_cached(st, actor, &model).await?;
+                    return Ok((ChatOutcome::Complete(resp), info, true));
+                }
+                Err(e) => tracing::warn!(error = %e, "unreadable cache entry; ignored"),
+            }
+        }
+        let (outcome, info) = call_chat(st, actor, &req, prompt_tokens, max_tokens).await?;
+        Ok::<_, Failure>((outcome, info, false))
+    };
+    let during = async {
+        if guard.has(Mode::DuringCall) { guard.during_call(&request_segs).await } else { Ok(()) }
+    };
+    let (result, during) = futures::join!(main, during);
+    // A blocked call's stream, if any, is dropped here and settles.
+    during?;
+    guard.note_during();
+    let (outcome, mut info, hit) = result?;
+    info.cache_key = cache_key.clone();
+    info.cache_hit = hit;
+
+    match outcome {
+        ChatOutcome::Complete(mut resp) => {
+            if !hit && let (Some(c), Some(k)) = (cache, &cache_key) {
+                match serde_json::to_value(&resp) {
+                    Ok(v) => c.put(k, &v, &controls).await,
+                    Err(e) => tracing::warn!(error = %e, "response not cached"),
+                }
+            }
+            if guard.has(Mode::PostCall) {
+                let mut out = guardrails::response_segments(&resp);
+                guard.post_call(&request_segs, &mut out).await?;
+                guardrails::set_response_segments(&mut resp, &out);
+            }
+            guard.unmask_response(&mut resp);
+            info.guardrails = guard.applied.clone();
+            if stream {
+                // A cached answer to a streaming request: replayed as chunks.
+                let chunks: Vec<Result<ChatChunk, ProviderError>> = replay_chunks(&resp).into_iter().map(Ok).collect();
+                return Ok((ChatOutcome::Stream(SettlingStream::settled(Box::pin(futures::stream::iter(chunks)))), info));
+            }
+            Ok((ChatOutcome::Complete(resp), info))
+        }
+        ChatOutcome::Stream(s) => {
+            for n in guard.names(Mode::PostCall) {
+                if !guard.applied.contains(&n) {
+                    guard.applied.push(n);
+                }
+            }
+            info.guardrails = guard.applied.clone();
+            let store: Option<Store> = match (cache, cache_key) {
+                (Some(c), Some(k)) if c.writes(&controls) => Some((c.clone(), k, controls)),
+                _ => None,
+            };
+            if !guard.has(Mode::PostCall) && !guard.unmasks() && store.is_none() {
+                return Ok((ChatOutcome::Stream(s), info));
+            }
+            Ok((ChatOutcome::Stream(stream_tail(s, guard, request_segs, store)), info))
+        }
+    }
+}
+
+/// The provider call with retries and fallbacks.
+async fn call_chat(st: &AppState, actor: Principal, req: &ChatRequest, prompt_tokens: u64, max_tokens: u64) -> Result<(ChatOutcome, CallInfo), Failure> {
+    let mut attempts = Attempts::new(st, actor, &req.model, prompt_tokens, max_tokens);
     loop {
         let a = attempts.next().await?;
         let dep = &a.deployed.deployment;
         if req.stream == Some(true) {
-            match st.client.chat_stream(dep, &req).await {
+            match st.client.chat_stream(dep, req).await {
                 Ok(s) => {
                     let guard = StreamSettle {
                         st: st.clone(),
@@ -346,7 +504,7 @@ pub async fn run_chat(st: &AppState, actor: Principal, mut req: ChatRequest) -> 
                         status: CallStatus::Success,
                         settled: false,
                     };
-                    return Ok((ChatOutcome::Stream(SettlingStream { inner: s, guard }), a.info(None)));
+                    return Ok((ChatOutcome::Stream(SettlingStream { inner: s, guard: Some(guard) }), a.info(None)));
                 }
                 Err(e) => {
                     if !attempts.failed(&a, e).await {
@@ -355,7 +513,7 @@ pub async fn run_chat(st: &AppState, actor: Principal, mut req: ChatRequest) -> 
                 }
             }
         } else {
-            match st.client.chat(dep, &req).await {
+            match st.client.chat(dep, req).await {
                 Ok(resp) => {
                     let (p, c) = match &resp.usage {
                         Some(u) => (u.prompt_tokens, u.completion_tokens),
@@ -369,6 +527,240 @@ pub async fn run_chat(st: &AppState, actor: Principal, mut req: ChatRequest) -> 
                         return Err(attempts.give_up());
                     }
                 }
+            }
+        }
+    }
+}
+
+/// A whole response as the chunks a stream of it would have carried: per
+/// choice, the role, content, reasoning and tool calls, then the finish
+/// reason; then usage.
+pub fn replay_chunks(resp: &ChatResponse) -> Vec<ChatChunk> {
+    let mut out = Vec::new();
+    let chunk = |choices: Value, usage: Value| {
+        serde_json::from_value::<ChatChunk>(json!({
+            "id": resp.id, "object": "chat.completion.chunk", "created": resp.created, "model": resp.model,
+            "system_fingerprint": resp.system_fingerprint, "choices": choices, "usage": usage,
+        }))
+        .ok()
+    };
+    for c in &resp.choices {
+        let m = &c.message;
+        let mut delta = json!({"role": "assistant"});
+        if let Some(content) = &m.content {
+            delta["content"] = Value::String(content.text().into_owned());
+        }
+        if let Some(r) = &m.reasoning_content {
+            delta["reasoning_content"] = Value::String(r.clone());
+        }
+        if let Some(r) = &m.refusal {
+            delta["refusal"] = Value::String(r.clone());
+        }
+        if let Some(calls) = &m.tool_calls {
+            let calls: Vec<Value> = calls
+                .iter()
+                .enumerate()
+                .map(|(i, t)| json!({"index": i, "id": t.id, "type": t.kind, "function": {"name": t.function.name, "arguments": t.function.arguments}}))
+                .collect();
+            delta["tool_calls"] = Value::Array(calls);
+        }
+        out.extend(chunk(json!([{"index": c.index, "delta": delta}]), Value::Null));
+        out.extend(chunk(json!([{"index": c.index, "delta": {}, "finish_reason": c.finish_reason}]), Value::Null));
+    }
+    if let Some(u) = &resp.usage {
+        out.extend(chunk(json!([]), serde_json::to_value(u).unwrap_or(Value::Null)));
+    }
+    out
+}
+
+/// Builds the whole response from a stream's chunks, for the cache and the
+/// `post_call` guardrails.
+#[derive(Default)]
+struct Assembler {
+    first: Option<ChatChunk>,
+    choices: BTreeMap<u32, Assembled>,
+    usage: Option<Value>,
+}
+
+/// One choice so far; tool calls by index: (id, type, name, arguments).
+#[derive(Default)]
+struct Assembled {
+    content: Option<String>,
+    reasoning: Option<String>,
+    refusal: Option<String>,
+    tool_calls: BTreeMap<u32, (Option<String>, Option<String>, String, String)>,
+    finish_reason: Option<String>,
+}
+
+impl Assembler {
+    fn observe(&mut self, chunk: &ChatChunk) {
+        if self.first.is_none() && !chunk.choices.is_empty() {
+            self.first = Some(chunk.clone());
+        }
+        if let Some(u) = &chunk.usage {
+            self.usage = serde_json::to_value(u).ok();
+        }
+        for c in &chunk.choices {
+            let a = self.choices.entry(c.index).or_default();
+            let d = &c.delta;
+            if let Some(t) = &d.content {
+                a.content.get_or_insert_default().push_str(t);
+            }
+            if let Some(t) = &d.reasoning_content {
+                a.reasoning.get_or_insert_default().push_str(t);
+            }
+            if let Some(t) = &d.refusal {
+                a.refusal.get_or_insert_default().push_str(t);
+            }
+            for t in d.tool_calls.iter().flatten() {
+                let e = a.tool_calls.entry(t.index).or_default();
+                if t.id.is_some() {
+                    e.0 = t.id.clone();
+                }
+                if t.kind.is_some() {
+                    e.1 = t.kind.clone();
+                }
+                if let Some(f) = &t.function {
+                    if let Some(n) = &f.name {
+                        e.2.push_str(n);
+                    }
+                    if let Some(x) = &f.arguments {
+                        e.3.push_str(x);
+                    }
+                }
+            }
+            if c.finish_reason.is_some() {
+                a.finish_reason = c.finish_reason.clone();
+            }
+        }
+    }
+
+    fn texts(&self) -> Vec<Segment> {
+        self.choices.values().filter_map(|a| a.content.clone()).map(|text| Segment { role: "assistant".into(), text }).collect()
+    }
+
+    fn response(&self) -> Option<ChatResponse> {
+        let first = self.first.as_ref()?;
+        let choices: Vec<Value> = self
+            .choices
+            .iter()
+            .map(|(i, a)| {
+                let mut m = json!({"role": "assistant", "content": a.content});
+                if let Some(r) = &a.reasoning {
+                    m["reasoning_content"] = Value::String(r.clone());
+                }
+                if let Some(r) = &a.refusal {
+                    m["refusal"] = Value::String(r.clone());
+                }
+                if !a.tool_calls.is_empty() {
+                    let calls: Vec<Value> = a
+                        .tool_calls
+                        .values()
+                        .map(|(id, kind, name, args)| json!({"id": id, "type": kind.clone().unwrap_or_else(|| "function".into()), "function": {"name": name, "arguments": args}}))
+                        .collect();
+                    m["tool_calls"] = Value::Array(calls);
+                }
+                json!({"index": i, "message": m, "finish_reason": a.finish_reason})
+            })
+            .collect();
+        serde_json::from_value(json!({
+            "id": first.id, "object": "chat.completion", "created": first.created, "model": first.model,
+            "system_fingerprint": first.system_fingerprint, "choices": choices, "usage": self.usage,
+        }))
+        .map_err(|e| tracing::warn!(error = %e, "could not assemble the streamed response"))
+        .ok()
+    }
+}
+
+/// The end of a stream: the cache entry and the `post_call` guardrails,
+/// which see the accumulated text. Presidio's tokens are put back chunk by
+/// chunk as they stream.
+struct Tail {
+    inner: SettlingStream,
+    guard: GuardRun,
+    request: Vec<Segment>,
+    store: Option<Store>,
+    acc: Assembler,
+    /// Text held back per choice while a token may be incomplete.
+    pending: HashMap<u32, String>,
+    queue: VecDeque<Result<ChatChunk, ProviderError>>,
+    done: bool,
+}
+
+fn stream_tail(inner: SettlingStream, guard: GuardRun, request: Vec<Segment>, store: Option<Store>) -> SettlingStream {
+    let tail = Tail { inner, guard, request, store, acc: Assembler::default(), pending: HashMap::new(), queue: VecDeque::new(), done: false };
+    let s = futures::stream::unfold(tail, |mut t| async move {
+        loop {
+            if let Some(item) = t.queue.pop_front() {
+                return Some((item, t));
+            }
+            if t.done {
+                return None;
+            }
+            match t.inner.next().await {
+                Some(Ok(mut chunk)) => {
+                    t.acc.observe(&chunk);
+                    if t.guard.unmasks() {
+                        t.unmask_chunk(&mut chunk);
+                    }
+                    return Some((Ok(chunk), t));
+                }
+                // The upstream failed: nothing is cached or checked.
+                Some(Err(e)) => {
+                    t.done = true;
+                    return Some((Err(e), t));
+                }
+                None => {
+                    t.done = true;
+                    t.finish().await;
+                }
+            }
+        }
+    });
+    SettlingStream::settled(Box::pin(s))
+}
+
+impl Tail {
+    fn unmask_chunk(&mut self, chunk: &mut ChatChunk) {
+        for c in &mut chunk.choices {
+            let pending = self.pending.entry(c.index).or_default();
+            let mut text = match c.delta.content.take() {
+                Some(d) => self.guard.unmask_delta(pending, &d),
+                None => String::new(),
+            };
+            if c.finish_reason.is_some() {
+                text.push_str(&self.guard.unmask(&std::mem::take(pending)));
+            }
+            if !text.is_empty() {
+                c.delta.content = Some(text);
+            }
+        }
+    }
+
+    /// The upstream ended cleanly.
+    async fn finish(&mut self) {
+        // Text still held back (a stream without a finish reason).
+        let rest: Vec<(u32, String)> = self.pending.drain().filter(|(_, p)| !p.is_empty()).collect();
+        if let Some(first) = &self.acc.first {
+            for (i, p) in rest {
+                let mut c = ChatChunk::new(first.id.clone(), first.model.clone(), first.created).with_delta(Default::default(), None);
+                c.choices[0].index = i;
+                c.choices[0].delta.content = Some(self.guard.unmask(&p));
+                self.queue.push_back(Ok(c));
+            }
+        }
+        if let Some((cache, key, controls)) = &self.store
+            && let Some(resp) = self.acc.response()
+            && let Ok(v) = serde_json::to_value(&resp)
+        {
+            cache.put(key, &v, controls).await;
+        }
+        if self.guard.has(Mode::PostCall) {
+            let mut out = self.acc.texts();
+            if let Err(e) = self.guard.post_call(&self.request, &mut out).await {
+                tracing::warn!(guardrail = %e.guardrail, "post_call guardrail blocked a streamed response");
+                let body = e.body().to_string();
+                self.queue.push_back(Err(ProviderError::from_upstream("guardrail", e.status.as_u16(), &body, None)));
             }
         }
     }
@@ -423,7 +815,16 @@ impl Drop for StreamSettle {
 /// with the upstream's usage-only chunk when the upstream reported usage.
 pub struct SettlingStream {
     inner: gateway_providers::ChatStream,
-    guard: StreamSettle,
+    /// `None` when the call is already settled (a cache hit, or a stream
+    /// wrapping another `SettlingStream`).
+    guard: Option<StreamSettle>,
+}
+
+impl SettlingStream {
+    /// A stream whose call is already settled.
+    pub fn settled(inner: gateway_providers::ChatStream) -> Self {
+        SettlingStream { inner, guard: None }
+    }
 }
 
 impl Stream for SettlingStream {
@@ -433,16 +834,22 @@ impl Stream for SettlingStream {
         let this = self.get_mut();
         match this.inner.poll_next_unpin(cx) {
             Poll::Ready(Some(Ok(chunk))) => {
-                this.guard.observe(&chunk);
+                if let Some(g) = &mut this.guard {
+                    g.observe(&chunk);
+                }
                 Poll::Ready(Some(Ok(chunk)))
             }
             Poll::Ready(Some(Err(e))) => {
-                this.guard.status = if e.is_retryable() { CallStatus::Retryable } else { CallStatus::Failure };
-                this.guard.finish();
+                if let Some(g) = &mut this.guard {
+                    g.status = if e.is_retryable() { CallStatus::Retryable } else { CallStatus::Failure };
+                    g.finish();
+                }
                 Poll::Ready(Some(Err(e)))
             }
             Poll::Ready(None) => {
-                this.guard.finish();
+                if let Some(g) = &mut this.guard {
+                    g.finish();
+                }
                 Poll::Ready(None)
             }
             Poll::Pending => Poll::Pending,
@@ -511,11 +918,49 @@ pub async fn azure_chat_completions(
 // ---------------------------------------------------------------------------
 // Embeddings
 
+/// Embeddings: `pre_call` guardrails on the text inputs (block or rewrite;
+/// `during_call` and `post_call` do not apply), then the cache, then the call.
 pub async fn embeddings(State(st): State<AppState>, actor: Actor<Gateway>, Json(body): Json<Value>) -> Response {
     let req = match parse::<EmbeddingRequest>(body) {
         Ok(r) => r,
         Err(f) => return f.into_response(),
     };
+    match run_embeddings(&st, *actor.principal(), req).await {
+        Ok((resp, info)) => (info.headers(), Json(resp)).into_response(),
+        Err(f) => f.into_response(),
+    }
+}
+
+/// An embeddings call with guardrails, the cache, admission and settlement.
+pub async fn run_embeddings(st: &AppState, actor: Principal, mut req: EmbeddingRequest) -> Result<(EmbeddingResponse, CallInfo), Failure> {
+    let group = group_of(st, &req.model);
+    let mut applied = Vec::new();
+    if !st.guardrails.is_empty() {
+        let mut guard = st.guardrails.start(&req.extra, &group, actor.key)?;
+        if guard.has(Mode::PreCall) {
+            let mut segs = guardrails::embedding_segments(&req.input);
+            guard.pre_call(&mut segs).await?;
+            guardrails::set_embedding_segments(&mut req.input, &segs);
+        }
+        applied = guard.applied;
+    }
+    let controls = Controls::from_extra(&req.extra);
+    let cache = st.cache.as_ref();
+    let cache_key = cache.and_then(|c| c.embedding_key(&group, &req, &controls));
+    if let (Some(c), Some(k)) = (cache, &cache_key)
+        && let Some(v) = c.get(k, &controls).await
+    {
+        match serde_json::from_value::<EmbeddingResponse>(v) {
+            Ok(resp) => {
+                let mut info = admit_cached(st, actor, &req.model).await?;
+                info.guardrails = applied;
+                info.cache_key = cache_key;
+                info.cache_hit = true;
+                return Ok((resp, info));
+            }
+            Err(e) => tracing::warn!(error = %e, "unreadable cache entry; ignored"),
+        }
+    }
     let prompt_tokens = match &req.input {
         EmbeddingInput::Text(s) => estimate_text(s),
         EmbeddingInput::Texts(v) => v.iter().map(|s| estimate_text(s)).sum(),
@@ -523,7 +968,7 @@ pub async fn embeddings(State(st): State<AppState>, actor: Actor<Gateway>, Json(
         EmbeddingInput::TokenBatches(b) => b.iter().map(|t| t.len() as u64).sum(),
     };
     let client = st.client.clone();
-    let result = call(&st, *actor.principal(), &req.model, prompt_tokens, 0, |d| {
+    let (resp, mut info) = call(st, actor, &req.model, prompt_tokens, 0, |d| {
         let (client, dep, req) = (client.clone(), d.deployment.clone(), req.clone());
         async move {
             let resp = client.embeddings(&dep, &req).await?;
@@ -531,9 +976,13 @@ pub async fn embeddings(State(st): State<AppState>, actor: Actor<Gateway>, Json(
             Ok((resp, used))
         }
     })
-    .await;
-    match result {
-        Ok((resp, info)) => (info.headers(), Json(resp)).into_response(),
-        Err(f) => f.into_response(),
+    .await?;
+    if let (Some(c), Some(k)) = (cache, &cache_key)
+        && let Ok(v) = serde_json::to_value(&resp)
+    {
+        c.put(k, &v, &controls).await;
     }
+    info.guardrails = applied;
+    info.cache_key = cache_key;
+    Ok((resp, info))
 }

@@ -43,3 +43,39 @@ general_settings:
   # database_url: os.environ/DATABASE_URL   # PostgreSQL; omit to keep state in memory
   # spend_logs: https://example.com/hooks/spend   # or "log" (default)
   default_max_tokens: 4096
+
+# Response caching (local or redis). A hit is still admitted by the kernel
+# (access, blocks, RPM, budget) and settled at zero tokens.
+# litellm_settings:
+#   cache: true
+#   cache_params:
+#     type: redis             # or local (in memory, bounded)
+#     host: localhost
+#     port: 6379
+#     password: os.environ/REDIS_PASSWORD
+#     ttl: 600
+#     namespace: gateway
+
+# Guardrails: run when default_on, or when a request names them in
+# "guardrails" (or metadata.guardrails).
+guardrails:
+  - guardrail_name: mask-pii
+    litellm_params:
+      guardrail: litellm_content_filter
+      mode: pre_call
+      default_on: true
+      patterns:
+        - {pattern_type: prebuilt, pattern_name: email, action: MASK}
+        - {pattern_type: prebuilt, pattern_name: credit_card, action: BLOCK}
+        - {pattern_type: prebuilt, pattern_name: aws_access_key, action: BLOCK}
+  # - guardrail_name: presidio-pii
+  #   litellm_params:
+  #     guardrail: presidio
+  #     mode: pre_call
+  #     output_parse_pii: true        # put the originals back into the response
+  #     presidio_analyzer_api_base: http://localhost:5002
+  #     presidio_anonymizer_api_base: http://localhost:5001
+  # - guardrail_name: moderation
+  #   litellm_params: {guardrail: openai_moderation, mode: during_call, api_key: os.environ/OPENAI_API_KEY}
+  # - guardrail_name: my-policy
+  #   litellm_params: {guardrail: generic_guardrail_api, mode: [pre_call, post_call], api_base: http://localhost:8080}

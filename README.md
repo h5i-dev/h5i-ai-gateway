@@ -111,6 +111,15 @@ Aeneas, Lean, rustc) and PostgreSQL. Beyond that, the shell in
   repeats by the `Idempotency-Key` header.
 - **Unsettled calls.** If the database is unreachable when a call settles,
   the reservation is released uncharged when it expires (logged as an error).
+- **Guardrails** (`guardrails.rs`) and **the response cache** (`cache.rs`)
+  are shell code outside the proofs. They decide nothing the kernel
+  decides: a guardrail can only refuse a request or rewrite its content,
+  and a cache hit still goes through `Admit` and `Settle` (at zero tokens),
+  so access, blocks, rate limits and budgets hold for it as for any call.
+  What is trusted is that they inspect and rewrite content correctly (a
+  regex that misses a secret lets it through), and that a cached response
+  is the one the provider gave for the same key material. Cached responses
+  are shared across keys, as in LiteLLM.
 
 ## Running
 
@@ -150,6 +159,25 @@ teams (`/team/new|update|delete|block|unblock|info|list`) with shared budgets,
 limits and model lists; `/model/info`, `/spend/logs`, `/global/spend`,
 `/health/liveliness|readiness`; the `x-litellm-*` response headers; keys in
 `Authorization`, `x-api-key`, `api-key` or `x-goog-api-key`; `mock_response`.
+Guardrails (the `guardrails:` list, `mode: pre_call|during_call|post_call`,
+`default_on`, per-request `guardrails` / `metadata.guardrails`, the
+`x-litellm-applied-guardrails` header; a block is a 400 of type
+`guardrail_violation` naming the guardrail): `litellm_content_filter`
+(`blocked_words`, regex and prebuilt `patterns` with `BLOCK`/`MASK`:
+e-mail, phone, credit cards with a Luhn check, US SSN, IPv4/IPv6, AWS keys,
+GitHub/Slack/OpenAI-style tokens, generic API keys, URLs), `presidio`
+(analyzer and anonymizer APIs, `pii_entities_config`, score thresholds,
+`output_parse_pii`, streaming included), `openai_moderation`, `lakera_v2`
+(`block` or `monitor`) and `generic_guardrail_api` (`BLOCKED`, `NONE`,
+`GUARDRAIL_INTERVENED` with rewritten texts, `extra_body` per request,
+`unreachable_fallback`, `fail_on_error`). Caching (`litellm_settings.cache`
+and `cache_params`: `type: local|redis`, `host`/`port`/`password`/`url`,
+`ttl`, `namespace`, `max_size_in_memory`, `mode: default_off`,
+`supported_call_types`) of chat completions (including the Messages and
+Responses APIs, which run on the chat path) and embeddings, per-request
+`cache: {no-cache, no-store, ttl, s-maxage, namespace, use-cache}`, a cached
+chat replayed as a stream when `stream: true`, and the `x-litellm-cache-key`
+and `x-litellm-cache-hit` headers.
 Providers: OpenAI and OpenAI-compatible (Azure, Groq, DeepSeek, Mistral,
 Together, Fireworks, OpenRouter, xAI, Perplexity, DeepInfra, Cerebras, NVIDIA
 NIM, SambaNova, vLLM, Ollama, LM Studio), Anthropic and Gemini (AI Studio),
@@ -161,12 +189,22 @@ rate limits use fixed one-minute windows; routing is priority (`order`),
 then least busy, then id (LiteLLM's `routing_strategy` setting is accepted
 but not used); deployments come from the configuration file (no
 `/model/new`); key, team and user ids are numbers; prompt-cache token prices
-are not discounted.
+are not discounted. A cache hit is admitted by the kernel and settled at
+zero tokens (so it counts against RPM and needs model access, but costs
+nothing). `post_call` guardrails on a stream run once on the accumulated
+text when the upstream ends: the text has already been sent, so a block
+ends the stream with an error event and `MASK` rewrites are not applied to
+streams. `during_call` and `post_call` blocks come after the provider call,
+which is charged. Guardrails apply to chat (and so to the APIs built on it)
+and `pre_call` to embedding inputs.
 
 **Not implemented:** Bedrock, Vertex AI and the other non-OpenAI-compatible
 providers; `/v1/completions`, `/v1/messages`, images, audio, files, batches
-and the Responses API; guardrails, caching, callbacks other than the spend
-log webhook, SSO and the admin UI; users, organizations and budgets per
+and the Responses API; the other guardrail integrations (Bedrock, Aporia,
+Azure, …), content filter `categories` and `blocked_words_file`, LiteLLM's
+older `litellm_settings.guardrails` format, and semantic, S3, disk and
+Redis-cluster caches; callbacks other than the spend log webhook, SSO and
+the admin UI; users, organizations and budgets per
 customer or per model.
 
 ## Tests
@@ -175,6 +213,8 @@ customer or per model.
 cargo test --workspace                                   # kernel, providers, server (in-memory)
 docker run -d -p 127.0.0.1:55432:5432 -e POSTGRES_USER=h5i -e POSTGRES_PASSWORD=h5i postgres:17
 H5I_APP_TEST_DATABASE_URL=postgres://h5i:h5i@127.0.0.1:55432/h5i cargo test -p gateway-server --test postgres
+docker run -d --rm -p 127.0.0.1:56379:6379 redis:7
+H5I_GATEWAY_TEST_REDIS_URL=redis://127.0.0.1:56379/ cargo test -p gateway-server --test guardrails_cache redis
 h5i app prove     # extract the kernel, build and gate the proofs
 h5i app mutate    # every listed bug must break a proof
 h5i app lint
