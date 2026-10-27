@@ -1,0 +1,29 @@
+version: h5i.test/v1
+id: unauthenticated
+name: Without a key nothing but the health checks answers
+
+requests:
+  generate:
+    method: POST
+    path: /key/generate
+    headers: {content-type: application/json}
+    json: {max_budget: 1000}
+  chat:
+    method: POST
+    path: /v1/chat/completions
+    headers: {content-type: application/json}
+    json: {model: gpt-4o-mini, messages: [{role: user, content: hi}]}
+  spend:
+    path: /spend/logs
+  liveliness:
+    path: /health/liveliness
+
+flow:
+  - send: generate
+    expect: {status: 401}
+  - send: chat
+    expect: {status: 401}
+  - send: spend
+    expect: {status: 401}
+  - send: liveliness
+    expect: {status: 200}

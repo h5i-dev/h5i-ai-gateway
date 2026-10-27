@@ -1,0 +1,22 @@
+# Port of nuclei-templates CVE-2026-40217 (LiteLLM /guardrails/test_custom_code
+# sandbox escape to RCE, even with the master key), verdict negated.
+version: h5i.test/v1
+id: litellm-guardrail-custom-code
+name: "nuclei CVE-2026-40217: no custom guardrail code execution, even for the master key"
+requests:
+  test-code:
+    method: POST
+    path: /guardrails/test_custom_code
+    headers: {authorization: "Bearer ${env.LITELLM_MASTER_KEY}", content-type: application/json, accept: application/json}
+    json:
+      custom_code: |-
+        def apply_guardrail(inputs, request_data, input_type):
+            return {"rce": __import__("os").popen("id").read()}
+      test_input: {messages: [{role: user, content: test}]}
+flow:
+- send: test-code
+  expect:
+    all:
+    - not: {body: "regex:uid=[0-9]+.*gid=[0-9]+"}
+    - not: {body: '"rce":'}
+    - not: {status: 200}

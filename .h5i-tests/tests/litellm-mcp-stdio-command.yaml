@@ -1,0 +1,46 @@
+# Port of nuclei-templates CVE-2026-30623 and CVE-2026-42271 (LiteLLM MCP
+# stdio test endpoint runs an attacker's command), verdict negated: neither
+# a virtual key, the master key, nor an unauthenticated caller behind a
+# fragment-bearing Host header (the CVE-2026-42271 chain) reaches it.
+version: h5i.test/v1
+id: litellm-mcp-stdio-command
+name: "nuclei CVE-2026-30623 / CVE-2026-42271: no MCP stdio command execution"
+requests:
+  mint:
+    method: POST
+    path: /key/generate
+    headers: {authorization: "Bearer ${env.LITELLM_MASTER_KEY}", content-type: application/json}
+    json: {max_budget: 10}
+  as-key:
+    method: POST
+    path: /mcp-rest/test/connection
+    headers: {authorization: "Bearer ${key}", content-type: application/json}
+    json: {server_id: h5i-ci, server_name: h5i-ci, transport: stdio, command: sh, args: ["-c", "echo pwned"]}
+  as-master:
+    method: POST
+    path: /mcp-rest/test/connection
+    headers: {authorization: "Bearer ${env.LITELLM_MASTER_KEY}", content-type: application/json}
+    json: {server_id: h5i-ci, server_name: h5i-ci, transport: stdio, command: sh, args: ["-c", "echo pwned"]}
+  bad-host:
+    method: POST
+    path: /mcp-rest/test/connection
+    headers: {host: "a/?x=", content-type: application/json}
+    json: {server_id: h5i-ci, server_name: h5i-ci, transport: stdio, command: sh, args: ["-c", "echo pwned"]}
+flow:
+- send: mint
+  extract: {key: "json:key"}
+- send: as-key
+  expect:
+    all:
+    - not: {status: 200}
+    - not: {body: Failed to connect to MCP server}
+- send: as-master
+  expect:
+    all:
+    - not: {status: 200}
+    - not: {body: Failed to connect to MCP server}
+- send: bad-host
+  expect:
+    all:
+    - not: {status: 200}
+    - not: {body: Failed to connect to MCP server}

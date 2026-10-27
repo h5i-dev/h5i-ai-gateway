@@ -1,0 +1,42 @@
+version: h5i.test/v1
+id: blocked-key
+name: A blocked key is refused until an admin unblocks it
+
+requests:
+  mint:
+    method: POST
+    path: /key/generate
+    headers: {authorization: "Bearer ${env.LITELLM_MASTER_KEY}", content-type: application/json}
+    json: {models: [gpt-4o-mini], max_budget: 10}
+  block:
+    method: POST
+    path: /key/block
+    headers: {authorization: "Bearer ${env.LITELLM_MASTER_KEY}", content-type: application/json}
+    json: {key: "${key}"}
+  unblock:
+    method: POST
+    path: /key/unblock
+    headers: {authorization: "Bearer ${env.LITELLM_MASTER_KEY}", content-type: application/json}
+    json: {key: "${key}"}
+  chat:
+    method: POST
+    path: /v1/chat/completions
+    headers: {authorization: "Bearer ${key}", content-type: application/json}
+    json: {model: gpt-4o-mini, messages: [{role: user, content: hi}]}
+
+flow:
+  - send: mint
+    extract: {key: "json:key"}
+  - send: block
+    expect: {status: 200}
+  - send: chat
+    name: chat-blocked
+    expect:
+      all:
+        - status: 401
+        - body: blocked
+  - send: unblock
+    expect: {status: 200}
+  - send: chat
+    name: chat-unblocked
+    expect: {status: 200}

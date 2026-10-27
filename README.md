@@ -82,11 +82,17 @@ cargo test --workspace
 h5i app prove
 h5i app mutate
 h5i app lint
+h5i test --target http://127.0.0.1:4000   # attack flows in .h5i-tests/, against a running gateway
 ```
 
 Proof extraction needs Charon, Aeneas, and Lean 4.31.0 (`h5i app doctor`).
 The PostgreSQL and Redis tests run when `H5I_APP_TEST_DATABASE_URL` and
 `H5I_GATEWAY_TEST_REDIS_URL` are set ([test commands](docs/PROOFS.md#tests)).
+
+`.h5i-tests/` holds security regression tests: the kernel's authorization
+properties as HTTP attacks, and ports of the Nuclei templates for LiteLLM's
+own CVEs ([how to run them](.h5i-tests/README.md)). CI runs them, and the
+workspace tests, on every pull request.
 
 Lean proves, among other things, that an admitted call satisfies the whole
 admission policy and every allowed call is admitted, that no key or team

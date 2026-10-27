@@ -1,0 +1,40 @@
+# Port of nuclei-templates CVE-2026-42208 (LiteLLM puts the caller's key into
+# a SQL query during the key check), verdict negated. The template detects
+# the injection by time (pg_sleep); here the property is that every injected
+# key is refused as invalid and the gateway keeps answering. Run against
+# PostgreSQL to mean what the template means.
+version: h5i.test/v1
+id: litellm-key-sql-injection
+name: "nuclei CVE-2026-42208: SQL in the API key is an invalid key"
+requests:
+  pg-sleep:
+    method: POST
+    path: /v1/chat/completions
+    headers: {authorization: "Bearer x' OR (SELECT pg_sleep(8)) IS NOT NULL --", content-type: application/json}
+    json: {model: gpt-4o-mini, messages: [{role: user, content: hi}]}
+  or-true:
+    method: POST
+    path: /v1/chat/completions
+    headers: {authorization: "Bearer x' OR '1'='1", content-type: application/json}
+    json: {model: gpt-4o-mini, messages: [{role: user, content: hi}]}
+  in-key-shape:
+    method: POST
+    path: /v1/chat/completions
+    headers: {authorization: "Bearer sk-v1.1.1.1.x' OR '1'='1' --", content-type: application/json}
+    json: {model: gpt-4o-mini, messages: [{role: user, content: hi}]}
+  union-admin:
+    path: /key/list
+    headers: {authorization: "Bearer sk-v1.1.0.0.' UNION SELECT token FROM keys --"}
+  liveliness:
+    path: /health/liveliness
+flow:
+- send: pg-sleep
+  expect: {status: 401}
+- send: or-true
+  expect: {status: 401}
+- send: in-key-shape
+  expect: {status: 401}
+- send: union-admin
+  expect: {status: 401}
+- send: liveliness
+  expect: {status: 200}
