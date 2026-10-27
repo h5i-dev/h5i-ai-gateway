@@ -1,0 +1,42 @@
+# Port of nuclei-templates CVE-2026-35029 (LiteLLM /config/update lacks an
+# admin check: a user key rewrites the configuration, adds a pass-through
+# route that exfiltrates files and the master key), verdict negated. The
+# template's out-of-band check becomes: the route it would add does not
+# exist afterwards.
+version: h5i.test/v1
+id: litellm-config-update
+name: "nuclei CVE-2026-35029: a virtual key cannot rewrite the configuration"
+requests:
+  mint:
+    method: POST
+    path: /key/generate
+    headers: {authorization: "Bearer ${env.LITELLM_MASTER_KEY}", content-type: application/json}
+    json: {max_budget: 10}
+  update:
+    method: POST
+    path: /config/update
+    headers: {authorization: "Bearer ${key}", content-type: application/json}
+    json:
+      environment_variables: {FILE_TO_READ: /etc/passwd, EXFIL_PREFIX: EXFIL}
+      general_settings:
+        pass_through_endpoints:
+        - path: /exfil-h5i-ci
+          target: http://127.0.0.1:9/
+          headers: {X-Master-Key: os.environ/LITELLM_MASTER_KEY, X-DB-URL: os.environ/DATABASE_URL}
+  exfil:
+    path: /exfil-h5i-ci
+  liveliness:
+    path: /health/liveliness
+flow:
+- send: mint
+  extract: {key: "json:key"}
+- send: update
+  expect: {not: {status: 200}}
+- send: liveliness
+  expect: {status: 200}
+- send: exfil
+  expect:
+    all:
+    - not: {status: 200}
+    - not: {body: "${env.LITELLM_MASTER_KEY}"}
+    - not: {body: "root:"}

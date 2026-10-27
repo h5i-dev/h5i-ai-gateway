@@ -1,0 +1,38 @@
+version: h5i.test/v1
+id: model-access
+name: A key calls only the models it was granted (Theorems.admit_sound)
+
+requests:
+  mint:
+    method: POST
+    path: /key/generate
+    headers: {authorization: "Bearer ${env.LITELLM_MASTER_KEY}", content-type: application/json}
+    json: {models: [gpt-4o-mini], max_budget: 10}
+  granted:
+    method: POST
+    path: /v1/chat/completions
+    headers: {authorization: "Bearer ${key}", content-type: application/json}
+    json: {model: gpt-4o-mini, messages: [{role: user, content: hi}]}
+  not-granted:
+    method: POST
+    path: /v1/chat/completions
+    headers: {authorization: "Bearer ${key}", content-type: application/json}
+    json: {model: gpt-4o, messages: [{role: user, content: hi}]}
+  not-granted-embeddings:
+    method: POST
+    path: /v1/embeddings
+    headers: {authorization: "Bearer ${key}", content-type: application/json}
+    json: {model: gpt-4o, input: hi}
+
+flow:
+  - send: mint
+    extract: {key: "json:key"}
+  - send: granted
+    expect: {status: 200}
+  - send: not-granted
+    expect:
+      all:
+        - status: 401
+        - body: not allowed to access model
+  - send: not-granted-embeddings
+    expect: {status: 401}

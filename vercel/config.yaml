@@ -1,0 +1,22 @@
+# The configuration built into the Vercel function (api/gateway.rs). Set
+# LITELLM_CONFIG_YAML in the Vercel project to replace it without a rebuild.
+# Every `os.environ/NAME` must be set in the project's environment variables.
+model_list:
+  - model_name: gpt-4o-mini
+    litellm_params:
+      model: openai/gpt-4o-mini
+      api_key: os.environ/OPENAI_API_KEY
+  - model_name: gpt-4o
+    litellm_params:
+      model: openai/gpt-4o
+      api_key: os.environ/OPENAI_API_KEY
+
+router_settings:
+  num_retries: 1
+  timeout: 300            # stay within the function's maximum duration
+
+general_settings:
+  master_key: os.environ/LITELLM_MASTER_KEY
+  # DATABASE_URL (PostgreSQL, e.g. Neon) keeps keys, budgets and spend across
+  # function instances; without it they live in one instance's memory.
+  default_max_tokens: 4096

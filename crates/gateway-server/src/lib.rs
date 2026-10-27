@@ -11,6 +11,7 @@
 pub mod anthropic_api;
 pub mod auth;
 pub mod batcher;
+pub mod boot;
 pub mod cache;
 pub mod config;
 pub mod error;

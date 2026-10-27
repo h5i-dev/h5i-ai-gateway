@@ -1,0 +1,16 @@
+# The gateway configuration the h5i security tests run against (CI starts
+# the gateway with it, in front of the bench crate's mock upstream).
+model_list:
+  - model_name: gpt-4o-mini
+    litellm_params:
+      model: openai/gpt-4o-mini
+      api_key: mock
+      api_base: http://127.0.0.1:9000/v1
+  - model_name: gpt-4o
+    litellm_params:
+      model: openai/gpt-4o
+      api_key: mock
+      api_base: http://127.0.0.1:9000/v1
+
+general_settings:
+  master_key: os.environ/LITELLM_MASTER_KEY
