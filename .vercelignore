@@ -1,0 +1,10 @@
+target
+bench
+proofs
+docs
+.h5i
+.claude
+.vscode
+.cargo
+.h5i-tests
+.github

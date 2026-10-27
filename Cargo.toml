@@ -1,6 +1,9 @@
 [workspace]
 resolver = "3"
 members = ["kernel", "crates/*"]
+# `cargo build` / `cargo test` at the root still cover the whole gateway; the
+# root package below is only the Vercel function.
+default-members = [".", "kernel", "crates/*"]
 
 [workspace.package]
 edition = "2024"
@@ -19,3 +22,24 @@ h5i-app-schema = { version = "=0.1.3" }
 h5i-app-sql = { version = "=0.1.3" }
 h5i-app-std = { version = "=0.1.3" }
 gateway-kernel = { path = "kernel" }
+
+# The Vercel function (https://vercel.com/templates/other/rust-axum): Vercel
+# builds each `[[bin]]` under `api/` into a serverless function.
+[package]
+name = "h5i-gateway-vercel"
+description = "h5i-ai-gateway as a Vercel function"
+edition.workspace = true
+license.workspace = true
+version.workspace = true
+publish = false
+
+[[bin]]
+name = "gateway"
+path = "api/gateway.rs"
+
+[dependencies]
+gateway-server = { path = "crates/gateway-server" }
+vercel_runtime = { version = "2.4", features = ["axum"] }
+tokio = { version = "1", features = ["macros", "rt-multi-thread"] }
+tower = "0.5"
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }

@@ -23,6 +23,26 @@ docker run -d -p 127.0.0.1:55432:5432 -e POSTGRES_USER=h5i -e POSTGRES_PASSWORD=
 export DATABASE_URL=postgres://h5i:h5i@127.0.0.1:55432/h5i
 ```
 
+## Deploy on Vercel
+
+The whole gateway runs as one Rust function (`api/gateway.rs`, after
+Vercel's [Rust Axum template](https://vercel.com/templates/other/rust-axum));
+`vercel.json` routes every path to it.
+
+```bash
+vercel link
+vercel env add LITELLM_MASTER_KEY
+vercel env add OPENAI_API_KEY
+vercel env add DATABASE_URL      # PostgreSQL, e.g. Neon; strongly recommended
+vercel deploy --prod
+```
+
+The models come from `vercel/config.yaml`, built into the function; set
+`LITELLM_CONFIG_YAML` to a whole `config.yaml` to replace it without a
+rebuild. Without `DATABASE_URL`, keys and spend live in one function
+instance's memory: they are lost on a cold start and not shared between
+instances.
+
 ## Use
 
 Create a virtual key, then call any model it may use with an OpenAI SDK or
