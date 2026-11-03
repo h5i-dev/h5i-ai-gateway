@@ -1,0 +1,59 @@
+version: h5i.test/v1
+id: key-cannot-manage
+name: A virtual key cannot mint keys or raise its own limits (Theorems.manage_needs_admin)
+
+requests:
+  mint:
+    method: POST
+    path: /key/generate
+    headers: {authorization: "Bearer ${env.LITELLM_MASTER_KEY}", content-type: application/json}
+    json: {models: [gpt-4o-mini], max_budget: 10, rpm_limit: 5}
+  mint-as-key:
+    method: POST
+    path: /key/generate
+    headers: {authorization: "Bearer ${key}", content-type: application/json}
+    json: {max_budget: 1000000}
+  raise-own-budget:
+    method: POST
+    path: /key/update
+    headers: {authorization: "Bearer ${key}", content-type: application/json}
+    json: {key: "${key}", max_budget: 1000000, rpm_limit: 1000000, models: ["*"]}
+  unblock-self:
+    method: POST
+    path: /key/unblock
+    headers: {authorization: "Bearer ${key}", content-type: application/json}
+    json: {key: "${key}"}
+  new-team:
+    method: POST
+    path: /team/new
+    headers: {authorization: "Bearer ${key}", content-type: application/json}
+    json: {max_budget: 1000000}
+  list-keys:
+    path: /key/list
+    headers: {authorization: "Bearer ${key}"}
+  own-info:
+    path: /key/info
+    headers: {authorization: "Bearer ${key}"}
+
+flow:
+  - send: mint
+    extract: {key: "json:key"}
+    expect: {status: 200}
+  - send: mint-as-key
+    expect: {status: 403}
+  - send: raise-own-budget
+    expect: {status: 403}
+  - send: unblock-self
+    expect: {status: 403}
+  - send: new-team
+    expect: {status: 403}
+  - send: list-keys
+    expect: {status: 403}
+  # The refused update changed nothing.
+  - send: own-info
+    expect:
+      all:
+        - status: 200
+        - body: '"max_budget":10.0'
+        - body: '"rpm_limit":5'
+        - body: '"models":["gpt-4o-mini"]'

@@ -1,0 +1,133 @@
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  test:
+    name: cargo test
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    services:
+      postgres:
+        image: postgres:17
+        env:
+          POSTGRES_USER: h5i
+          POSTGRES_PASSWORD: h5i
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd "pg_isready -U h5i" --health-interval 2s --health-timeout 5s --health-retries 30
+      redis:
+        image: redis:7
+        ports: ["6379:6379"]
+        options: >-
+          --health-cmd "redis-cli ping" --health-interval 2s --health-timeout 5s --health-retries 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt
+      - uses: Swatinem/rust-cache@v2
+      - run: cargo fmt --all --check
+      - name: cargo test --workspace (with the PostgreSQL and Redis tests)
+        run: cargo test --workspace
+        env:
+          H5I_APP_TEST_DATABASE_URL: postgres://h5i:h5i@127.0.0.1:5432/h5i
+          H5I_GATEWAY_TEST_REDIS_URL: redis://127.0.0.1:6379/
+
+  # .h5i-tests/: attack flows replayed against a running gateway, on
+  # PostgreSQL, in front of the bench crate's mock upstream.
+  security:
+    name: h5i test
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    services:
+      postgres:
+        image: postgres:17
+        env:
+          POSTGRES_USER: h5i
+          POSTGRES_PASSWORD: h5i
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd "pg_isready -U h5i" --health-interval 2s --health-timeout 5s --health-retries 30
+    env:
+      # A throwaway admin key for this job's gateway only.
+      LITELLM_MASTER_KEY: sk-ci-master
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      - name: Build the gateway and the mock upstream
+        run: cargo build -p gateway-server --bin h5i-gateway -p gateway-bench --bin mock-upstream
+
+      - name: Start the gateway
+        env:
+          DATABASE_URL: postgres://h5i:h5i@127.0.0.1:5432/h5i
+        run: |
+          target/debug/mock-upstream --port 9000 > "$RUNNER_TEMP/mock.log" 2>&1 &
+          target/debug/h5i-gateway --config .h5i-tests/gateway.yaml --host 127.0.0.1 --port 4000 > "$RUNNER_TEMP/gateway.log" 2>&1 &
+          for _ in $(seq 60); do
+            curl -sf http://127.0.0.1:4000/health/readiness && exit 0
+            sleep 1
+          done
+          cat "$RUNNER_TEMP/gateway.log"
+          exit 1
+
+      - name: Replay the security regression tests
+        uses: h5i-dev/h5i@v0.5.1
+        with:
+          h5i-version: v0.5.1
+          target: http://127.0.0.1:4000
+          tests: .h5i-tests/tests
+          output: h5i-test-results
+
+      - name: Gateway log
+        if: failure()
+        run: cat "$RUNNER_TEMP/gateway.log"
+
+      - name: Upload h5i evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: h5i-test-results
+          path: h5i-test-results/
+          if-no-files-found: warn
+
+  # Deploys main to Vercel once both checks pass. Set the repository secrets
+  # VERCEL_TOKEN, VERCEL_ORG_ID and VERCEL_PROJECT_ID (from `.vercel/project.json`
+  # after `vercel link`); without them the job is skipped. Vercel builds the
+  # function itself, so its Rust runtime targets Vercel's own image.
+  deploy:
+    name: Deploy to Vercel
+    needs: [test, security]
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    environment: production
+    env:
+      VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
+      VERCEL_ORG_ID: ${{ secrets.VERCEL_ORG_ID }}
+      VERCEL_PROJECT_ID: ${{ secrets.VERCEL_PROJECT_ID }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: vercel deploy --prod
+        run: |
+          if [ -z "$VERCEL_TOKEN" ] || [ -z "$VERCEL_PROJECT_ID" ]; then
+            echo "::notice::VERCEL_TOKEN / VERCEL_PROJECT_ID not set; skipping the deploy"
+            exit 0
+          fi
+          url=$(npx --yes vercel@latest deploy --prod --yes --token "$VERCEL_TOKEN")
+          echo "Deployed: $url" >> "$GITHUB_STEP_SUMMARY"

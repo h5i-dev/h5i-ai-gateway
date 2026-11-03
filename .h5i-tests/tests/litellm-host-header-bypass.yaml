@@ -1,0 +1,30 @@
+# Port of nuclei-templates CVE-2026-49468 (LiteLLM derives its public-route
+# check from a URL rebuilt from the Host header; `Host: x/#` makes a
+# protected route look like `/`), verdict negated.
+version: h5i.test/v1
+id: litellm-host-header-bypass
+name: "nuclei CVE-2026-49468: the Host header cannot make a route public"
+requests:
+  query-host:
+    path: /v1/models
+    headers: {host: "127.0.0.1/?"}
+  fragment-host:
+    path: /v1/models
+    headers: {host: "127.0.0.1/#"}
+  fragment-host-keys:
+    path: /key/list
+    headers: {host: "127.0.0.1/#"}
+  fragment-host-mint:
+    method: POST
+    path: /key/generate
+    headers: {host: "127.0.0.1/#", content-type: application/json}
+    json: {max_budget: 1000000}
+flow:
+- send: query-host
+  expect: {status: 401}
+- send: fragment-host
+  expect: {status: 401}
+- send: fragment-host-keys
+  expect: {status: 401}
+- send: fragment-host-mint
+  expect: {status: 401}

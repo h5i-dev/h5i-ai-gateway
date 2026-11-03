@@ -1,0 +1,37 @@
+# Port of nuclei-templates http/default-logins/litellm-default-login.yaml,
+# verdict negated: LiteLLM's UI login takes `admin` and the master key (or
+# its defaults). The gateway has no password login, so none of these
+# guesses gets a token.
+version: h5i.test/v1
+id: litellm-default-login
+name: "nuclei litellm-default-login: no default admin login"
+requests:
+  admin-sk-1234:
+    method: POST
+    path: /v2/login
+    headers: {content-type: application/json}
+    json: {username: admin, password: sk-1234}
+  admin-admin:
+    method: POST
+    path: /v2/login
+    headers: {content-type: application/json}
+    json: {username: admin, password: admin}
+  admin-master-key:
+    method: POST
+    path: /v2/login
+    headers: {content-type: application/json}
+    json: {username: admin, password: "${env.LITELLM_MASTER_KEY}"}
+  form-admin-master-key:
+    method: POST
+    path: /login
+    headers: {content-type: application/x-www-form-urlencoded}
+    body: "username=admin&password=${env.LITELLM_MASTER_KEY}"
+flow:
+- send: admin-sk-1234
+  expect: {not: {any: [{status: 200}, {body: '"token":'}]}}
+- send: admin-admin
+  expect: {not: {any: [{status: 200}, {body: '"token":'}]}}
+- send: admin-master-key
+  expect: {not: {any: [{status: 200}, {body: '"token":'}]}}
+- send: form-admin-master-key
+  expect: {not: {any: [{status: 200}, {body: '"token":'}, {header: set-cookie, contains: token}]}}

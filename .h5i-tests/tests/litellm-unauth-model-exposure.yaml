@@ -1,0 +1,22 @@
+# Imported with `h5i websec import-nuclei` from nuclei-templates
+# http/misconfiguration/litellm-unauth-model-exposure.yaml, verdict negated.
+version: h5i.test/v1
+id: litellm-unauth-model-exposure
+name: "nuclei litellm-unauth-model-exposure: model deployments are not exposed without a key"
+requests:
+  model-info:
+    method: GET
+    path: /model/info
+  models:
+    method: GET
+    path: /v1/models
+flow:
+- send: model-info
+  expect:
+    not:
+      all:
+      - dsl: status_code == 200
+      - dsl: contains(content_type, "application/json")
+      - dsl: contains_all(body, "\"data\":", "\"litellm_params\":", "\"model_info\":")
+- send: models
+  expect: {status: 401}

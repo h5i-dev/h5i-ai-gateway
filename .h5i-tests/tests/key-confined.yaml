@@ -1,0 +1,45 @@
+version: h5i.test/v1
+id: key-confined
+name: A virtual key cannot see or change another key (Theorems.key_confined)
+
+requests:
+  mint:
+    method: POST
+    path: /key/generate
+    headers: {authorization: "Bearer ${env.LITELLM_MASTER_KEY}", content-type: application/json}
+    json: {models: [gpt-4o-mini], max_budget: 10}
+  other-info:
+    path: "/key/info?key=${bob}"
+    headers: {authorization: "Bearer ${alice}"}
+  block-other:
+    method: POST
+    path: /key/block
+    headers: {authorization: "Bearer ${alice}", content-type: application/json}
+    json: {key: "${bob}"}
+  delete-other:
+    method: POST
+    path: /key/delete
+    headers: {authorization: "Bearer ${alice}", content-type: application/json}
+    json: {keys: ["${bob}"]}
+  bob-chat:
+    method: POST
+    path: /v1/chat/completions
+    headers: {authorization: "Bearer ${bob}", content-type: application/json}
+    json: {model: gpt-4o-mini, messages: [{role: user, content: hi}]}
+
+flow:
+  - send: mint
+    name: mint-alice
+    extract: {alice: "json:key"}
+  - send: mint
+    name: mint-bob
+    extract: {bob: "json:key"}
+  - send: other-info
+    expect: {status: 403}
+  - send: block-other
+    expect: {status: 403}
+  - send: delete-other
+    expect: {status: 403}
+  # Bob's key still works.
+  - send: bob-chat
+    expect: {status: 200}

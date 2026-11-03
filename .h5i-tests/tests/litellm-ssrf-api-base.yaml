@@ -1,0 +1,38 @@
+# Port of nuclei-templates CVE-2024-6587 (LiteLLM forwards a chat call, with
+# the provider's API key, to an `api_base` the caller puts in the body),
+# verdict negated. The template's out-of-band listener becomes a closed
+# port: had the gateway followed `api_base`, the call would fail to
+# connect; it goes to the configured deployment and succeeds.
+version: h5i.test/v1
+id: litellm-ssrf-api-base
+name: "nuclei CVE-2024-6587: a caller cannot redirect a call with api_base"
+requests:
+  mint:
+    method: POST
+    path: /key/generate
+    headers: {authorization: "Bearer ${env.LITELLM_MASTER_KEY}", content-type: application/json}
+    json: {models: [gpt-4o-mini], max_budget: 10}
+  chat:
+    method: POST
+    path: /chat/completions
+    headers: {authorization: "Bearer ${key}", content-type: application/json}
+    json:
+      model: gpt-4o-mini
+      messages: [{role: user, content: "Hello, how are you?"}]
+      api_base: http://127.0.0.1:9/v1
+      base_url: http://127.0.0.1:9/v1
+  unauth:
+    method: POST
+    path: /chat/completions
+    headers: {content-type: application/json}
+    json:
+      model: command-nightly
+      messages: [{role: user, content: "Hello, how are you?"}]
+      api_base: http://127.0.0.1:9/v1
+flow:
+- send: mint
+  extract: {key: "json:key"}
+- send: chat
+  expect: {status: 200}
+- send: unauth
+  expect: {status: 401}

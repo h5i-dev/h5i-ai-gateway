@@ -1,0 +1,47 @@
+version: h5i.test/v1
+id: forged-key
+name: A virtual key with a forged signature is refused
+
+requests:
+  mint:
+    method: POST
+    path: /key/generate
+    headers: {authorization: "Bearer ${env.LITELLM_MASTER_KEY}", content-type: application/json}
+    json: {models: [gpt-4o-mini], max_budget: 10}
+  forged-chat:
+    method: POST
+    path: /v1/chat/completions
+    headers: {authorization: "Bearer ${prefix}.0000000000000000000000000000000000000000000000000000000000000000", content-type: application/json}
+    json: {model: gpt-4o-mini, messages: [{role: user, content: hi}]}
+  # The same key id, claiming to be a different (admin) key number.
+  forged-admin:
+    method: POST
+    path: /key/generate
+    headers: {authorization: "Bearer sk-v1.1.0.${nonce}.${sig}", content-type: application/json}
+    json: {max_budget: 1000000}
+  # Control: the extracted parts, put back together, are the real key.
+  reassembled-chat:
+    method: POST
+    path: /v1/chat/completions
+    headers: {authorization: "Bearer ${prefix}.${sig}", content-type: application/json}
+    json: {model: gpt-4o-mini, messages: [{role: user, content: hi}]}
+  unsigned:
+    method: POST
+    path: /v1/chat/completions
+    headers: {authorization: "Bearer ${prefix}", content-type: application/json}
+    json: {model: gpt-4o-mini, messages: [{role: user, content: hi}]}
+
+flow:
+  - send: mint
+    extract:
+      prefix: 'regex:"key":"(sk-v1\.\d+\.\d+\.\d+)\.'
+      nonce: 'regex:"key":"sk-v1\.\d+\.\d+\.(\d+)\.'
+      sig: 'regex:"key":"sk-v1\.[\d.]+\.([0-9a-f]+)"'
+  - send: reassembled-chat
+    expect: {status: 200}
+  - send: forged-chat
+    expect: {status: 401}
+  - send: forged-admin
+    expect: {status: 401}
+  - send: unsigned
+    expect: {status: 401}

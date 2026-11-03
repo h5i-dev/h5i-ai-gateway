@@ -34,3 +34,7 @@ proofs/.lake/
 
 # Python caches.
 __pycache__/
+
+# Vercel CLI project link and local env files.
+.vercel
+.env*.local
